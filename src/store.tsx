@@ -76,9 +76,33 @@ export interface Activity {
   id: string;
   text: string;
   time: string;
-  kind: "patient" | "appt" | "invoice" | "tooth" | "team";
+  kind: "patient" | "appt" | "invoice" | "tooth" | "team" | "rx";
+}
+export interface Expense {
+  id: string;
+  title: string;
+  category: string;
+  amount: number;
+  date: string;
+  notes?: string;
+}
+export interface RxItem {
+  name: string;
+  dose: string;
+  freq: string;
+  duration: string;
+}
+export interface Prescription {
+  id: string;
+  patientId: string;
+  doctorId: string;
+  date: string;
+  items: RxItem[];
+  notes?: string;
 }
 export interface DB {
+  expenses: Expense[];
+  prescriptions: Prescription[];
   patients: Patient[];
   doctors: Doctor[];
   staff: Staff[];
@@ -119,6 +143,18 @@ export const INV_META: Record<InvoiceStatus, { label: string; cls: string }> = {
   partial: { label: "جزئية", cls: "bg-amber-soft text-[#a06410]" },
   unpaid: { label: "غير مدفوعة", cls: "bg-coral-soft text-coral" },
 };
+
+export const EXPENSE_CATS: { name: string; color: string }[] = [
+  { name: "رواتب", color: "#e2952b" },
+  { name: "إيجار", color: "#3a86c4" },
+  { name: "مستلزمات طبية", color: "#0d8f83" },
+  { name: "مختبر وأشعة", color: "#b23a48" },
+  { name: "صيانة", color: "#d9503a" },
+  { name: "تسويق", color: "#2c9c69" },
+  { name: "فواتير خدمات", color: "#3a86c4" },
+  { name: "أخرى", color: "#5b7370" },
+];
+export const expCatColor = (name: string) => EXPENSE_CATS.find((c) => c.name === name)?.color ?? "#5b7370";
 
 export const YEMEN_CITIES = ["صنعاء", "عدن", "تعز", "الحديدة", "إب", "المكلا", "ذمار", "سيئون", "مأرب", "عمران", "لحج", "الضالع"];
 
@@ -284,7 +320,40 @@ function seed(): DB {
     { id: uid(), text: "حجز موعد متابعة تقويم للمريض وديع بازرعة غداً 15:00", time: ago(420), kind: "appt" },
   ];
 
-  return { patients, doctors, staff, currencies, defaultCurrency: "YER", services, appointments, invoices, activity, nextInv: 1043 };
+  const E = (title: string, category: string, amount: number, date: string, notes?: string): Expense =>
+    ({ id: uid(), title, category, amount, date, notes });
+  const expenses: Expense[] = [
+    E("إيجار العيادة — شهري", "إيجار", 250000, today(-31), "عقد سنوي مع المالك"),
+    E("رواتب الكادر الطبي والإداري", "رواتب", 850000, today(-28), "شامل الأطباء والفنيين"),
+    E("مستلزمات تعقيم وقفازات", "مستلزمات طبية", 45000, today(-21)),
+    E("أعمال مختبر — تيجان زيركون", "مختبر وأشعة", 120000, today(-19), "مختبر الأسنان الحديث"),
+    E("صيانة كرسي الأسنان (2)", "صيانة", 35000, today(-14)),
+    E("حملة إعلانات فيسبوك", "تسويق", 25000, today(-10)),
+    E("مواد حشو كومبوزيت وأدوات", "مستلزمات طبية", 68000, today(-7)),
+    E("فاتورة كهرباء ومياه", "فواتير خدمات", 18000, today(-4)),
+    E("أشعة بانورامية خارجية — مريض محوَّل", "مختبر وأشعة", 15000, today(-2)),
+    E("إيجار العيادة — شهري", "إيجار", 250000, today(-1)),
+    E("ضيافة وقرطاسية", "أخرى", 8000, today(-1)),
+  ];
+
+  const RX = (patientId: string, doctorId: string, date: string, items: RxItem[], notes?: string): Prescription =>
+    ({ id: uid(), patientId, doctorId, date, items, notes });
+  const prescriptions: Prescription[] = [
+    RX("p1", "d1", today(-1), [
+      { name: "أموكسيسيلين Amoxicillin", dose: "500 مجم", freq: "كل 8 ساعات", duration: "5 أيام" },
+      { name: "إيبوبروفين Ibuprofen", dose: "400 مجم", freq: "عند الألم — بعد الأكل", duration: "3 أيام" },
+      { name: "غسول كلورهيكسيدين", dose: "10 مل", freq: "مرتين يومياً", duration: "أسبوع" },
+    ], "بعد علاج العصب — السن 36"),
+    RX("p3", "d3", today(-2), [
+      { name: "كليندامايسين Clindamycin", dose: "300 مجم", freq: "كل 6 ساعات", duration: "7 أيام" },
+      { name: "باراسيتامول Paracetamol", dose: "1000 مجم", freq: "كل 8 ساعات", duration: "3 أيام" },
+    ], "بديل آمن — المريض لديه حساسية بنسلين، قبل خلع ضرس العقل"),
+    RX("p7", "d1", today(-3), [
+      { name: "باراسيتامول Paracetamol", dose: "500 مجم", freq: "كل 8 ساعات", duration: "3 أيام" },
+    ]),
+  ];
+
+  return { patients, doctors, staff, currencies, defaultCurrency: "YER", services, appointments, invoices, activity, expenses, prescriptions, nextInv: 1043 };
 }
 
 /* ============================== Store ============================== */
@@ -311,6 +380,11 @@ export type Action =
   | { type: "UPDATE_CURRENCY"; c: Currency }
   | { type: "DELETE_CURRENCY"; code: string }
   | { type: "SET_DEFAULT_CURRENCY"; code: string }
+  | { type: "ADD_EXPENSE"; e: Expense }
+  | { type: "DELETE_EXPENSE"; id: string }
+  | { type: "ADD_PRESCRIPTION"; rx: Prescription }
+  | { type: "DELETE_PRESCRIPTION"; id: string }
+  | { type: "IMPORT"; db: DB }
   | { type: "RESET" };
 
 const nowIso = () => new Date().toISOString();
@@ -420,6 +494,26 @@ function reducer(db: DB, action: Action): DB {
     }
     case "SET_DEFAULT_CURRENCY":
       return { ...db, defaultCurrency: action.code };
+    case "ADD_EXPENSE":
+      return {
+        ...db,
+        expenses: [action.e, ...db.expenses],
+        activity: [act(`تسجيل مصروف «${action.e.title}» — ${fmtMoney(action.e.amount)}`, "invoice"), ...db.activity].slice(0, 30),
+      };
+    case "DELETE_EXPENSE":
+      return { ...db, expenses: db.expenses.filter((e) => e.id !== action.id) };
+    case "ADD_PRESCRIPTION": {
+      const p = db.patients.find((x) => x.id === action.rx.patientId);
+      return {
+        ...db,
+        prescriptions: [action.rx, ...db.prescriptions],
+        activity: [act(`وصفة طبية جديدة للمريض ${p?.name ?? ""} (${action.rx.items.length} أدوية)`, "rx"), ...db.activity].slice(0, 30),
+      };
+    }
+    case "DELETE_PRESCRIPTION":
+      return { ...db, prescriptions: db.prescriptions.filter((r) => r.id !== action.id) };
+    case "IMPORT":
+      return action.db;
     case "RESET":
       return seed();
     default:
@@ -435,6 +529,13 @@ function load(): DB {
     const raw = localStorage.getItem(KEY);
     db = raw ? (JSON.parse(raw) as DB) : seed();
     if (!db.patients?.length || !db.currencies?.length) db = seed();
+    db = {
+      ...db,
+      expenses: db.expenses ?? [],
+      prescriptions: db.prescriptions ?? [],
+      staff: db.staff ?? [],
+      activity: db.activity ?? [],
+    };
   } catch {
     db = seed();
   }

@@ -12,6 +12,7 @@ import {
 } from "../store";
 import { IconPlus, IconPrinter, IconReceipt, IconTrash, IconWallet } from "../icons";
 import { AnimatedNumber, Avatar, Badge, EmptyState, Field, Modal, TInput, TSelect, useToast } from "../components/ui";
+import { InvoicePrint, PrintModal } from "../components/PrintSheet";
 
 export default function InvoicesPage() {
   const { db, dispatch, patientById, serviceById } = useStore();
@@ -19,6 +20,7 @@ export default function InvoicesPage() {
   const { push } = useToast();
   const [showNew, setShowNew] = useState(false);
   const [payInv, setPayInv] = useState<Invoice | null>(null);
+  const [printInv, setPrintInv] = useState<Invoice | null>(null);
   const [filter, setFilter] = useState<"all" | "paid" | "partial" | "unpaid">("all");
 
   const cur = db.currencies.find((c) => c.code === db.defaultCurrency) ?? db.currencies[0];
@@ -139,9 +141,10 @@ export default function InvoicesPage() {
                             </button>
                           )}
                           <button
-                            onClick={() => push("info", "جارٍ تجهيز نسخة الطباعة", inv.number)}
+                            onClick={() => setPrintInv(inv)}
                             className="icon-btn !w-8 !h-8"
                             aria-label="طباعة"
+                            title="طباعة الفاتورة"
                           >
                             <IconPrinter className="w-4 h-4" />
                           </button>
@@ -158,6 +161,11 @@ export default function InvoicesPage() {
 
       <NewInvoiceModal open={showNew} onClose={() => setShowNew(false)} />
       {payInv && <PayModal inv={payInv} onClose={() => setPayInv(null)} />}
+      {printInv && (
+        <PrintModal open onClose={() => setPrintInv(null)} title={`طباعة الفاتورة ${printInv.number}`}>
+          <InvoicePrint inv={printInv} />
+        </PrintModal>
+      )}
     </div>
   );
 }

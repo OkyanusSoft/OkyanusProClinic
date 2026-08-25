@@ -15,6 +15,7 @@ import {
   IconCalendar,
   IconCalendarPlus,
   IconReceipt,
+  IconSpark,
   IconTooth,
   IconTrendUp,
   IconUserPlus,
@@ -157,7 +158,7 @@ export default function Dashboard({ onOpenPatient, onQuickBook, onNewPatient, on
   ];
 
   const actIcon = (kind: string) =>
-    kind === "patient" ? <IconUserPlus className="w-4 h-4" /> : kind === "appt" ? <IconCalendar className="w-4 h-4" /> : kind === "invoice" ? <IconReceipt className="w-4 h-4" /> : kind === "team" ? <IconUsers className="w-4 h-4" /> : <IconTooth className="w-4 h-4" />;
+    kind === "patient" ? <IconUserPlus className="w-4 h-4" /> : kind === "appt" ? <IconCalendar className="w-4 h-4" /> : kind === "invoice" ? <IconReceipt className="w-4 h-4" /> : kind === "team" ? <IconUsers className="w-4 h-4" /> : kind === "rx" ? <IconSpark className="w-4 h-4" /> : <IconTooth className="w-4 h-4" />;
 
   return (
     <div className="space-y-5">

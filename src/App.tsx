@@ -8,13 +8,16 @@ import {
   IconMenu,
   IconReceipt,
   IconSearch,
+  IconShield,
   IconSpark,
   IconStetho,
+  IconTrendUp,
   IconUsers,
+  IconWallet,
   IconX,
   Logo,
 } from "./icons";
-import { Avatar, Drop, ToastProvider, useToast } from "./components/ui";
+import { Avatar, Drop, DropItem, ToastProvider, useToast } from "./components/ui";
 import Dashboard from "./pages/Dashboard";
 import PatientsPage, { PatientDrawer } from "./pages/Patients";
 import AppointmentsPage, { AddAppointmentModal } from "./pages/Appointments";
@@ -22,8 +25,10 @@ import InvoicesPage from "./pages/Invoices";
 import ServicesPage from "./pages/Services";
 import TeamPage from "./pages/Team";
 import CurrenciesPage from "./pages/Currencies";
+import ExpensesPage from "./pages/Expenses";
+import ReportsPage from "./pages/Reports";
 
-type Tab = "dashboard" | "appointments" | "patients" | "invoices" | "services" | "team" | "currencies";
+type Tab = "dashboard" | "appointments" | "patients" | "invoices" | "expenses" | "reports" | "services" | "team" | "currencies";
 
 const NAV: { key: Tab; label: string; icon: (c: string) => React.ReactNode }[] = [
   { key: "dashboard", label: "لوحة التحكم", icon: (c) => <IconGrid className={c} /> },
@@ -31,6 +36,8 @@ const NAV: { key: Tab; label: string; icon: (c: string) => React.ReactNode }[] =
   { key: "patients", label: "المرضى", icon: (c) => <IconUsers className={c} /> },
   { key: "invoices", label: "الفواتير", icon: (c) => <IconReceipt className={c} /> },
   { key: "services", label: "قائمة الأسعار", icon: (c) => <IconSpark className={c} /> },
+  { key: "expenses", label: "المصروفات", icon: (c) => <IconWallet className={c} /> },
+  { key: "reports", label: "التقارير", icon: (c) => <IconTrendUp className={c} /> },
   { key: "team", label: "الفريق الطبي", icon: (c) => <IconStetho className={c} /> },
   { key: "currencies", label: "العملات", icon: (c) => <IconCoins className={c} /> },
 ];
@@ -41,6 +48,8 @@ const TITLES: Record<Tab, string> = {
   patients: "المرضى",
   invoices: "الفواتير",
   services: "قائمة الأسعار",
+  expenses: "المصروفات",
+  reports: "التقارير",
   team: "الفريق الطبي",
   currencies: "العملات",
 };
@@ -122,6 +131,8 @@ function Shell() {
           {tab === "patients" && <PatientsPage addSignal={addPatientSignal} onOpenPatient={setDrawerId} onBook={(pid) => openBook(pid)} />}
           {tab === "invoices" && <InvoicesPage />}
           {tab === "services" && <ServicesPage />}
+          {tab === "expenses" && <ExpensesPage />}
+          {tab === "reports" && <ReportsPage />}
           {tab === "team" && <TeamPage />}
           {tab === "currencies" && <CurrenciesPage />}
 
@@ -229,8 +240,35 @@ function SidebarContent({
 /* ============================ الشريط العلوي ============================ */
 
 function Topbar({ tab, onMenu, onOpenPatient }: { tab: Tab; onMenu: () => void; onOpenPatient: (id: string) => void }) {
-  const { db } = useStore();
+  const { db, dispatch } = useStore();
+  const { push } = useToast();
+  const fileRef = useRef<HTMLInputElement>(null);
   const [q, setQ] = useState("");
+
+  const exportBackup = () => {
+    const blob = new Blob([JSON.stringify(db, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `نسخة-احتياطية-الشرافي-${today(0)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    push("success", "تم تصدير النسخة الاحتياطية", "ملف JSON كامل بقاعدة البيانات — احفظه في مكان آمن.");
+  };
+  const importBackup = (file: File) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const data = JSON.parse(String(reader.result));
+        if (!Array.isArray(data.patients) || !data.patients.length || !Array.isArray(data.currencies)) throw new Error("invalid");
+        dispatch({ type: "IMPORT", db: data });
+        push("success", "تم استيراد النسخة الاحتياطية", `${data.patients.length} مريض · ${data.invoices?.length ?? 0} فاتورة · ${data.appointments?.length ?? 0} موعد.`);
+      } catch {
+        push("error", "تعذّر الاستيراد", "الملف المحدد ليس نسخة احتياطية صالحة من النظام.");
+      }
+    };
+    reader.readAsText(file);
+  };
   const [now, setNow] = useState(new Date());
   const searchRef = useRef<HTMLDivElement>(null);
 
@@ -357,6 +395,35 @@ function Topbar({ tab, onMenu, onOpenPatient }: { tab: Tab; onMenu: () => void; 
               })}
             </ul>
           )}
+        </Drop>
+
+        {/* النسخ الاحتياطي */}
+        <input
+          ref={fileRef}
+          type="file"
+          accept="application/json,.json"
+          className="hidden"
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            if (f) importBackup(f);
+            e.target.value = "";
+          }}
+        />
+        <Drop
+          align="end"
+          button={
+            <span className="icon-btn relative !w-10 !h-10 bg-white border border-line" title="النسخ الاحتياطي">
+              <IconShield className="w-5 h-5" />
+            </span>
+          }
+        >
+          <p className="px-3 py-2 text-[10px] font-bold text-soft border-b border-line mb-1">قاعدة البيانات</p>
+          <DropItem>
+            <span onClick={exportBackup} className="block">تصدير نسخة احتياطية (JSON)</span>
+          </DropItem>
+          <DropItem>
+            <span onClick={() => fileRef.current?.click()} className="block">استيراد نسخة احتياطية</span>
+          </DropItem>
         </Drop>
 
         {/* الحساب */}

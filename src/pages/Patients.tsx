@@ -12,9 +12,11 @@ import {
   YEMEN_CITIES,
   type Patient,
 } from "../store";
-import { IconCalendarPlus, IconPhone, IconSearch, IconUserPlus, IconUsers, IconAlert } from "../icons";
+import { IconCalendarPlus, IconPhone, IconPlus, IconPrinter, IconSearch, IconSpark, IconUserPlus, IconUsers, IconAlert } from "../icons";
 import { Avatar, Badge, EmptyState, Field, Modal, TArea, TInput, TSelect, TwoStepDelete, useToast } from "../components/ui";
 import DentalChart from "../components/DentalChart";
+import { PrintModal, RxPrint } from "../components/PrintSheet";
+import type { Prescription, RxItem } from "../store";
 
 /* ============================ صفحة المرضى ============================ */
 
@@ -307,6 +309,8 @@ export function PatientDrawer({
   const money = useMoney();
   const { push } = useToast();
   const p = id ? patientById(id) : undefined;
+  const [showRx, setShowRx] = useState(false);
+  const [printRx, setPrintRx] = useState<Prescription | null>(null);
 
   useEffect(() => {
     if (!id) return;
@@ -321,6 +325,7 @@ export function PatientDrawer({
     .filter((a) => a.patientId === p.id)
     .sort((a, b) => (b.date + b.time).localeCompare(a.date + a.time));
   const invoices = db.invoices.filter((i) => i.patientId === p.id);
+  const rxs = db.prescriptions.filter((r) => r.patientId === p.id);
   const bal = patientBalance(p.id);
   const hasAllergy = p.allergies && p.allergies !== "لا يوجد";
 
@@ -388,6 +393,51 @@ export function PatientDrawer({
             />
           </section>
 
+          {/* الروشتات الإلكترونية */}
+          <section className="card overflow-hidden">
+            <div className="flex items-center justify-between px-5 pt-4 pb-3 border-b border-line">
+              <h3 className="font-display font-bold text-lg text-ink flex items-center gap-2">
+                <IconSpark className="w-5 h-5 text-jade-deep" />
+                الروشتات الإلكترونية
+              </h3>
+              <button onClick={() => setShowRx(true)} className="text-[11px] font-bold text-jade-deep bg-jade-soft hover:bg-jade hover:text-white rounded-lg px-3 py-2 cursor-pointer transition-colors inline-flex items-center gap-1.5">
+                <IconPlus className="w-3.5 h-3.5" />
+                روشتة جديدة
+              </button>
+            </div>
+            {rxs.length === 0 ? (
+              <EmptyState icon={<IconSpark className="w-6 h-6" />} title="لا روشتات لهذا المريض" desc="أضف وصفة طبية إلكترونية قابلة للطباعة." />
+            ) : (
+              <ul className="divide-y divide-line/60">
+                {rxs.map((rx) => (
+                  <li key={rx.id} className="px-5 py-3.5">
+                    <div className="flex items-center gap-3">
+                      <span className="stat-num text-sm text-jade-deep w-24 shrink-0">{fmtDate(rx.date)}</span>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-bold text-ink truncate">
+                          {rx.items.map((it) => it.name.split(" ")[0]).join(" · ")}
+                        </p>
+                        <p className="text-[11px] text-soft mt-0.5">
+                          {doctorById(rx.doctorId)?.name} · {rx.items.length} {rx.items.length === 1 ? "دواء" : "أدوية"}
+                        </p>
+                      </div>
+                      <button onClick={() => setPrintRx(rx)} className="icon-btn !w-8 !h-8" aria-label="طباعة الروشتة" title="طباعة">
+                        <IconPrinter className="w-4 h-4" />
+                      </button>
+                      <TwoStepDelete
+                        label=""
+                        onConfirm={() => {
+                          dispatch({ type: "DELETE_PRESCRIPTION", id: rx.id });
+                          push("warn", "حُذفت الروشتة", fmtDate(rx.date));
+                        }}
+                      />
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+
           <section className="card overflow-hidden">
             <h3 className="font-display font-bold text-lg text-ink px-5 pt-4 pb-3 border-b border-line">سجل الزيارات</h3>
             {visits.length === 0 ? (
@@ -450,6 +500,113 @@ export function PatientDrawer({
           <button className="btn-ghost" onClick={onClose}>إغلاق</button>
         </div>
       </aside>
+
+      {showRx && <RxModal patientId={p.id} onClose={() => setShowRx(false)} />}
+      {printRx && (
+        <PrintModal open onClose={() => setPrintRx(null)} title="طباعة الروشتة">
+          <RxPrint rx={printRx} />
+        </PrintModal>
+      )}
     </div>
+  );
+}
+
+/* ============================ روشتة جديدة ============================ */
+
+function RxModal({ patientId, onClose }: { patientId: string; onClose: () => void }) {
+  const { db, dispatch, patientById } = useStore();
+  const { push } = useToast();
+  const [doctorId, setDoctorId] = useState(db.doctors[0]?.id ?? "");
+  const [rows, setRows] = useState<RxItem[]>([{ name: "", dose: "", freq: "مرتين يومياً", duration: "5 أيام" }]);
+  const [notes, setNotes] = useState("");
+  const [err, setErr] = useState("");
+  const patient = patientById(patientId);
+
+  const FREQS = ["مرة يومياً", "مرتين يومياً", "كل 8 ساعات", "كل 6 ساعات", "عند اللزوم"];
+
+  const save = () => {
+    const valid = rows.filter((r) => r.name.trim());
+    if (valid.length === 0) return setErr("أضف دواءً واحداً على الأقل.");
+    const rx: Prescription = {
+      id: uid(),
+      patientId,
+      doctorId,
+      date: today(0),
+      items: valid,
+      notes: notes.trim() || undefined,
+    };
+    dispatch({ type: "ADD_PRESCRIPTION", rx });
+    push("success", "أُصدرت الروشتة", `${patient?.name} — ${valid.length} ${valid.length === 1 ? "دواء" : "أدوية"}`);
+    onClose();
+  };
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title="روشتة إلكترونية جديدة"
+      subtitle={`المريض: ${patient?.name ?? ""} — قابلة للطباعة فور الحفظ`}
+      width="max-w-2xl"
+      footer={
+        <>
+          <button className="btn-ghost" onClick={onClose}>إلغاء</button>
+          <button className="btn-primary" onClick={save}>حفظ الروشتة</button>
+        </>
+      }
+    >
+      <Field label="الطبيب المعالج">
+        <TSelect value={doctorId} onChange={(e) => setDoctorId(e.target.value)}>
+          {db.doctors.map((d) => (
+            <option key={d.id} value={d.id}>{d.name} — {d.specialty}</option>
+          ))}
+        </TSelect>
+      </Field>
+
+      <div className="mt-4">
+        <p className="label">الأدوية</p>
+        <div className="space-y-2.5">
+          {rows.map((r, i) => (
+            <div key={i} className="grid grid-cols-[1.6fr_0.9fr_1fr_0.9fr_auto] gap-2 items-center">
+              <TInput value={r.name} onChange={(e) => setRows(rows.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)))} placeholder="اسم الدواء" />
+              <TInput value={r.dose} onChange={(e) => setRows(rows.map((x, j) => (j === i ? { ...x, dose: e.target.value } : x)))} placeholder="الجرعة" />
+              <TSelect value={r.freq} onChange={(e) => setRows(rows.map((x, j) => (j === i ? { ...x, freq: e.target.value } : x)))}>
+                {FREQS.map((f) => (
+                  <option key={f} value={f}>{f}</option>
+                ))}
+              </TSelect>
+              <TInput value={r.duration} onChange={(e) => setRows(rows.map((x, j) => (j === i ? { ...x, duration: e.target.value } : x)))} placeholder="المدة" />
+              <button
+                onClick={() => setRows(rows.filter((_, j) => j !== i))}
+                disabled={rows.length === 1}
+                className="icon-btn !w-9 !h-9 disabled:opacity-30 hover:!bg-coral-soft hover:!text-coral"
+                aria-label="حذف الدواء"
+              >
+                <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><path d="m6 6 12 12M18 6 6 18" /></svg>
+              </button>
+            </div>
+          ))}
+        </div>
+        <button
+          onClick={() => setRows([...rows, { name: "", dose: "", freq: "مرتين يومياً", duration: "5 أيام" }])}
+          className="mt-3 text-xs font-bold text-jade-deep bg-jade-soft hover:bg-jade hover:text-white rounded-lg px-3.5 py-2.5 cursor-pointer transition-colors inline-flex items-center gap-1.5"
+        >
+          <IconPlus className="w-3.5 h-3.5" />
+          إضافة دواء
+        </button>
+      </div>
+
+      <div className="mt-4">
+        <Field label="تعليمات إضافية">
+          <TArea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="مثال: بعد الأكل، تجنب المشروبات الباردة…" />
+        </Field>
+      </div>
+      {patient?.allergies && patient.allergies !== "لا يوجد" && (
+        <p className="mt-3 text-xs font-bold text-coral bg-coral-soft rounded-lg px-3 py-2.5 flex items-center gap-2">
+          <IconAlert className="w-4 h-4 shrink-0" />
+          تنبيه: المريض لديه حساسية مسجلة — {patient.allergies}
+        </p>
+      )}
+      {err && <p className="mt-3 text-xs font-bold text-coral bg-coral-soft rounded-lg px-3 py-2.5 anim-pop">{err}</p>}
+    </Modal>
   );
 }

@@ -283,8 +283,7 @@ export function AddAppointmentModal({
           <TSelect value={serviceId} onChange={(e) => setServiceId(e.target.value)}>
             <option value="">— اختر —</option>
             {db.services.filter((s) => s.active).map((s) => (
-              <option key={s.id} value={s.id}>{s.name} — {s.price} ر.س</option>
-            ))}
+                    <option key={s.id} value={s.id}>{s.name} — {money(s.price)}</option>            ))}
           </TSelect>
         </Field>
         <Field label="الطبيب">
