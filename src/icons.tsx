@@ -203,6 +203,8 @@ export const IconIdCard = (p: P) =>
       <path d="M6 15.5c.5-1.4 1.4-2 2.5-2s2 .6 2.5 2M14 9.5h4M14 12.5h4M14 15.5h2.5" />
     </>
   );
+export const IconPulse = (p: P) => base(p, <path d="M3 12h4l2.5-6 4.5 12 2.5-6H21" />);
+
 export const IconStetho = (p: P) =>
   base(
     p,

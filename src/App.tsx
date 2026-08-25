@@ -6,6 +6,7 @@ import {
   IconCoins,
   IconGrid,
   IconMenu,
+  IconPulse,
   IconReceipt,
   IconSearch,
   IconShield,
@@ -27,12 +28,14 @@ import TeamPage from "./pages/Team";
 import CurrenciesPage from "./pages/Currencies";
 import ExpensesPage from "./pages/Expenses";
 import ReportsPage from "./pages/Reports";
+import SessionPage from "./pages/Session";
 
-type Tab = "dashboard" | "appointments" | "patients" | "invoices" | "expenses" | "reports" | "services" | "team" | "currencies";
+type Tab = "dashboard" | "appointments" | "session" | "patients" | "invoices" | "expenses" | "reports" | "services" | "team" | "currencies";
 
 const NAV: { key: Tab; label: string; icon: (c: string) => React.ReactNode }[] = [
   { key: "dashboard", label: "لوحة التحكم", icon: (c) => <IconGrid className={c} /> },
   { key: "appointments", label: "المواعيد", icon: (c) => <IconCalendar className={c} /> },
+  { key: "session", label: "محطة عمل الدكتور", icon: (c) => <IconPulse className={c} /> },
   { key: "patients", label: "المرضى", icon: (c) => <IconUsers className={c} /> },
   { key: "invoices", label: "الفواتير", icon: (c) => <IconReceipt className={c} /> },
   { key: "services", label: "قائمة الأسعار", icon: (c) => <IconSpark className={c} /> },
@@ -45,6 +48,7 @@ const NAV: { key: Tab; label: string; icon: (c: string) => React.ReactNode }[] =
 const TITLES: Record<Tab, string> = {
   dashboard: "لوحة التحكم",
   appointments: "المواعيد",
+  session: "محطة عمل الدكتور",
   patients: "المرضى",
   invoices: "الفواتير",
   services: "قائمة الأسعار",
@@ -128,6 +132,7 @@ function Shell() {
             />
           )}
           {tab === "appointments" && <AppointmentsPage onOpenPatient={setDrawerId} onBook={openBook} />}
+          {tab === "session" && <SessionPage />}
           {tab === "patients" && <PatientsPage addSignal={addPatientSignal} onOpenPatient={setDrawerId} onBook={(pid) => openBook(pid)} />}
           {tab === "invoices" && <InvoicesPage />}
           {tab === "services" && <ServicesPage />}

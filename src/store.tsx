@@ -100,6 +100,28 @@ export interface Prescription {
   items: RxItem[];
   notes?: string;
 }
+export interface SessionProc {
+  serviceId: string;
+  tooth?: number;
+}
+export interface ClinicalSession {
+  id: string;
+  patientId: string;
+  doctorId: string;
+  apptId?: string;
+  date: string;
+  startedAt: string;
+  endedAt?: string;
+  status: "open" | "done";
+  complaint: string;
+  diagnosis: string;
+  procedures: SessionProc[];
+  teethTreated: { tooth: number; status: ToothStatus }[];
+  meds: RxItem[];
+  medNotes: string;
+  invoiceId?: string;
+  rxId?: string;
+}
 export interface DB {
   expenses: Expense[];
   prescriptions: Prescription[];
@@ -112,6 +134,7 @@ export interface DB {
   appointments: Appointment[];
   invoices: Invoice[];
   activity: Activity[];
+  sessions: ClinicalSession[];
   nextInv: number;
 }
 
@@ -249,7 +272,7 @@ function seed(): DB {
     { id: "p6", name: "وديع بازرعة", phone: "772223344", age: 19, gender: "m", blood: "A-", allergies: "لا يوجد", city: "المكلا", notes: "حالة تقويم نشطة", joined: today(-45), teeth: {} },
     { id: "p7", name: "سحر المطري", phone: "778889900", age: 37, gender: "f", blood: "O+", allergies: "لا يوجد", city: "إب", notes: "", joined: today(-3), teeth: { 25: "filled", 34: "caries" } },
     { id: "p8", name: "غمدان القحوم", phone: "776665544", age: 45, gender: "m", blood: "B-", allergies: "لاتكس", city: "صنعاء", notes: "", joined: today(-120), teeth: { 11: "crown", 21: "crown", 22: "filled" } },
-    { id: "p9", name: "ريام الحميري", phone: "773334455", age: 31, gender: "f", blood: "O+", allergies: "لا يوجد", city: "لحج", notes: "", joined: today(-60), teeth: { 46: "caries", 47: "caries" } },
+    { id: "p9", name: "ريام الحميري", phone: "773334455", age: 31, gender: "f", blood: "O+", allergies: "لا يوجد", city: "لحج", notes: "", joined: today(-60), teeth: { 46: "root", 47: "caries" } },
     { id: "p10", name: "توفيق الآنسي", phone: "774443322", age: 26, gender: "m", blood: "A+", allergies: "لا يوجد", city: "تعز", notes: "", joined: today(-30), teeth: { 38: "caries", 18: "filled" } },
   ];
 
@@ -353,7 +376,59 @@ function seed(): DB {
     ]),
   ];
 
-  return { patients, doctors, staff, currencies, defaultCurrency: "YER", services, appointments, invoices, activity, expenses, prescriptions, nextInv: 1043 };
+  const SES = (
+    patientId: string,
+    doctorId: string,
+    date: string,
+    start: string,
+    end: string,
+    complaint: string,
+    diagnosis: string,
+    procedures: SessionProc[],
+    teethTreated: { tooth: number; status: ToothStatus }[],
+    meds: RxItem[],
+    medNotes = ""
+  ): ClinicalSession => ({
+    id: uid(),
+    patientId,
+    doctorId,
+    date,
+    startedAt: new Date(`${date}T${start}:00`).toISOString(),
+    endedAt: new Date(`${date}T${end}:00`).toISOString(),
+    status: "done",
+    complaint,
+    diagnosis,
+    procedures,
+    teethTreated,
+    meds,
+    medNotes,
+  });
+
+  const sessions: ClinicalSession[] = [
+    SES(
+      "p2", "d1", today(0), "09:00", "09:42",
+      "نزيف في اللثة عند التفريش",
+      "التهاب لثة بسيط مع ترسبات جيرية على القواطع السفلية",
+      [{ serviceId: "s2" }],
+      [],
+      [{ name: "غسول كلورهيكسيدين", dose: "10 مل", freq: "مرتين يومياً", duration: "أسبوع" }],
+      "استخدام فرشاة ناعمة ومحلول ماء وملح دافئ"
+    ),
+    SES(
+      "p9", "d1", today(-1), "11:00", "12:15",
+      "ألم شديد في الضرس السفلي الأيمن يزداد ليلاً",
+      "التهاب لبّي غير قابل للعكس — السن 46",
+      [{ serviceId: "s5", tooth: 46 }],
+      [{ tooth: 46, status: "root" }],
+      [
+        { name: "أموكسيسيلين Amoxicillin", dose: "500 مجم", freq: "كل 8 ساعات", duration: "5 أيام" },
+        { name: "إيبوبروفين Ibuprofen", dose: "400 مجم", freq: "عند الألم — بعد الأكل", duration: "3 أيام" },
+      ],
+      "اكتمل علاج العصب للسن 46 — مراجعة الأسبوع القادم للحشوة والتاج"
+    ),
+  ];
+
+  return { patients, doctors, staff, currencies, defaultCurrency: "YER", services, appointments, invoices, activity, expenses, prescriptions, sessions, nextInv: 1043 };
 }
 
 /* ============================== Store ============================== */
@@ -384,6 +459,10 @@ export type Action =
   | { type: "DELETE_EXPENSE"; id: string }
   | { type: "ADD_PRESCRIPTION"; rx: Prescription }
   | { type: "DELETE_PRESCRIPTION"; id: string }
+  | { type: "START_SESSION"; patientId: string; doctorId: string; apptId?: string }
+  | { type: "PATCH_SESSION"; id: string; patch: Partial<ClinicalSession> }
+  | { type: "END_SESSION"; id: string; paid: number }
+  | { type: "CANCEL_SESSION"; id: string }
   | { type: "IMPORT"; db: DB }
   | { type: "RESET" };
 
@@ -512,6 +591,132 @@ function reducer(db: DB, action: Action): DB {
     }
     case "DELETE_PRESCRIPTION":
       return { ...db, prescriptions: db.prescriptions.filter((r) => r.id !== action.id) };
+
+    /* ---------- جلسات العلاج ---------- */
+    case "START_SESSION": {
+      if (db.sessions.some((x) => x.status === "open")) return db;
+      const sess: ClinicalSession = {
+        id: uid(),
+        patientId: action.patientId,
+        doctorId: action.doctorId,
+        apptId: action.apptId,
+        date: today(0),
+        startedAt: nowIso(),
+        status: "open",
+        complaint: "",
+        diagnosis: "",
+        procedures: [],
+        teethTreated: [],
+        meds: [],
+        medNotes: "",
+      };
+      const appointments = action.apptId
+        ? db.appointments.map((a) => (a.id === action.apptId ? { ...a, status: "inprogress" as ApptStatus } : a))
+        : db.appointments;
+      const pName = db.patients.find((p) => p.id === action.patientId)?.name ?? "";
+      return {
+        ...db,
+        sessions: [sess, ...db.sessions],
+        appointments,
+        activity: [act(`دخول المريض ${pName} إلى غرفة العلاج — بدأت الجلسة`, "appt"), ...db.activity].slice(0, 30),
+      };
+    }
+    case "PATCH_SESSION":
+      return {
+        ...db,
+        sessions: db.sessions.map((x) => (x.id === action.id && x.status === "open" ? { ...x, ...action.patch } : x)),
+      };
+    case "END_SESSION": {
+      const s = db.sessions.find((x) => x.id === action.id);
+      if (!s || s.status === "done") return db;
+      let invoices = db.invoices;
+      let nextInv = db.nextInv;
+      let invoiceId: string | undefined;
+      let invNumber: string | undefined;
+      if (s.procedures.length > 0) {
+        const qty = new Map<string, number>();
+        s.procedures.forEach((pr) => qty.set(pr.serviceId, (qty.get(pr.serviceId) ?? 0) + 1));
+        const items: InvoiceItem[] = [...qty.entries()].map(([serviceId, q]) => ({
+          serviceId,
+          qty: q,
+          price: db.services.find((x) => x.id === serviceId)?.price ?? 0,
+        }));
+        const total = items.reduce((a, i) => a + i.qty * i.price, 0);
+        const inv: Invoice = {
+          id: uid(),
+          number: `INV-${nextInv}`,
+          patientId: s.patientId,
+          date: today(0),
+          items,
+          paid: Math.min(Math.max(0, action.paid), total),
+        };
+        invoices = [inv, ...invoices];
+        invoiceId = inv.id;
+        invNumber = inv.number;
+        nextInv += 1;
+      }
+      let prescriptions = db.prescriptions;
+      let rxId: string | undefined;
+      if (s.meds.length > 0) {
+        const rx: Prescription = {
+          id: uid(),
+          patientId: s.patientId,
+          doctorId: s.doctorId,
+          date: today(0),
+          items: s.meds,
+          notes: s.medNotes.trim() || undefined,
+        };
+        prescriptions = [rx, ...prescriptions];
+        rxId = rx.id;
+      }
+      const patients = db.patients.map((p) => {
+        if (p.id !== s.patientId || s.teethTreated.length === 0) return p;
+        const teeth = { ...p.teeth };
+        s.teethTreated.forEach((t) => {
+          if (t.status === "healthy") delete teeth[t.tooth];
+          else teeth[t.tooth] = t.status;
+        });
+        return { ...p, teeth };
+      });
+      const appointments = s.apptId
+        ? db.appointments.map((a) => (a.id === s.apptId ? { ...a, status: "done" as ApptStatus } : a))
+        : db.appointments;
+      const sessions = db.sessions.map((x) =>
+        x.id === s.id ? { ...x, status: "done" as const, endedAt: nowIso(), invoiceId, rxId } : x
+      );
+      const pName = db.patients.find((p) => p.id === s.patientId)?.name ?? "";
+      return {
+        ...db,
+        patients,
+        appointments,
+        invoices,
+        prescriptions,
+        sessions,
+        nextInv,
+        activity: [
+          act(
+            `خروج المريض ${pName} — ${s.procedures.length} إجراء${invNumber ? ` بفاتورة ${invNumber}` : ""}${rxId ? " وروشتة إلكترونية" : ""}`,
+            "appt"
+          ),
+          ...db.activity,
+        ].slice(0, 30),
+      };
+    }
+    case "CANCEL_SESSION": {
+      const s = db.sessions.find((x) => x.id === action.id);
+      if (!s) return db;
+      const appointments = s.apptId
+        ? db.appointments.map((a) => (a.id === s.apptId ? { ...a, status: "confirmed" as ApptStatus } : a))
+        : db.appointments;
+      const pName = db.patients.find((p) => p.id === s.patientId)?.name ?? "";
+      return {
+        ...db,
+        sessions: db.sessions.filter((x) => x.id !== action.id),
+        appointments,
+        activity: [act(`إلغاء جلسة العلاج للمريض ${pName} قبل اكتمالها`, "appt"), ...db.activity].slice(0, 30),
+      };
+    }
+
     case "IMPORT":
       return action.db;
     case "RESET":
@@ -533,6 +738,7 @@ function load(): DB {
       ...db,
       expenses: db.expenses ?? [],
       prescriptions: db.prescriptions ?? [],
+      sessions: db.sessions ?? [],
       staff: db.staff ?? [],
       activity: db.activity ?? [],
     };
