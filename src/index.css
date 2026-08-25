@@ -249,7 +249,7 @@ body {
     repeating-linear-gradient(-45deg, rgba(255, 255, 255, 0.022) 0 2px, transparent 2px 14px);
 }
 
-.tooth-btn { transition: transform 0.15s ease, filter 0.15s ease; cursor: pointer; }
-.tooth-btn:hover { transform: scale(1.12); filter: brightness(1.05); }
+.tooth-btn { transform-box: fill-box; transform-origin: center; transition: transform 0.15s ease; cursor: pointer; }
+.tooth-btn:hover { transform: scale(1.05); }
 
 input[type="number"]::-webkit-inner-spin-button { opacity: 0.4; }

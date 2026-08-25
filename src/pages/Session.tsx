@@ -597,8 +597,8 @@ function TreatmentTab(props: {
   const total = session.procedures.reduce((s, pr) => s + (serviceById(pr.serviceId)?.price ?? 0), 0);
 
   return (
-    <div className="grid lg:grid-cols-3 gap-5">
-      <div className="lg:col-span-2 space-y-5">
+    <div className="space-y-5">
+      <div className="grid xl:grid-cols-2 gap-5 items-start">
         <section className="card p-5">
           <h3 className="font-display font-bold text-lg text-ink mb-4 flex items-center gap-2">
             <span className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-jade-soft text-jade-deep"><IconStetho className="w-4.5 h-4.5" /></span>
@@ -667,20 +667,26 @@ function TreatmentTab(props: {
         </section>
       </div>
 
-      <div>
-        <section className="card p-5 h-full">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="font-display font-bold text-lg text-ink flex items-center gap-2">
-              <span className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-jade-soft text-jade-deep"><IconTooth className="w-4.5 h-4.5" /></span>
-              خريطة الأسنان
-            </h3>
-            {session.teethTreated.length > 0 && (
-              <span className="chip bg-amber-soft text-[#a06410] !text-[9px]">{session.teethTreated.length} معلّق</span>
-            )}
-          </div>
-          <DentalChart teeth={props.mergedTeeth} onSet={props.setTooth} />
-        </section>
-      </div>
+      {/* خريطة الأسنان — قسم موسّع بعرض كامل */}
+      <section className="card p-5 anim-fade">
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+          <h3 className="font-display font-bold text-lg text-ink flex items-center gap-2">
+            <span className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-jade-soft text-jade-deep"><IconTooth className="w-4.5 h-4.5" /></span>
+            خريطة الأسنان أثناء الجلسة
+          </h3>
+          {session.teethTreated.length > 0 && (
+            <span className="chip bg-amber-soft text-[#a06410]">
+              <IconClock className="w-3.5 h-3.5" />
+              {session.teethTreated.length} تغيير معلّق — يُثبَّت عند الخروج
+            </span>
+          )}
+        </div>
+        <DentalChart
+          teeth={props.mergedTeeth}
+          onSet={props.setTooth}
+          editorNote="التغيير هنا معلّق — يُثبَّت في ملف المريض نهائياً عند إنهاء الجلسة."
+        />
+      </section>
     </div>
   );
 }
