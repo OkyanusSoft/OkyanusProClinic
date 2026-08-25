@@ -249,6 +249,7 @@ export const PERMISSIONS: { key: string; label: string; desc: string; scope?: bo
   { key: "team", label: "الفريق الطبي", desc: "الأطباء والموظفون" },
   { key: "currencies", label: "العملات", desc: "العملات وأسعار الصرف" },
   { key: "users", label: "المستخدمون والصلاحيات", desc: "إدارة الحسابات والأدوار" },
+  { key: "settings", label: "الإعدادات العامة", desc: "هوية العيادة والدوام والفوترة والبيانات" },
   { key: "scope_all_patients", label: "كل المرضى", desc: "رؤية جميع ملفات المرضى — بدونها يرى الطبيب مرضاه فقط", scope: true },
   { key: "scope_all_appointments", label: "كل المواعيد", desc: "رؤية جدول مواعيد كل الأطباء — بدونها يرى الطبيب مواعيده فقط", scope: true },
 ];
@@ -303,11 +304,44 @@ export interface DB {
   xrays: XrayRec[];
   followUps: FollowUp[];
   users: User[];
+  settings: ClinicSettings;
   nextInv: number;
 }
 
 export const CLINIC_NAME = "عيادة د. عبدالله الشرفي";
 export const CLINIC_LATIN = "AL-SHARAFI DENTAL CLINIC";
+
+/* ---------- إعدادات العيادة ---------- */
+export interface ClinicSettings {
+  clinicName: string;
+  clinicLatin: string;
+  address: string;
+  phone: string;
+  email: string;
+  workStart: string;
+  workEnd: string;
+  followUpAlertDays: number;
+  invoiceTitle: string;
+  invoicePrefix: string;
+  invoiceFooter: string;
+}
+export const DEFAULT_CLINIC_SETTINGS: ClinicSettings = {
+  clinicName: CLINIC_NAME,
+  clinicLatin: CLINIC_LATIN,
+  address: "صنعاء — شارع الزبيري، عمارة النخبة، الدور الثاني",
+  phone: "+967 777 220 115 · +967 1 445 880",
+  email: "info@alsharafi-dental.ye",
+  workStart: "09:00",
+  workEnd: "21:00",
+  followUpAlertDays: 3,
+  invoiceTitle: "فاتورة العيادة",
+  invoicePrefix: "INV",
+  invoiceFooter: "يشمل السعر الكشف والمتابعة خلال 7 أيام. يُرجى إحضار هذه الفاتورة عند المراجعة. شكراً لثقتكم.",
+};
+export const clinicOf = (db: { settings?: ClinicSettings }): ClinicSettings => ({
+  ...DEFAULT_CLINIC_SETTINGS,
+  ...(db.settings ?? {}),
+});
 export const BASE_CURRENCY = "YER";
 
 /* ============================== Meta ============================== */
@@ -647,7 +681,7 @@ function seed(): DB {
     { id: uid(), patientId: "p6", kind: "سيفالومترية", date: today(-40), findings: "تحليل ما قبل التقويم: صنف هيكلي أول مع بروز قاطعي خفيف", doctorId: "d2" },
   ];
 
-  return { patients, doctors, staff, currencies, defaultCurrency: "YER", services, appointments, invoices, activity, expenses, prescriptions, sessions, implants, prosthetics, orthoCases, xrays, followUps, users, nextInv: 1043 };
+  return { patients, doctors, staff, currencies, defaultCurrency: "YER", services, appointments, invoices, activity, expenses, prescriptions, sessions, implants, prosthetics, orthoCases, xrays, followUps, users, settings: DEFAULT_CLINIC_SETTINGS, nextInv: 1043 };
 }
 
 /* ============================== Store ============================== */
@@ -698,6 +732,7 @@ export type Action =
   | { type: "ADD_FOLLOWUP"; f: FollowUp }
   | { type: "UPDATE_FOLLOWUP"; f: FollowUp }
   | { type: "DELETE_FOLLOWUP"; id: string }
+  | { type: "UPDATE_SETTINGS"; patch: Partial<ClinicSettings> }
   | { type: "RESET" };
 
 const nowIso = () => new Date().toISOString();
@@ -995,6 +1030,8 @@ function reducer(db: DB, action: Action): DB {
       return { ...db, followUps: db.followUps.map((x) => (x.id === action.f.id ? action.f : x)) };
     case "DELETE_FOLLOWUP":
       return { ...db, followUps: db.followUps.filter((x) => x.id !== action.id) };
+    case "UPDATE_SETTINGS":
+      return { ...db, settings: { ...db.settings, ...action.patch } };
 
     case "RESET":
       return seed();
