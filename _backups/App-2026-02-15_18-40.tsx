@@ -65,7 +65,7 @@ const TITLES: Record<Tab, string> = {
 
 function Shell() {
   const { db, dispatch, patientById, serviceById } = useStore();
-  const { user, can, apptScope } = useAuth();
+  const { user, can } = useAuth();
   const { push } = useToast();
   const [tab, setTab] = useState<Tab>("dashboard");
   const [drawerId, setDrawerId] = useState<string | null>(null);
@@ -87,7 +87,7 @@ function Shell() {
   // بوابة الدخول: لا نظام بدون مستخدم مسجّل
   if (!user) return <Login />;
 
-  const todayCount = db.appointments.filter((a) => a.date === today(0) && a.status !== "cancelled" && (!apptScope || a.doctorId === apptScope)).length;
+  const todayCount = db.appointments.filter((a) => a.date === today(0) && a.status !== "cancelled").length;
   const unpaidCount = db.invoices.filter((i) => i.paid < invoiceTotal(i)).length;
   const badges: Partial<Record<Tab, number>> = { appointments: todayCount, invoices: unpaidCount };
 
@@ -271,7 +271,6 @@ function SidebarContent({
 
 function Topbar({ tab, onMenu, onOpenPatient }: { tab: Tab; onMenu: () => void; onOpenPatient: (id: string) => void }) {
   const { db, dispatch } = useStore();
-  const { patientScope, apptScope } = useAuth();
   const { push } = useToast();
   const fileRef = useRef<HTMLInputElement>(null);
   const [q, setQ] = useState("");
@@ -304,7 +303,7 @@ function Topbar({ tab, onMenu, onOpenPatient }: { tab: Tab; onMenu: () => void; 
   const searchRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const t = setInterval(() => setNow(new Date()), 1000);
+    const t = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(t);
   }, []);
 
@@ -319,19 +318,15 @@ function Topbar({ tab, onMenu, onOpenPatient }: { tab: Tab; onMenu: () => void; 
   const results = useMemo(() => {
     const s = q.trim();
     if (s.length < 2) return [];
-    return db.patients
-      .filter((p) => (patientScope ? patientScope.has(p.id) : true))
-      .filter((p) => p.name.includes(s) || p.phone.includes(s))
-      .slice(0, 5);
-  }, [q, db.patients, patientScope]);
+    return db.patients.filter((p) => p.name.includes(s) || p.phone.includes(s)).slice(0, 5);
+  }, [q, db.patients]);
 
   const upcoming = useMemo(
     () =>
       db.appointments
-        .filter((a) => (apptScope ? a.doctorId === apptScope : true))
         .filter((a) => a.date === today(0) && ["confirmed", "waiting", "inprogress"].includes(a.status))
         .sort((a, b) => a.time.localeCompare(b.time)),
-    [db.appointments, apptScope]
+    [db.appointments]
   );
 
   const clock = new Intl.DateTimeFormat("ar-EG-u-nu-latn", { hour: "2-digit", minute: "2-digit", second: "2-digit" }).format(now);

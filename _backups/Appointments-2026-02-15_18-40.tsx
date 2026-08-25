@@ -7,7 +7,6 @@ import {
   fmtDateFull,
   today,
   uid,
-  useAuth,
   useMoney,
   useStore,
   type Appointment,
@@ -27,20 +26,15 @@ interface Props {
 
 export default function AppointmentsPage({ onOpenPatient, onBook }: Props) {
   const { db, dispatch, patientById, serviceById, doctorById } = useStore();
-  const { apptScope } = useAuth();
   const { push } = useToast();
   const [day, setDay] = useState(today(0));
 
   const days = useMemo(() => Array.from({ length: 7 }, (_, i) => today(i)), []);
-  const visible = useMemo(
-    () => (apptScope ? db.appointments.filter((a) => a.doctorId === apptScope) : db.appointments),
-    [db.appointments, apptScope]
-  );
   const dayAppts = useMemo(
-    () => visible.filter((a) => a.date === day).sort((a, b) => a.time.localeCompare(b.time)),
-    [visible, day]
+    () => db.appointments.filter((a) => a.date === day).sort((a, b) => a.time.localeCompare(b.time)),
+    [db.appointments, day]
   );
-  const countFor = (d: string) => visible.filter((a) => a.date === d && a.status !== "cancelled").length;
+  const countFor = (d: string) => db.appointments.filter((a) => a.date === d && a.status !== "cancelled").length;
 
   const setStatus = (a: Appointment, status: ApptStatus) => {
     dispatch({ type: "SET_APPT_STATUS", id: a.id, status });
@@ -53,15 +47,7 @@ export default function AppointmentsPage({ onOpenPatient, onBook }: Props) {
       <div className="anim-rise flex flex-wrap items-center justify-between gap-4">
         <div>
           <h1 className="font-display font-bold text-3xl text-ink">جدول المواعيد</h1>
-          <p className="text-sm text-soft mt-1 flex items-center gap-2.5 flex-wrap">
-            {fmtDateFull(day)}
-            {apptScope && (
-              <span className="chip bg-amber-soft text-[#a06410] !py-1.5">
-                <IconStetho className="w-3.5 h-3.5" />
-                جدول {doctorById(apptScope)?.name ?? "الطبيب"} فقط
-              </span>
-            )}
-          </p>
+          <p className="text-sm text-soft mt-1">{fmtDateFull(day)}</p>
         </div>
         <button className="btn-primary" onClick={() => onBook()}>
           <IconCalendarPlus className="w-4.5 h-4.5" />
@@ -224,7 +210,6 @@ export function AddAppointmentModal({
   defaultDate?: string;
 }) {
   const { db, dispatch, patientById, serviceById } = useStore();
-  const { apptScope } = useAuth();
   const money = useMoney();
   const { push } = useToast();
   const [patientId, setPatientId] = useState("");
@@ -239,7 +224,7 @@ export function AddAppointmentModal({
     if (open) {
       setPatientId(defaultPatient ?? "");
       setServiceId("");
-      setDoctorId(apptScope ?? "d1");
+      setDoctorId("d1");
       setDate(defaultDate ?? today(0));
       setTime(defaultTime ?? "10:00");
       setNotes("");
@@ -301,8 +286,8 @@ export function AddAppointmentModal({
                     <option key={s.id} value={s.id}>{s.name} — {money(s.price)}</option>            ))}
           </TSelect>
         </Field>
-        <Field label="الطبيب" hint={apptScope ? "مقيّد بطبيبك حسب صلاحياتك — تغيّره الإدارة" : undefined}>
-          <TSelect value={doctorId} onChange={(e) => setDoctorId(e.target.value)} disabled={!!apptScope} className={apptScope ? "opacity-70 cursor-not-allowed" : ""}>
+        <Field label="الطبيب">
+          <TSelect value={doctorId} onChange={(e) => setDoctorId(e.target.value)}>
             {db.doctors.map((d) => (
               <option key={d.id} value={d.id}>{d.name} — {d.specialty}</option>
             ))}

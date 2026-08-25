@@ -137,7 +137,7 @@ export interface User {
   lastLogin?: string;
 }
 
-export const PERMISSIONS: { key: string; label: string; desc: string; scope?: boolean }[] = [
+export const PERMISSIONS: { key: string; label: string; desc: string }[] = [
   { key: "dashboard", label: "لوحة التحكم", desc: "الإحصائيات وجدول اليوم والنشاط" },
   { key: "appointments", label: "المواعيد", desc: "الحجوزات وجدول الأيام" },
   { key: "session", label: "محطة العمل", desc: "جلسات العلاج السريرية" },
@@ -149,8 +149,6 @@ export const PERMISSIONS: { key: string; label: string; desc: string; scope?: bo
   { key: "team", label: "الفريق الطبي", desc: "الأطباء والموظفون" },
   { key: "currencies", label: "العملات", desc: "العملات وأسعار الصرف" },
   { key: "users", label: "المستخدمون والصلاحيات", desc: "إدارة الحسابات والأدوار" },
-  { key: "scope_all_patients", label: "كل المرضى", desc: "رؤية جميع ملفات المرضى — بدونها يرى الطبيب مرضاه فقط", scope: true },
-  { key: "scope_all_appointments", label: "كل المواعيد", desc: "رؤية جدول مواعيد كل الأطباء — بدونها يرى الطبيب مواعيده فقط", scope: true },
 ];
 
 export const ROLE_META: Record<Role, { label: string; cls: string; color: string; desc: string; defaults: string[] }> = {
@@ -173,14 +171,14 @@ export const ROLE_META: Record<Role, { label: string; cls: string; color: string
     cls: "bg-sky-soft text-sky",
     color: "#3a86c4",
     desc: "الاستقبال والحجوزات والفواتير حسب الممنوح",
-    defaults: ["dashboard", "appointments", "patients", "invoices", "services", "scope_all_patients", "scope_all_appointments"],
+    defaults: ["dashboard", "appointments", "patients", "invoices", "services"],
   },
   assistant: {
     label: "مساعد طبيب",
     cls: "bg-amber-soft text-[#a06410]",
     color: "#e2952b",
     desc: "مساعدة الطبيب في الجلسات والملفات",
-    defaults: ["appointments", "session", "patients", "scope_all_patients", "scope_all_appointments"],
+    defaults: ["appointments", "session", "patients"],
   },
 };
 
@@ -824,12 +822,7 @@ function load(): DB {
       sessions: db.sessions ?? [],
       staff: db.staff ?? [],
       activity: db.activity ?? [],
-      users: (db.users?.length ? db.users : seed().users).map((u) =>
-        // طاقم الاستقبال والمساعدة يرى السجل والجدول كاملين دائماً
-        u.role === "secretary" || u.role === "assistant"
-          ? { ...u, permissions: [...new Set([...u.permissions, "scope_all_patients", "scope_all_appointments"])] }
-          : u
-      ),
+      users: db.users?.length ? db.users : seed().users,
     };
   } catch {
     db = seed();
@@ -929,7 +922,6 @@ interface AuthCtx {
   logout: () => void;
   can: (perm: string) => boolean;
   patientScope: Set<string> | null; // null = يرى كل المرضى
-  apptScope: string | null; // null = كل المواعيد، وإلا معرّف الطبيب الذي تُقيَّد به الرؤية
   doctorScopeId: string | null; // معرّف الطبيب المرتبط بحساب الطبيب
 }
 
@@ -967,26 +959,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const isAdmin = user?.role === "admin";
     const isDoctor = user?.role === "doctor";
     const doctorScopeId = isDoctor ? user?.linkId ?? null : null;
-    const hasAllPatients = isAdmin || !!user?.permissions.includes("scope_all_patients");
-    const hasAllAppts = isAdmin || !!user?.permissions.includes("scope_all_appointments");
 
-    // نطاق المرضى: الطبيب المقيَّد يرى فقط مرضى مواعيده وجلساته
+    // نطاق مرضى الطبيب: كل مريض لديه موعد أو جلسة عند هذا الطبيب
     let patientScope: Set<string> | null = null;
-    if (isDoctor && !hasAllPatients) {
+    if (isDoctor && doctorScopeId) {
       const set = new Set<string>();
-      if (doctorScopeId) {
-        db.appointments.forEach((a) => {
-          if (a.doctorId === doctorScopeId) set.add(a.patientId);
-        });
-        db.sessions.forEach((s) => {
-          if (s.doctorId === doctorScopeId) set.add(s.patientId);
-        });
-      }
+      db.appointments.forEach((a) => {
+        if (a.doctorId === doctorScopeId) set.add(a.patientId);
+      });
+      db.sessions.forEach((s) => {
+        if (s.doctorId === doctorScopeId) set.add(s.patientId);
+      });
       patientScope = set;
     }
-
-    // نطاق المواعيد: null = الجدول الكامل، وإلا يُعرض جدول الطبيب المرتبط فقط
-    const apptScope = isDoctor && !hasAllAppts ? doctorScopeId ?? "∅" : null;
 
     return {
       user,
@@ -1016,7 +1001,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return user.permissions.includes(perm);
       },
       patientScope,
-      apptScope,
       doctorScopeId,
     };
   }, [user, db.appointments, db.sessions, db.users, doLogin]);

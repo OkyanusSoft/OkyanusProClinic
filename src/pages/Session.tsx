@@ -3,6 +3,7 @@ import {
   APPT_META,
   fmtDateFull,
   today,
+  useAuth,
   useMoney,
   useStore,
   type ClinicalSession,
@@ -56,19 +57,26 @@ const fmtDur = (ms: number) => {
 
 export default function SessionPage() {
   const { db, dispatch, patientById, serviceById, doctorById } = useStore();
+  const { apptScope, patientScope } = useAuth();
   const { push } = useToast();
   const [doctorId, setDoctorId] = useState(db.doctors[0]?.id ?? "d1");
   const [adHoc, setAdHoc] = useState(false);
   const [adHocPatient, setAdHocPatient] = useState("");
+
+  // الطبيب المقيَّد يعمل على كرسيّه فقط
+  useEffect(() => {
+    if (apptScope) setDoctorId(apptScope);
+  }, [apptScope]);
 
   const open = db.sessions.find((s) => s.status === "open");
 
   const queue = useMemo(
     () =>
       db.appointments
+        .filter((a) => (apptScope ? a.doctorId === apptScope : true))
         .filter((a) => a.date === today(0) && (a.status === "confirmed" || a.status === "waiting") && a.id !== open?.apptId)
         .sort((a, b) => a.time.localeCompare(b.time)),
-    [db.appointments, open]
+    [db.appointments, open, apptScope]
   );
   const doneToday = useMemo(
     () => db.sessions.filter((s) => s.status === "done" && s.date === today(0)).sort((a, b) => (b.endedAt ?? "").localeCompare(a.endedAt ?? "")),
@@ -96,7 +104,13 @@ export default function SessionPage() {
           <p className="text-sm text-soft mt-1.5">{fmtDateFull(today(0))} — من دخول المريض حتى خروجه: الإجراءات تُفوَتَر تلقائياً والروشتة تُطبع والأسنان تُحدَّث.</p>
         </div>
         <div className="flex items-center gap-2">
-          {db.doctors.map((d) => (
+          {apptScope ? (
+            <span className="chip bg-amber-soft text-[#a06410] !py-2">
+              <IconStetho className="w-3.5 h-3.5" />
+              كرسي {doctorById(apptScope)?.name ?? "الطبيب"} — حسب صلاحياتك
+            </span>
+          ) : (
+          db.doctors.map((d) => (
             <button
               key={d.id}
               onClick={() => setDoctorId(d.id)}
@@ -107,7 +121,8 @@ export default function SessionPage() {
               <Avatar name={d.name} size="w-7 h-7 text-[9px]" />
               <span className="text-xs font-bold">{d.name.replace("د. ", "د. ")}</span>
             </button>
-          ))}
+          ))
+          )}
         </div>
       </div>
 
@@ -264,7 +279,7 @@ export default function SessionPage() {
         <Field label="المريض *">
           <TSelect value={adHocPatient} onChange={(e) => setAdHocPatient(e.target.value)}>
             <option value="">— اختر من السجل —</option>
-            {db.patients.map((p) => (
+            {db.patients.filter((p) => (patientScope ? patientScope.has(p.id) : true)).map((p) => (
               <option key={p.id} value={p.id}>{p.name} · {p.phone}</option>
             ))}
           </TSelect>

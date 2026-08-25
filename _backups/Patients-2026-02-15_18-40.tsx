@@ -7,7 +7,6 @@ import {
   INV_META,
   today,
   uid,
-  useAuth,
   useMoney,
   useStore,
   YEMEN_CITIES,
@@ -29,7 +28,6 @@ interface PageProps {
 
 export default function PatientsPage({ addSignal, onOpenPatient, onBook }: PageProps) {
   const { db, dispatch, patientBalance, lastVisit } = useStore();
-  const { patientScope } = useAuth();
   const money = useMoney();
   const { push } = useToast();
   const [q, setQ] = useState("");
@@ -40,19 +38,14 @@ export default function PatientsPage({ addSignal, onOpenPatient, onBook }: PageP
     if (addSignal > 0) setShowAdd(true);
   }, [addSignal]);
 
-  const scopedPatients = useMemo(
-    () => (patientScope ? db.patients.filter((p) => patientScope.has(p.id)) : db.patients),
-    [db.patients, patientScope]
-  );
-
   const list = useMemo(() => {
-    let arr = [...scopedPatients].sort((a, b) => a.name.localeCompare(b.name, "ar"));
+    let arr = [...db.patients].sort((a, b) => a.name.localeCompare(b.name, "ar"));
     if (q.trim()) arr = arr.filter((p) => p.name.includes(q.trim()) || p.phone.includes(q.trim()));
     if (filter === "balance") arr = arr.filter((p) => patientBalance(p.id) > 0);
     if (filter === "new") arr = arr.filter((p) => p.joined >= today(-30));
     if (filter === "caries") arr = arr.filter((p) => Object.values(p.teeth).includes("caries"));
     return arr;
-  }, [scopedPatients, q, filter, patientBalance]);
+  }, [db.patients, q, filter, patientBalance]);
 
   return (
     <div className="space-y-5">
@@ -60,14 +53,8 @@ export default function PatientsPage({ addSignal, onOpenPatient, onBook }: PageP
         <div>
           <h1 className="font-display font-bold text-3xl text-ink">سجل المرضى</h1>
           <p className="text-sm text-soft mt-1">
-            {scopedPatients.length} مريضاً {patientScope ? "في نطاقك" : "مسجلاً"} · {scopedPatients.filter((p) => Object.values(p.teeth).includes("caries")).length} لديهم تسوس نشط
+            {db.patients.length} مريضاً مسجلاً · {db.patients.filter((p) => Object.values(p.teeth).includes("caries")).length} لديهم تسوس نشط
           </p>
-          {patientScope && (
-            <span className="chip bg-amber-soft text-[#a06410] mt-2 !py-1.5">
-              <IconAlert className="w-3.5 h-3.5" />
-              رؤية مقيّدة — مرضاك فقط
-            </span>
-          )}
         </div>
         <button className="btn-primary" onClick={() => setShowAdd(true)}>
           <IconUserPlus className="w-4.5 h-4.5" />

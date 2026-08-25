@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { PERMISSIONS, relTime, ROLE_META, uid, useAuth, useStore, type Role, type User } from "../store";
-import { IconCalendar, IconPencil, IconPlus, IconShield, IconStetho, IconUsers } from "../icons";
+import { IconPencil, IconPlus, IconShield, IconStetho, IconUsers } from "../icons";
 import { Avatar, Badge, Drop, DropItem, Field, Modal, Switch, TInput, TSelect, TwoStepDelete, useToast } from "../components/ui";
 
 export default function UsersPage() {
@@ -82,11 +82,8 @@ export default function UsersPage() {
               <tr>
                 <th className="th sticky start-0 bg-mist z-10 min-w-52">المستخدم</th>
                 {PERMISSIONS.map((p) => (
-                  <th key={p.key} className={`th text-center !px-2 ${p.scope ? "!bg-amber-soft/80" : ""}`} title={p.desc}>
-                    <span className={`inline-block max-w-20 truncate ${p.scope ? "text-[#a06410]" : ""}`}>
-                      {p.scope && <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber me-1 align-middle" />}
-                      {p.label}
-                    </span>
+                  <th key={p.key} className="th text-center !px-2" title={p.desc}>
+                    <span className="inline-block max-w-16 truncate">{p.label}</span>
                   </th>
                 ))}
               </tr>
@@ -106,7 +103,7 @@ export default function UsersPage() {
                   {PERMISSIONS.map((p) => {
                     const on = u.role === "admin" ? true : u.permissions.includes(p.key);
                     return (
-                      <td key={p.key} className={`td text-center !px-2 ${p.scope ? "!bg-amber-soft/40" : ""}`}>
+                      <td key={p.key} className="td text-center !px-2">
                         {u.role === "admin" ? (
                           <span className="inline-flex w-10 h-[22px] rounded-full bg-pine items-center justify-center" title="للمدير كل الصلاحيات">
                             <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="m5 12.5 4.5 4.5L19 7.5" /></svg>
@@ -124,7 +121,7 @@ export default function UsersPage() {
         </div>
         <p className="px-5 py-3 text-[11px] font-semibold text-soft border-t border-line bg-mist/50 flex items-center gap-2">
           <IconShield className="w-4 h-4 text-jade-deep shrink-0" />
-          الأعمدة الكهرمانية «نطاق الرؤية»: بدونها يرى الطبيب مرضاه ومواعيده فقط — فعّلها له ليرى كامل السجل وجدول العيادة.
+          الطبيب يرى تلقائياً مرضاه ومواعيده وجلساته فقط حتى داخل الشاشات المسموحة — وهذا النطاق لا يمكن توسيعه.
         </p>
       </div>
 
@@ -361,41 +358,6 @@ function UserModal({ user, onClose }: { user?: User; onClose: () => void }) {
             {role !== "doctor" && role !== "secretary" && (
               <p className="text-[10px] text-soft mt-2">صلاحية «المستخدمون والصلاحيات» متاحة للمدير فقط.</p>
             )}
-            {/* نطاق الرؤية الفعّال */}
-            <div className="mt-4 rounded-xl border border-dashed border-jade/40 bg-jade-soft/40 p-3.5">
-              <p className="text-[11px] font-bold text-jade-deep mb-2.5 flex items-center gap-1.5">
-                <IconShield className="w-3.5 h-3.5" />
-                نطاق الرؤية الفعّال لهذا الحساب
-              </p>
-              <div className="grid sm:grid-cols-2 gap-2">
-                <div className="flex items-center gap-2.5 bg-white rounded-lg border border-line px-3 py-2.5">
-                  <span className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-jade-soft text-jade-deep shrink-0"><IconUsers className="w-4 h-4" /></span>
-                  <div>
-                    <p className="text-[11px] font-bold text-ink">المرضى</p>
-                    <p className="text-[10px] text-soft mt-0.5 leading-snug">
-                      {perms.includes("scope_all_patients")
-                        ? "يرى جميع مرضى العيادة"
-                        : role === "doctor"
-                        ? "يرى مرضاه فقط (أصحاب مواعيده وجلساته)"
-                        : "مقيّد — فعّل صلاحية «كل المرضى»"}
-                    </p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2.5 bg-white rounded-lg border border-line px-3 py-2.5">
-                  <span className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-sky-soft text-sky shrink-0"><IconCalendar className="w-4 h-4" /></span>
-                  <div>
-                    <p className="text-[11px] font-bold text-ink">المواعيد</p>
-                    <p className="text-[10px] text-soft mt-0.5 leading-snug">
-                      {perms.includes("scope_all_appointments")
-                        ? "يرى جدول مواعيد كل الأطباء"
-                        : role === "doctor"
-                        ? "يرى مواعيده فقط في الجدول ومحطة العمل"
-                        : "مقيّد — فعّل صلاحية «كل المواعيد»"}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </div>
           </div>
         )}
       </div>
