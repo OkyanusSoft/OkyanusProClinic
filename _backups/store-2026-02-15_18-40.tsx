@@ -3,7 +3,7 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useR
 /* ============================== Types ============================== */
 
 export type ToothStatus = "healthy" | "caries" | "filled" | "root" | "crown" | "missing";
-export type ApptStatus = "confirmed" | "waiting" | "inprogress" | "done" | "cancelled" | "noshow";
+export type ApptStatus = "confirmed" | "waiting" | "inprogress" | "done" | "cancelled";
 export type InvoiceStatus = "paid" | "partial" | "unpaid";
 
 export interface Patient {
@@ -71,8 +71,6 @@ export interface Invoice {
   date: string;
   items: InvoiceItem[];
   paid: number;
-  discount?: number;
-  method?: string;
 }
 export interface Activity {
   id: string;
@@ -121,109 +119,9 @@ export interface ClinicalSession {
   teethTreated: { tooth: number; status: ToothStatus }[];
   meds: RxItem[];
   medNotes: string;
-  summary: string; // تقرير العمل السريري للجلسة
   invoiceId?: string;
   rxId?: string;
-  fuId?: string; // العودة المرتبطة بالجلسة
 }
-
-/* ============================== العودات والمتابعة ============================== */
-
-export type FollowUpStatus = "pending" | "booked" | "done";
-export interface FollowUp {
-  id: string;
-  patientId: string;
-  doctorId: string;
-  reason: string;
-  dueDate: string; // YYYY-MM-DD
-  status: FollowUpStatus;
-  createdAt: string;
-  apptId?: string; // موعد مرتبط عند التحويل
-  notes?: string;
-}
-
-export const FU_META: Record<FollowUpStatus, { label: string; cls: string; dot: string }> = {
-  pending: { label: "بانتظار المراجعة", cls: "bg-sky-soft text-sky", dot: "#3a86c4" },
-  booked: { label: "محجوزة", cls: "bg-jade-soft text-jade-deep", dot: "#0d8f83" },
-  done: { label: "مكتملة", cls: "bg-mint-soft text-[#1d6b47]", dot: "#2c9c69" },
-};
-
-/* اقتراح العودة تلقائياً حسب نوع العلاج المنفذ */
-export const FOLLOWUP_SUGGESTIONS: { match: RegExp; reason: string; days: number }[] = [
-  { match: /عصب/, reason: "تركيب التاج بعد علاج العصب", days: 7 },
-  { match: /زراعة/, reason: "كشف مرحلة الالتئام للزرعة", days: 56 },
-  { match: /ضرس عقل/, reason: "فك الغرز ومراجعة الجرح", days: 7 },
-  { match: /خلع/, reason: "مراجعة ما بعد الخلع", days: 5 },
-  { match: /تقويم/, reason: "موعد شد التقويم الدوري", days: 30 },
-  { match: /تبييض/, reason: "متابعة نتيجة التبييض", days: 90 },
-  { match: /حشوة/, reason: "مراجعة الحشوة والتأكد من الإطباق", days: 14 },
-  { match: /تاج|زيركون/, reason: "تسليم وتركيب التاج", days: 10 },
-  { match: /تنظيف/, reason: "تنظيف دوري كل 6 أشهر", days: 180 },
-];
-export function suggestFollowUp(serviceNames: string[]) {
-  for (const s of serviceNames) {
-    const hit = FOLLOWUP_SUGGESTIONS.find((x) => x.match.test(s));
-    if (hit) return hit;
-  }
-  return { reason: "مراجعة عامة", days: 30 };
-}
-
-/* ---------- السجلات السريرية الدائمة ---------- */
-export interface Implant {
-  id: string;
-  patientId: string;
-  tooth: number;
-  brand: string;
-  date: string;
-  status: "مخطط له" | "مرحلة الالتئام" | "مكتمل";
-  doctorId: string;
-  notes?: string;
-}
-export interface Prosthetic {
-  id: string;
-  patientId: string;
-  kind: string;
-  teeth: string;
-  date: string;
-  lab: string;
-  status: "قيد التصنيع" | "مركّب";
-  doctorId: string;
-}
-export interface OrthoCase {
-  id: string;
-  patientId: string;
-  kind: string;
-  started: string;
-  nextAdjust: string;
-  progress: number; // 0-100
-  notes?: string;
-}
-export interface XrayRec {
-  id: string;
-  patientId: string;
-  kind: string;
-  date: string;
-  findings: string;
-  doctorId: string;
-}
-
-export const IMPLANT_BRANDS = ["Straumann", "Osstem", "Nobel Biocare", "Dentium", "Megagen"];
-export const IMPLANT_STATUS = ["مخطط له", "مرحلة الالتئام", "مكتمل"] as const;
-export const PROSTHETIC_KINDS = ["تاج زيركون", "تاج بورسلين", "جسر ثابت", "فينير", "طقم كامل", "طقم جزئي"];
-export const ORTHO_KINDS = ["تقويم معدني", "تقويم شفاف", "تقويم خزفي"];
-export const XRAY_KINDS = ["بانورامية (OPG)", "سيفالومترية", "بيريابيكال", "CBCT ثلاثي الأبعاد"];
-
-/* مرجعية أدوية ذات أعراض جانبية مهمة — تُطابق تلقائياً مع روشتة الجلسة */
-export const DRUG_WATCH: { key: string; side: string[]; caution: string }[] = [
-  { key: "أموكسيسيلين", side: ["طفح جلدي", "غثيان", "إسهال"], caution: "يُمنع تماماً مع حساسية البنسلين" },
-  { key: "إيبوبروفين", side: ["تهيّج معدة", "ارتفاع ضغط"], caution: "حذر مع قرحة المعدة والربو والحمل" },
-  { key: "كليندامايسين", side: ["إسهال قد يكون شديداً", "غثيان"], caution: "أوقفه فوراً عند إسهال مائي وأبلغ الطبيب" },
-  { key: "ميترونيدازول", side: ["طعم معدني", "غثيان"], caution: "يُمنع الكحول أثناءه وبعده 48 ساعة" },
-  { key: "باراسيتامول", side: ["آمن غالباً بالجرعات الموصوفة"], caution: "الحد الأقصى 4 جم يومياً — تجاوزُه سام للكبد" },
-  { key: "كلورهيكسيدين", side: ["تصبغ الأسنان", "تغيّر الطعم"], caution: "لا يُستخدم أكثر من أسبوعين متواصلين" },
-  { key: "أسبرين", side: ["نزيف", "تهيّج معدة"], caution: "يوقف قبل الجراحة بـ 7 أيام بموافقة الطبيب" },
-];
-
 /* ============================== المستخدمون والصلاحيات ============================== */
 
 export type Role = "admin" | "doctor" | "secretary" | "assistant";
@@ -239,7 +137,7 @@ export interface User {
   lastLogin?: string;
 }
 
-export const PERMISSIONS: { key: string; label: string; desc: string; scope?: boolean }[] = [
+export const PERMISSIONS: { key: string; label: string; desc: string }[] = [
   { key: "dashboard", label: "لوحة التحكم", desc: "الإحصائيات وجدول اليوم والنشاط" },
   { key: "appointments", label: "المواعيد", desc: "الحجوزات وجدول الأيام" },
   { key: "session", label: "محطة العمل", desc: "جلسات العلاج السريرية" },
@@ -251,9 +149,6 @@ export const PERMISSIONS: { key: string; label: string; desc: string; scope?: bo
   { key: "team", label: "الفريق الطبي", desc: "الأطباء والموظفون" },
   { key: "currencies", label: "العملات", desc: "العملات وأسعار الصرف" },
   { key: "users", label: "المستخدمون والصلاحيات", desc: "إدارة الحسابات والأدوار" },
-  { key: "settings", label: "الإعدادات العامة", desc: "هوية العيادة والدوام والفوترة والبيانات" },
-  { key: "scope_all_patients", label: "كل المرضى", desc: "رؤية جميع ملفات المرضى — بدونها يرى الطبيب مرضاه فقط", scope: true },
-  { key: "scope_all_appointments", label: "كل المواعيد", desc: "رؤية جدول مواعيد كل الأطباء — بدونها يرى الطبيب مواعيده فقط", scope: true },
 ];
 
 export const ROLE_META: Record<Role, { label: string; cls: string; color: string; desc: string; defaults: string[] }> = {
@@ -276,14 +171,14 @@ export const ROLE_META: Record<Role, { label: string; cls: string; color: string
     cls: "bg-sky-soft text-sky",
     color: "#3a86c4",
     desc: "الاستقبال والحجوزات والفواتير حسب الممنوح",
-    defaults: ["dashboard", "appointments", "patients", "invoices", "services", "scope_all_patients", "scope_all_appointments"],
+    defaults: ["dashboard", "appointments", "patients", "invoices", "services"],
   },
   assistant: {
     label: "مساعد طبيب",
     cls: "bg-amber-soft text-[#a06410]",
     color: "#e2952b",
     desc: "مساعدة الطبيب في الجلسات والملفات",
-    defaults: ["appointments", "session", "patients", "scope_all_patients", "scope_all_appointments"],
+    defaults: ["appointments", "session", "patients"],
   },
 };
 
@@ -300,90 +195,12 @@ export interface DB {
   invoices: Invoice[];
   activity: Activity[];
   sessions: ClinicalSession[];
-  implants: Implant[];
-  prosthetics: Prosthetic[];
-  orthoCases: OrthoCase[];
-  xrays: XrayRec[];
-  followUps: FollowUp[];
-  supplies: SupplyItem[];
-  supplyMoves: SupplyMove[];
-  plans: TreatmentPlan[];
   users: User[];
-  settings: ClinicSettings;
   nextInv: number;
 }
 
 export const CLINIC_NAME = "عيادة د. عبدالله الشرفي";
 export const CLINIC_LATIN = "AL-SHARAFI DENTAL CLINIC";
-
-/* ---------- المخزون والمستهلكات ---------- */
-export interface SupplyItem {
-  id: string;
-  name: string;
-  category: string;
-  unit: string;
-  qty: number;
-  minQty: number;
-  cost: number;
-  expiry?: string;
-}
-export interface SupplyMove {
-  id: string;
-  itemId: string;
-  delta: number;
-  note: string;
-  date: string; // ISO
-}
-
-/* ---------- خطط العلاج ---------- */
-export interface PlanItem {
-  id: string;
-  name: string;
-  tooth?: string;
-  cost: number;
-  done: boolean;
-}
-export interface TreatmentPlan {
-  id: string;
-  patientId: string;
-  title: string;
-  doctorId: string;
-  created: string;
-  items: PlanItem[];
-  notes?: string;
-}
-
-/* ---------- إعدادات العيادة ---------- */
-export interface ClinicSettings {
-  clinicName: string;
-  clinicLatin: string;
-  address: string;
-  phone: string;
-  email: string;
-  workStart: string;
-  workEnd: string;
-  followUpAlertDays: number;
-  invoiceTitle: string;
-  invoicePrefix: string;
-  invoiceFooter: string;
-}
-export const DEFAULT_CLINIC_SETTINGS: ClinicSettings = {
-  clinicName: CLINIC_NAME,
-  clinicLatin: CLINIC_LATIN,
-  address: "صنعاء — شارع الزبيري، عمارة النخبة، الدور الثاني",
-  phone: "+967 777 220 115 · +967 1 445 880",
-  email: "info@alsharafi-dental.ye",
-  workStart: "09:00",
-  workEnd: "21:00",
-  followUpAlertDays: 3,
-  invoiceTitle: "فاتورة العيادة",
-  invoicePrefix: "INV",
-  invoiceFooter: "يشمل السعر الكشف والمتابعة خلال 7 أيام. يُرجى إحضار هذه الفاتورة عند المراجعة. شكراً لثقتكم.",
-};
-export const clinicOf = (db: { settings?: ClinicSettings }): ClinicSettings => ({
-  ...DEFAULT_CLINIC_SETTINGS,
-  ...(db.settings ?? {}),
-});
 export const BASE_CURRENCY = "YER";
 
 /* ============================== Meta ============================== */
@@ -403,7 +220,6 @@ export const APPT_META: Record<ApptStatus, { label: string; cls: string; dot: st
   inprogress: { label: "قيد العلاج", cls: "bg-jade-soft text-jade-deep", dot: "#0d8f83" },
   done: { label: "مكتمل", cls: "bg-mint-soft text-[#1d6b47]", dot: "#2c9c69" },
   cancelled: { label: "ملغي", cls: "bg-coral-soft text-coral", dot: "#d9503a" },
-  noshow: { label: "لم يحضر", cls: "bg-mist text-soft", dot: "#7d8ba0" },
 };
 
 export const INV_META: Record<InvoiceStatus, { label: string; cls: string }> = {
@@ -464,11 +280,7 @@ export const addMinutes = (time: string, mins: number) => {
   return `${pad(Math.floor(t / 60))}:${pad(t % 60)}`;
 };
 
-export const invoiceTotal = (inv: Invoice) => {
-  const gross = inv.items.reduce((s, i) => s + i.qty * i.price, 0);
-  return Math.max(0, Math.round(gross * (1 - (inv.discount || 0) / 100)));
-};
-export const PAY_METHODS: Record<string, string> = { cash: "نقداً", card: "بطاقة بنكية", transfer: "حوالة / تحويل" };
+export const invoiceTotal = (inv: Invoice) => inv.items.reduce((s, i) => s + i.qty * i.price, 0);
 export const invoiceStatus = (inv: Invoice): InvoiceStatus => {
   const t = invoiceTotal(inv);
   if (inv.paid >= t) return "paid";
@@ -636,8 +448,7 @@ function seed(): DB {
     procedures: SessionProc[],
     teethTreated: { tooth: number; status: ToothStatus }[],
     meds: RxItem[],
-    medNotes = "",
-    summary = ""
+    medNotes = ""
   ): ClinicalSession => ({
     id: uid(),
     patientId,
@@ -652,7 +463,6 @@ function seed(): DB {
     teethTreated,
     meds,
     medNotes,
-    summary,
   });
 
   const sessions: ClinicalSession[] = [
@@ -663,8 +473,7 @@ function seed(): DB {
       [{ serviceId: "s2" }],
       [],
       [{ name: "غسول كلورهيكسيدين", dose: "10 مل", freq: "مرتين يومياً", duration: "أسبوع" }],
-      "استخدام فرشاة ناعمة ومحلول ماء وملح دافئ",
-      "نفّذ تنظيف وتلميع كامل للفكين مع إزالة الترسبات الجيرية، استجابت اللثة جيداً. أُعطي المريض تعليمات العناية المنزلية وموعد مراجعة روتيني."
+      "استخدام فرشاة ناعمة ومحلول ماء وملح دافئ"
     ),
     SES(
       "p9", "d1", today(-1), "11:00", "12:15",
@@ -676,8 +485,7 @@ function seed(): DB {
         { name: "أموكسيسيلين Amoxicillin", dose: "500 مجم", freq: "كل 8 ساعات", duration: "5 أيام" },
         { name: "إيبوبروفين Ibuprofen", dose: "400 مجم", freq: "عند الألم — بعد الأكل", duration: "3 أيام" },
       ],
-      "اكتمل علاج العصب للسن 46 — مراجعة الأسبوع القادم للحشوة والتاج",
-      "أُكمل علاج العصب للسن 46 بجلسة واحدة: فتح حجرة اللب، تحديد طول القنوات، تحضير وحشو ثلاث قنوات. زوال الألم بعد التخدير، يُستكمل التركيب في المراجعة القادمة."
+      "اكتمل علاج العصب للسن 46 — مراجعة الأسبوع القادم للحشوة والتاج"
     ),
   ];
 
@@ -692,107 +500,7 @@ function seed(): DB {
     U("u-a1", "ماهر الحداء", "maher", "5555", "assistant", "st2", ROLE_META.assistant.defaults),
   ];
 
-  const implants: Implant[] = [
-    { id: uid(), patientId: "p5", tooth: 15, brand: "Straumann", date: today(-12), status: "مرحلة الالتئام", doctorId: "d1", notes: "غرسة بعد خلع الضرس العلوي — كشف الغطاء بعد 8 أسابيع" },
-    { id: uid(), patientId: "p5", tooth: 35, brand: "Osstem", date: today(-80), status: "مكتمل", doctorId: "d1" },
-    { id: uid(), patientId: "p3", tooth: 48, brand: "Nobel Biocare", date: today(-4), status: "مخطط له", doctorId: "d3", notes: "بعد تقييم CBCT لموضع ضرس العقل المنطمر" },
-  ];
-
-  const prosthetics: Prosthetic[] = [
-    { id: uid(), patientId: "p8", kind: "تاج زيركون", teeth: "11", date: today(-30), lab: "مختبر الأسنان الحديث", status: "مركّب", doctorId: "d1" },
-    { id: uid(), patientId: "p8", kind: "تاج زيركون", teeth: "21", date: today(-30), lab: "مختبر الأسنان الحديث", status: "مركّب", doctorId: "d1" },
-    { id: uid(), patientId: "p1", kind: "تاج زيركون", teeth: "46", date: today(-2), lab: "مختبر الرواد للأسنان", status: "قيد التصنيع", doctorId: "d1" },
-    { id: uid(), patientId: "p5", kind: "جسر ثابت", teeth: "14–16", date: today(-60), lab: "مختبر الأسنان الحديث", status: "مركّب", doctorId: "d1" },
-  ];
-
-  const orthoCases: OrthoCase[] = [
-    { id: uid(), patientId: "p6", kind: "تقويم معدني", started: today(-45), nextAdjust: today(5), progress: 35, notes: "المرحلة الأولى من الإطباق — شد الأقواس شهرياً" },
-  ];
-
-  const FU = (patientId: string, doctorId: string, reason: string, dueDate: string, status: FollowUpStatus, notes?: string): FollowUp =>
-    ({ id: uid(), patientId, doctorId, reason, dueDate, status, createdAt: new Date().toISOString(), notes });
-  const followUps: FollowUp[] = [
-    FU("p1", "d1", "تركيب التاج بعد علاج العصب — السن 36", today(-2), "pending", "التاج قيد التصنيع في المختبر"),
-    FU("p9", "d1", "بدء المرحلة الثانية — حشو القنوات للسن 46", today(0), "pending"),
-    FU("p3", "d3", "فك الغرز ومراجعة جرح الخلع", today(1), "pending", "المريض لديه حساسية بنسلين"),
-    FU("p6", "d2", "موعد شد التقويم الشهري", today(3), "pending"),
-    FU("p5", "d1", "كشف الغطاء للزرعة — السن 15", today(12), "pending", "غرسة Straumann"),
-    FU("p2", "d2", "تنظيف دوري كل 6 أشهر", today(60), "pending"),
-    FU("p8", "d1", "مراجعة ما بعد تركيب التاجين", today(-5), "done", "تمت المراجعة والإطباق سليم"),
-  ];
-
-  const xrays: XrayRec[] = [
-    { id: uid(), patientId: "p3", kind: "CBCT ثلاثي الأبعاد", date: today(-4), findings: "ضرس عقل سفلي أيمن منطمر أفقياً ملامس للقناة العصبية — يُوصى بخلع جراحي بحذر", doctorId: "d3" },
-    { id: uid(), patientId: "p4", kind: "بيريابيكال", date: today(-3), findings: "آفة ذروية مبكرة على السن 13 مع widening في الرباط السني", doctorId: "d1" },
-    { id: uid(), patientId: "p5", kind: "بانورامية (OPG)", date: today(-20), findings: "فقدان عظمي أفقي متوسط في الفك السفلي، والجيوب الأنفية سليمة", doctorId: "d1" },
-    { id: uid(), patientId: "p6", kind: "سيفالومترية", date: today(-40), findings: "تحليل ما قبل التقويم: صنف هيكلي أول مع بروز قاطعي خفيف", doctorId: "d2" },
-  ];
-
-  const SUP = (name: string, category: string, unit: string, qty: number, minQty: number, cost: number, expiry?: string): SupplyItem =>
-    ({ id: uid(), name, category, unit, qty, minQty, cost, expiry });
-  const supplies: SupplyItem[] = [
-    SUP("أمبولات تخدير ليدوكائين", "تخدير", "علبة 50", 45, 20, 8500, today(240)),
-    SUP("قفازات نتريل وسط", "وقاية", "علبة 100", 8, 15, 12000),
-    SUP("كومبوزيت حشوات A2", "حشوات", "حقنة", 12, 6, 45000, today(300)),
-    SUP("إبر تخدير 30G", "تخدير", "علبة 100", 30, 10, 6000),
-    SUP("أكياس تعقيم ذاتية اللصق", "تعقيم", "رزمة 200", 5, 10, 9500),
-    SUP("شاش معقم", "جراحة", "رزمة", 60, 25, 3500),
-    SUP("بلانكات زيركون", "مختبر", "قرص", 14, 5, 55000),
-    SUP("سيلانت شقوق وقائي", "وقاية", "عبوة", 7, 4, 28000, today(180)),
-    SUP("حمض حفر (إيتش)", "حشوات", "حقنة", 3, 4, 18000),
-    SUP("ماصات لعاب", "استهلاكي عام", "رزمة 100", 100, 40, 5000),
-    SUP("مبارد قنوات روتاري", "علاج عصب", "طقم", 6, 3, 35000),
-    SUP("خيوط جراحية 4/0", "جراحة", "علبة 12", 9, 4, 15000, today(400)),
-  ];
-  const MV = (itemId: string, delta: number, note: string, hoursAgo: number): SupplyMove =>
-    ({ id: uid(), itemId, delta, note, date: new Date(Date.now() - hoursAgo * 3600000).toISOString() });
-  const supplyMoves: SupplyMove[] = [
-    MV(supplies[0].id, 20, "توريد من المورد الطبي", 20),
-    MV(supplies[1].id, -2, "استهلاك يومي — عيادتا 1 و2", 8),
-    MV(supplies[2].id, -1, "حشوة تجميلية — محمد العباسي", 6),
-    MV(supplies[4].id, -1, "تشغيل معقم الأوتوكلاف", 30),
-    MV(supplies[9].id, -5, "استهلاك جلسة تنظيف", 5),
-    MV(supplies[7].id, 4, "توريد وقاية أطفال", 52),
-    MV(supplies[10].id, -1, "علاج عصب — ريام الحميري", 26),
-    MV(supplies[8].id, -1, "تجهيز حشوة", 3),
-    MV(supplies[11].id, 6, "توريد جراحة", 76),
-    MV(supplies[5].id, -3, "خلع ضرس عقل — فهد", 49),
-    MV(supplies[3].id, -10, "مناوبة نهاية الأسبوع", 96),
-    MV(supplies[6].id, 8, "طلبية مختبر الزيركون", 120),
-    MV(supplies[2].id, 5, "توريد حشوات", 140),
-    MV(supplies[1].id, -4, "نفاد جزئي — يلزم طلب عاجل", 2),
-  ];
-  const plans: TreatmentPlan[] = [
-    {
-      id: uid(),
-      patientId: "p2",
-      title: "خطة الابتسامة الشاملة",
-      doctorId: "d1",
-      created: today(-30),
-      notes: "تجميل الجبهة الأمامية العلوية على ثلاث مراحل",
-      items: [
-        { id: uid(), name: "فينير خزفي", tooth: "11", cost: 350000, done: true },
-        { id: uid(), name: "فينير خزفي", tooth: "21", cost: 350000, done: true },
-        { id: uid(), name: "تبييض ضوئي بالعيادة", cost: 60000, done: false },
-        { id: uid(), name: "تنظيف وتلميع نهائي", cost: 15000, done: false },
-      ],
-    },
-    {
-      id: uid(),
-      patientId: "p5",
-      title: "تأهيل الفك السفلي بالزراعة",
-      doctorId: "d3",
-      created: today(-70),
-      notes: "يعوّض الأسنان المفقودة 35-37 بزرعتين وجسر",
-      items: [
-        { id: uid(), name: "زراعة سن Osstem", tooth: "35", cost: 450000, done: true },
-        { id: uid(), name: "زراعة سن Osstem", tooth: "37", cost: 450000, done: false },
-        { id: uid(), name: "جسر زيركون 3 وحدات", tooth: "35–37", cost: 700000, done: false },
-      ],
-    },
-  ];
-
-  return { patients, doctors, staff, currencies, defaultCurrency: "YER", services, appointments, invoices, activity, expenses, prescriptions, sessions, implants, prosthetics, orthoCases, xrays, followUps, supplies, supplyMoves, plans, users, settings: DEFAULT_CLINIC_SETTINGS, nextInv: 1043 };
+  return { patients, doctors, staff, currencies, defaultCurrency: "YER", services, appointments, invoices, activity, expenses, prescriptions, sessions, users, nextInv: 1043 };
 }
 
 /* ============================== Store ============================== */
@@ -825,31 +533,12 @@ export type Action =
   | { type: "DELETE_PRESCRIPTION"; id: string }
   | { type: "START_SESSION"; patientId: string; doctorId: string; apptId?: string }
   | { type: "PATCH_SESSION"; id: string; patch: Partial<ClinicalSession> }
-  | { type: "END_SESSION"; id: string; paid: number; fuId?: string }
+  | { type: "END_SESSION"; id: string; paid: number }
   | { type: "CANCEL_SESSION"; id: string }
   | { type: "IMPORT"; db: DB }
   | { type: "ADD_USER"; u: User }
   | { type: "UPDATE_USER"; u: User }
   | { type: "DELETE_USER"; id: string }
-  | { type: "ADD_IMPLANT"; r: Implant }
-  | { type: "DELETE_IMPLANT"; id: string }
-  | { type: "ADD_PROSTHETIC"; r: Prosthetic }
-  | { type: "DELETE_PROSTHETIC"; id: string }
-  | { type: "ADD_ORTHO"; r: OrthoCase }
-  | { type: "UPDATE_ORTHO"; r: OrthoCase }
-  | { type: "DELETE_ORTHO"; id: string }
-  | { type: "ADD_XRAY"; r: XrayRec }
-  | { type: "DELETE_XRAY"; id: string }
-  | { type: "ADD_FOLLOWUP"; f: FollowUp }
-  | { type: "UPDATE_FOLLOWUP"; f: FollowUp }
-  | { type: "DELETE_FOLLOWUP"; id: string }
-  | { type: "UPDATE_SETTINGS"; patch: Partial<ClinicSettings> }
-  | { type: "ADD_SUPPLY"; item: SupplyItem }
-  | { type: "MOVE_SUPPLY"; itemId: string; delta: number; note: string }
-  | { type: "DELETE_SUPPLY"; id: string }
-  | { type: "ADD_PLAN"; plan: TreatmentPlan }
-  | { type: "UPDATE_PLAN"; plan: TreatmentPlan }
-  | { type: "DELETE_PLAN"; id: string }
   | { type: "RESET" };
 
 const nowIso = () => new Date().toISOString();
@@ -896,15 +585,8 @@ function reducer(db: DB, action: Action): DB {
         activity: [act(`حجز موعد ${s?.name ?? ""} للمريض ${p?.name ?? ""} — ${action.a.date} ${action.a.time}`, "appt"), ...db.activity].slice(0, 30),
       };
     }
-    case "SET_APPT_STATUS": {
-      const appointments = db.appointments.map((a) => (a.id === action.id ? { ...a, status: action.status } : a));
-      // عند إتمام موعد مرتبط بعودة — تُكمل العودة تلقائياً
-      const followUps =
-        action.status === "done"
-          ? db.followUps.map((f) => (f.apptId === action.id && f.status !== "done" ? { ...f, status: "done" as FollowUpStatus } : f))
-          : db.followUps;
-      return { ...db, appointments, followUps };
-    }
+    case "SET_APPT_STATUS":
+      return { ...db, appointments: db.appointments.map((a) => (a.id === action.id ? { ...a, status: action.status } : a)) };
     case "DELETE_APPT":
       return { ...db, appointments: db.appointments.filter((a) => a.id !== action.id) };
     case "ADD_INVOICE": {
@@ -1002,7 +684,6 @@ function reducer(db: DB, action: Action): DB {
         teethTreated: [],
         meds: [],
         medNotes: "",
-        summary: "",
       };
       const appointments = action.apptId
         ? db.appointments.map((a) => (a.id === action.apptId ? { ...a, status: "inprogress" as ApptStatus } : a))
@@ -1038,7 +719,7 @@ function reducer(db: DB, action: Action): DB {
         const total = items.reduce((a, i) => a + i.qty * i.price, 0);
         const inv: Invoice = {
           id: uid(),
-          number: `${db.settings.invoicePrefix}-${nextInv}`,
+          number: `INV-${nextInv}`,
           patientId: s.patientId,
           date: today(0),
           items,
@@ -1076,7 +757,7 @@ function reducer(db: DB, action: Action): DB {
         ? db.appointments.map((a) => (a.id === s.apptId ? { ...a, status: "done" as ApptStatus } : a))
         : db.appointments;
       const sessions = db.sessions.map((x) =>
-        x.id === s.id ? { ...x, status: "done" as const, endedAt: nowIso(), invoiceId, rxId, fuId: action.fuId } : x
+        x.id === s.id ? { ...x, status: "done" as const, endedAt: nowIso(), invoiceId, rxId } : x
       );
       const pName = db.patients.find((p) => p.id === s.patientId)?.name ?? "";
       return {
@@ -1119,63 +800,6 @@ function reducer(db: DB, action: Action): DB {
       return { ...db, users: db.users.map((x) => (x.id === action.u.id ? action.u : x)) };
     case "DELETE_USER":
       return { ...db, users: db.users.filter((x) => x.id !== action.id) };
-
-    /* ---------- السجلات السريرية ---------- */
-    case "ADD_IMPLANT":
-      return { ...db, implants: [action.r, ...db.implants] };
-    case "DELETE_IMPLANT":
-      return { ...db, implants: db.implants.filter((x) => x.id !== action.id) };
-    case "ADD_PROSTHETIC":
-      return { ...db, prosthetics: [action.r, ...db.prosthetics] };
-    case "DELETE_PROSTHETIC":
-      return { ...db, prosthetics: db.prosthetics.filter((x) => x.id !== action.id) };
-    case "ADD_ORTHO":
-      return { ...db, orthoCases: [action.r, ...db.orthoCases] };
-    case "UPDATE_ORTHO":
-      return { ...db, orthoCases: db.orthoCases.map((x) => (x.id === action.r.id ? action.r : x)) };
-    case "DELETE_ORTHO":
-      return { ...db, orthoCases: db.orthoCases.filter((x) => x.id !== action.id) };
-    case "ADD_XRAY":
-      return { ...db, xrays: [action.r, ...db.xrays] };
-    case "DELETE_XRAY":
-      return { ...db, xrays: db.xrays.filter((x) => x.id !== action.id) };
-
-    /* ---------- العودات والمتابعة ---------- */
-    case "ADD_FOLLOWUP":
-      return { ...db, followUps: [action.f, ...db.followUps] };
-    case "UPDATE_FOLLOWUP":
-      return { ...db, followUps: db.followUps.map((x) => (x.id === action.f.id ? action.f : x)) };
-    case "DELETE_FOLLOWUP":
-      return { ...db, followUps: db.followUps.filter((x) => x.id !== action.id) };
-    case "UPDATE_SETTINGS":
-      return { ...db, settings: { ...db.settings, ...action.patch } };
-
-    /* ---------- المخزون ---------- */
-    case "ADD_SUPPLY":
-      return { ...db, supplies: [...db.supplies, action.item] };
-    case "MOVE_SUPPLY": {
-      const item = db.supplies.find((s) => s.id === action.itemId);
-      if (!item) return db;
-      const qty = Math.max(0, item.qty + action.delta);
-      const move: SupplyMove = { id: uid(), itemId: action.itemId, delta: action.delta, note: action.note, date: nowIso() };
-      return {
-        ...db,
-        supplies: db.supplies.map((s) => (s.id === action.itemId ? { ...s, qty } : s)),
-        supplyMoves: [move, ...db.supplyMoves].slice(0, 60),
-        activity: [act(`${action.delta > 0 ? "توريد" : "صرف"} مخزون: ${item.name} (${action.delta > 0 ? "+" : ""}${action.delta})`, "invoice"), ...db.activity].slice(0, 30),
-      };
-    }
-    case "DELETE_SUPPLY":
-      return { ...db, supplies: db.supplies.filter((s) => s.id !== action.id) };
-
-    /* ---------- خطط العلاج ---------- */
-    case "ADD_PLAN":
-      return { ...db, plans: [action.plan, ...db.plans] };
-    case "UPDATE_PLAN":
-      return { ...db, plans: db.plans.map((p) => (p.id === action.plan.id ? action.plan : p)) };
-    case "DELETE_PLAN":
-      return { ...db, plans: db.plans.filter((p) => p.id !== action.id) };
-
     case "RESET":
       return seed();
     default:
@@ -1195,24 +819,10 @@ function load(): DB {
       ...db,
       expenses: db.expenses ?? [],
       prescriptions: db.prescriptions ?? [],
-      sessions: (db.sessions ?? []).map((s) => ({ ...s, summary: s.summary ?? "" })),
+      sessions: db.sessions ?? [],
       staff: db.staff ?? [],
       activity: db.activity ?? [],
-      implants: db.implants ?? [],
-      prosthetics: db.prosthetics ?? [],
-      orthoCases: db.orthoCases ?? [],
-      xrays: db.xrays ?? [],
-      followUps: db.followUps ?? [],
-      supplies: db.supplies ?? [],
-      supplyMoves: db.supplyMoves ?? [],
-      plans: db.plans ?? [],
-      settings: { ...DEFAULT_CLINIC_SETTINGS, ...(db.settings ?? {}) },
-      users: (db.users?.length ? db.users : seed().users).map((u) =>
-        // طاقم الاستقبال والمساعدة يرى السجل والجدول كاملين دائماً
-        u.role === "secretary" || u.role === "assistant"
-          ? { ...u, permissions: [...new Set([...u.permissions, "scope_all_patients", "scope_all_appointments"])] }
-          : u
-      ),
+      users: db.users?.length ? db.users : seed().users,
     };
   } catch {
     db = seed();
@@ -1312,7 +922,6 @@ interface AuthCtx {
   logout: () => void;
   can: (perm: string) => boolean;
   patientScope: Set<string> | null; // null = يرى كل المرضى
-  apptScope: string | null; // null = كل المواعيد، وإلا معرّف الطبيب الذي تُقيَّد به الرؤية
   doctorScopeId: string | null; // معرّف الطبيب المرتبط بحساب الطبيب
 }
 
@@ -1350,26 +959,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const isAdmin = user?.role === "admin";
     const isDoctor = user?.role === "doctor";
     const doctorScopeId = isDoctor ? user?.linkId ?? null : null;
-    const hasAllPatients = isAdmin || !!user?.permissions.includes("scope_all_patients");
-    const hasAllAppts = isAdmin || !!user?.permissions.includes("scope_all_appointments");
 
-    // نطاق المرضى: الطبيب المقيَّد يرى فقط مرضى مواعيده وجلساته
+    // نطاق مرضى الطبيب: كل مريض لديه موعد أو جلسة عند هذا الطبيب
     let patientScope: Set<string> | null = null;
-    if (isDoctor && !hasAllPatients) {
+    if (isDoctor && doctorScopeId) {
       const set = new Set<string>();
-      if (doctorScopeId) {
-        db.appointments.forEach((a) => {
-          if (a.doctorId === doctorScopeId) set.add(a.patientId);
-        });
-        db.sessions.forEach((s) => {
-          if (s.doctorId === doctorScopeId) set.add(s.patientId);
-        });
-      }
+      db.appointments.forEach((a) => {
+        if (a.doctorId === doctorScopeId) set.add(a.patientId);
+      });
+      db.sessions.forEach((s) => {
+        if (s.doctorId === doctorScopeId) set.add(s.patientId);
+      });
       patientScope = set;
     }
-
-    // نطاق المواعيد: null = الجدول الكامل، وإلا يُعرض جدول الطبيب المرتبط فقط
-    const apptScope = isDoctor && !hasAllAppts ? doctorScopeId ?? "∅" : null;
 
     return {
       user,
@@ -1399,7 +1001,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return user.permissions.includes(perm);
       },
       patientScope,
-      apptScope,
       doctorScopeId,
     };
   }, [user, db.appointments, db.sessions, db.users, doLogin]);

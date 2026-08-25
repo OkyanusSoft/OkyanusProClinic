@@ -1,8 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { APPT_META, AuthProvider, clinicOf, invoiceTotal, ROLE_META, StoreProvider, today, useAuth, useStore } from "./store";
+import { APPT_META, AuthProvider, CLINIC_LATIN, CLINIC_NAME, invoiceTotal, ROLE_META, StoreProvider, today, useAuth, useStore } from "./store";
 import {
   IconBell,
-  IconBox,
   IconCalendar,
   IconCoins,
   IconGrid,
@@ -11,7 +10,6 @@ import {
   IconPulse,
   IconReceipt,
   IconSearch,
-  IconSettings,
   IconShield,
   IconSpark,
   IconStetho,
@@ -33,11 +31,9 @@ import ExpensesPage from "./pages/Expenses";
 import ReportsPage from "./pages/Reports";
 import SessionPage from "./pages/Session";
 import UsersPage from "./pages/Users";
-import SettingsPage from "./pages/Settings";
-import InventoryPage from "./pages/Inventory";
 import Login from "./pages/Login";
 
-type Tab = "dashboard" | "appointments" | "session" | "patients" | "invoices" | "inventory" | "expenses" | "reports" | "services" | "team" | "currencies" | "users" | "settings";
+type Tab = "dashboard" | "appointments" | "session" | "patients" | "invoices" | "expenses" | "reports" | "services" | "team" | "currencies" | "users";
 
 const NAV: { key: Tab; label: string; icon: (c: string) => React.ReactNode }[] = [
   { key: "dashboard", label: "لوحة التحكم", icon: (c) => <IconGrid className={c} /> },
@@ -45,14 +41,12 @@ const NAV: { key: Tab; label: string; icon: (c: string) => React.ReactNode }[] =
   { key: "session", label: "محطة عمل الدكتور", icon: (c) => <IconPulse className={c} /> },
   { key: "patients", label: "المرضى", icon: (c) => <IconUsers className={c} /> },
   { key: "invoices", label: "الفواتير", icon: (c) => <IconReceipt className={c} /> },
-  { key: "inventory", label: "المخزون والمستهلكات", icon: (c) => <IconBox className={c} /> },
   { key: "services", label: "قائمة الأسعار", icon: (c) => <IconSpark className={c} /> },
   { key: "expenses", label: "المصروفات", icon: (c) => <IconWallet className={c} /> },
   { key: "reports", label: "التقارير", icon: (c) => <IconTrendUp className={c} /> },
   { key: "team", label: "الفريق الطبي", icon: (c) => <IconStetho className={c} /> },
   { key: "currencies", label: "العملات", icon: (c) => <IconCoins className={c} /> },
   { key: "users", label: "المستخدمون والصلاحيات", icon: (c) => <IconShield className={c} /> },
-  { key: "settings", label: "الإعدادات العامة", icon: (c) => <IconSettings className={c} /> },
 ];
 
 const TITLES: Record<Tab, string> = {
@@ -61,19 +55,17 @@ const TITLES: Record<Tab, string> = {
   session: "محطة عمل الدكتور",
   patients: "المرضى",
   invoices: "الفواتير",
-  inventory: "المخزون والمستهلكات",
   services: "قائمة الأسعار",
   expenses: "المصروفات",
   reports: "التقارير",
   team: "الفريق الطبي",
   currencies: "العملات",
   users: "المستخدمون والصلاحيات",
-  settings: "الإعدادات العامة",
 };
 
 function Shell() {
   const { db, dispatch, patientById, serviceById } = useStore();
-  const { user, can, apptScope } = useAuth();
+  const { user, can } = useAuth();
   const { push } = useToast();
   const [tab, setTab] = useState<Tab>("dashboard");
   const [drawerId, setDrawerId] = useState<string | null>(null);
@@ -95,10 +87,9 @@ function Shell() {
   // بوابة الدخول: لا نظام بدون مستخدم مسجّل
   if (!user) return <Login />;
 
-  const todayCount = db.appointments.filter((a) => a.date === today(0) && a.status !== "cancelled" && (!apptScope || a.doctorId === apptScope)).length;
+  const todayCount = db.appointments.filter((a) => a.date === today(0) && a.status !== "cancelled").length;
   const unpaidCount = db.invoices.filter((i) => i.paid < invoiceTotal(i)).length;
-  const lowStock = db.supplies.filter((s) => s.qty <= s.minQty).length;
-  const badges: Partial<Record<Tab, number>> = { appointments: todayCount, invoices: unpaidCount, inventory: lowStock || undefined };
+  const badges: Partial<Record<Tab, number>> = { appointments: todayCount, invoices: unpaidCount };
 
   const openBook = (patientId?: string, time?: string) =>
     setBook({ open: true, patientId, time, date: today(0) });
@@ -166,17 +157,15 @@ function Shell() {
           {tab === "session" && <SessionPage />}
           {tab === "patients" && <PatientsPage addSignal={addPatientSignal} onOpenPatient={setDrawerId} onBook={(pid) => openBook(pid)} />}
           {tab === "invoices" && <InvoicesPage />}
-          {tab === "inventory" && <InventoryPage />}
           {tab === "services" && <ServicesPage />}
           {tab === "expenses" && <ExpensesPage />}
           {tab === "reports" && <ReportsPage />}
           {tab === "team" && <TeamPage />}
           {tab === "currencies" && <CurrenciesPage />}
           {tab === "users" && <UsersPage />}
-          {tab === "settings" && <SettingsPage />}
 
           <footer className="mt-10 pb-4 flex flex-wrap items-center justify-between gap-2 text-[11px] text-soft/80 font-medium">
-            <span>نظام {clinicOf(db).clinicName} · إصدار 2.6</span>
+            <span>نظام {CLINIC_NAME} · إصدار 2.5</span>
             <span>البيانات تُحفَظ محلياً على هذا الجهاز</span>
           </footer>
         </main>
@@ -215,15 +204,14 @@ function SidebarContent({
   items: typeof NAV;
 }) {
   const { db } = useStore();
-  const clinic = clinicOf(db);
   const doc = db.doctors[0];
   return (
     <aside className={`${className} flex-col bg-pine sidebar-texture text-white`}>
       <div className="flex items-center gap-3 px-5 pt-6 pb-5">
         <Logo className="w-11 h-11 shrink-0" />
         <div className="min-w-0">
-          <p className="font-display font-bold text-[17px] leading-tight">{clinic.clinicName}</p>
-          <p className="text-[9px] text-white/50 font-semibold tracking-wider mt-0.5" dir="ltr">{clinic.clinicLatin}</p>
+          <p className="font-display font-bold text-[17px] leading-tight">{CLINIC_NAME}</p>
+          <p className="text-[9px] text-white/50 font-semibold tracking-wider mt-0.5" dir="ltr">{CLINIC_LATIN}</p>
         </div>
         {onClose && (
           <button onClick={onClose} className="icon-btn !text-white/60 hover:!bg-white/10 hover:!text-white ms-auto" aria-label="إغلاق القائمة">
@@ -283,7 +271,6 @@ function SidebarContent({
 
 function Topbar({ tab, onMenu, onOpenPatient }: { tab: Tab; onMenu: () => void; onOpenPatient: (id: string) => void }) {
   const { db, dispatch } = useStore();
-  const { patientScope, apptScope } = useAuth();
   const { push } = useToast();
   const fileRef = useRef<HTMLInputElement>(null);
   const [q, setQ] = useState("");
@@ -316,7 +303,7 @@ function Topbar({ tab, onMenu, onOpenPatient }: { tab: Tab; onMenu: () => void; 
   const searchRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const t = setInterval(() => setNow(new Date()), 1000);
+    const t = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(t);
   }, []);
 
@@ -331,19 +318,15 @@ function Topbar({ tab, onMenu, onOpenPatient }: { tab: Tab; onMenu: () => void; 
   const results = useMemo(() => {
     const s = q.trim();
     if (s.length < 2) return [];
-    return db.patients
-      .filter((p) => (patientScope ? patientScope.has(p.id) : true))
-      .filter((p) => p.name.includes(s) || p.phone.includes(s))
-      .slice(0, 5);
-  }, [q, db.patients, patientScope]);
+    return db.patients.filter((p) => p.name.includes(s) || p.phone.includes(s)).slice(0, 5);
+  }, [q, db.patients]);
 
   const upcoming = useMemo(
     () =>
       db.appointments
-        .filter((a) => (apptScope ? a.doctorId === apptScope : true))
         .filter((a) => a.date === today(0) && ["confirmed", "waiting", "inprogress"].includes(a.status))
         .sort((a, b) => a.time.localeCompare(b.time)),
-    [db.appointments, apptScope]
+    [db.appointments]
   );
 
   const clock = new Intl.DateTimeFormat("ar-EG-u-nu-latn", { hour: "2-digit", minute: "2-digit", second: "2-digit" }).format(now);

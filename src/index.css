@@ -101,6 +101,22 @@ body {
 @keyframes spinSlow {
   to { transform: rotate(360deg); }
 }
+@keyframes shakeX {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-9px); }
+  40% { transform: translateX(8px); }
+  60% { transform: translateX(-6px); }
+  80% { transform: translateX(4px); }
+}
+@keyframes ecgDash {
+  from { stroke-dashoffset: 1400; }
+  to { stroke-dashoffset: 0; }
+}
+.anim-shake { animation: shakeX 0.45s ease both; }
+.ecg-line {
+  stroke-dasharray: 1400;
+  animation: ecgDash 5s linear infinite;
+}
 
 .anim-rise { animation: rise 0.55s cubic-bezier(0.22, 1, 0.36, 1) both; }
 .anim-fade { animation: fadein 0.4s ease both; }
@@ -204,6 +220,28 @@ body {
   }
 }
 
+/* ---------- الطباعة ---------- */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  .print-sheet,
+  .print-sheet * {
+    visibility: visible;
+  }
+  .print-sheet {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    max-height: none;
+    overflow: visible;
+    border: none !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+    z-index: 9999;
+  }
+}
+
 /* ---------- misc ---------- */
 .sidebar-texture {
   background-image:
@@ -211,7 +249,7 @@ body {
     repeating-linear-gradient(-45deg, rgba(255, 255, 255, 0.022) 0 2px, transparent 2px 14px);
 }
 
-.tooth-btn { transition: transform 0.15s ease, filter 0.15s ease; cursor: pointer; }
-.tooth-btn:hover { transform: scale(1.12); filter: brightness(1.05); }
+.tooth-btn { transform-box: fill-box; transform-origin: center; transition: transform 0.15s ease; cursor: pointer; }
+.tooth-btn:hover { transform: scale(1.05); }
 
 input[type="number"]::-webkit-inner-spin-button { opacity: 0.4; }

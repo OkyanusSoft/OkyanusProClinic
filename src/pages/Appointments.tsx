@@ -3,19 +3,75 @@ import {
   addMinutes,
   APPT_META,
   dayName,
+  dstr,
   fmtDate,
   fmtDateFull,
+  FU_META,
+  invoiceTotal,
   today,
+  clinicOf,
+  TOOTH_META,
   uid,
+  useAuth,
   useMoney,
   useStore,
   type Appointment,
   type ApptStatus,
+  type FollowUp,
 } from "../store";
-import { IconCalendar, IconCalendarPlus, IconChevronDown, IconClock, IconStetho, IconX } from "../icons";
-import { Avatar, Badge, Drop, DropItem, EmptyState, Field, Modal, TArea, TInput, TSelect, useToast } from "../components/ui";
+import {
+  IconAlert,
+  IconCalendar,
+  IconCalendarPlus,
+  IconChat,
+  IconCheck,
+  IconCopy,
+  IconChevronDown,
+  IconClock,
+  IconPlus,
+  IconReceipt,
+  IconSpark,
+  IconStetho,
+  IconTooth,
+  IconX,
+} from "../icons";
+import { Avatar, Badge, Drop, DropItem, EmptyState, Field, Modal, TArea, TInput, TSelect, TwoStepDelete, useToast } from "../components/ui";
 
-const HOURS = ["09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00", "18:00", "19:00", "20:00"];
+/* ساعات الحجز — تُشتق من إعدادات الدوام العامة */
+const hoursBetween = (start: string, end: string) => {
+  const s = parseInt(start.slice(0, 2), 10);
+  const e = parseInt(end.slice(0, 2), 10);
+  const arr: string[] = [];
+  for (let h = s; h < e; h++) arr.push(`${String(h).padStart(2, "0")}:00`);
+  return arr.length ? arr : ["09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00", "18:00", "19:00", "20:00"];
+};
+
+type View = "schedule" | "followups" | "history";
+
+/* أدوات التاريخ */
+const dayDiff = (d: string) =>
+  Math.round((new Date(d + "T12:00:00").getTime() - new Date(today(0) + "T12:00:00").getTime()) / 86400000);
+const dueLabel = (d: string) => {
+  const diff = dayDiff(d);
+  if (diff < 0) return `متأخرة ${-diff} ${-diff === 1 ? "يوم" : "أيام"}`;
+  if (diff === 0) return "مستحقة اليوم";
+  if (diff === 1) return "غداً";
+  return `بعد ${diff} أيام`;
+};
+const dueTone = (f: FollowUp) => {
+  if (f.status !== "pending") return "bg-mist text-soft";
+  const diff = dayDiff(f.dueDate);
+  if (diff < 0) return "bg-coral-soft text-coral";
+  if (diff === 0) return "bg-amber-soft text-[#a06410]";
+  return "bg-sky-soft text-sky";
+};
+const fmtClock = (iso: string) =>
+  new Intl.DateTimeFormat("ar-EG-u-nu-latn", { hour: "2-digit", minute: "2-digit" }).format(new Date(iso));
+const fmtDur = (ms: number) => {
+  const m = Math.max(1, Math.round(ms / 60000));
+  if (m < 60) return `${m} دقيقة`;
+  return `${Math.floor(m / 60)} س ${m % 60 ? `${m % 60} د` : ""}`.trim();
+};
 
 /* ============================ الصفحة ============================ */
 
@@ -25,16 +81,119 @@ interface Props {
 }
 
 export default function AppointmentsPage({ onOpenPatient, onBook }: Props) {
-  const { db, dispatch, patientById, serviceById, doctorById } = useStore();
-  const { push } = useToast();
+  const { db, patientById } = useStore();
+  const { apptScope, doctorScopeId } = useAuth();
+  const [view, setView] = useState<View>("schedule");
   const [day, setDay] = useState(today(0));
+  const [showFu, setShowFu] = useState(false);
+
+  const visible = useMemo(
+    () => (apptScope ? db.appointments.filter((a) => a.doctorId === apptScope) : db.appointments),
+    [db.appointments, apptScope]
+  );
+  const dayCount = visible.filter((a) => a.date === day && a.status !== "cancelled").length;
+  const fuScoped = useMemo(
+    () => (doctorScopeId ? db.followUps.filter((f) => f.doctorId === doctorScopeId) : db.followUps),
+    [db.followUps, doctorScopeId]
+  );
+  const pendingCount = fuScoped.filter((f) => f.status === "pending").length;
+  const doneSessions = useMemo(
+    () => db.sessions.filter((s) => s.status === "done" && (!doctorScopeId || s.doctorId === doctorScopeId)),
+    [db.sessions, doctorScopeId]
+  );
+
+  const TABS: { key: View; label: string; count: number; icon: (c: string) => React.ReactNode }[] = [
+    { key: "schedule", label: "جدول اليوم", count: dayCount, icon: (c) => <IconClock className={c} /> },
+    { key: "followups", label: "العودات والمتابعة", count: pendingCount, icon: (c) => <IconCalendarPlus className={c} /> },
+    { key: "history", label: "الجلسات المكتملة", count: doneSessions.length, icon: (c) => <IconCheck className={c} /> },
+  ];
+
+  return (
+    <div className="space-y-5">
+      <div className="anim-rise flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <h1 className="font-display font-bold text-3xl text-ink">المواعيد والعودات</h1>
+          <p className="text-sm text-soft mt-1 flex items-center gap-2.5 flex-wrap">
+            {fmtDateFull(day)}
+            {apptScope && (
+              <span className="chip bg-amber-soft text-[#a06410] !py-1.5">
+                <IconStetho className="w-3.5 h-3.5" />
+                نطاق {db.doctors.find((d) => d.id === doctorScopeId)?.name ?? "الطبيب"} فقط
+              </span>
+            )}
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          {view === "followups" && (
+            <button className="btn-soft" onClick={() => setShowFu(true)}>
+              <IconPlus className="w-4 h-4" />
+              عودة جديدة
+            </button>
+          )}
+          <button className="btn-primary" onClick={() => onBook()}>
+            <IconCalendarPlus className="w-4.5 h-4.5" />
+            موعد جديد
+          </button>
+        </div>
+      </div>
+
+      {/* التبويبات */}
+      <div className="card p-1.5 inline-flex gap-1 flex-wrap anim-rise" style={{ animationDelay: "60ms" }}>
+        {TABS.map((t) => (
+          <button
+            key={t.key}
+            onClick={() => setView(t.key)}
+            className={`flex items-center gap-2 rounded-lg px-4 h-10 text-xs font-bold cursor-pointer transition-all ${
+              view === t.key ? "bg-pine text-white shadow-md" : "text-soft hover:bg-mist"
+            }`}
+          >
+            {t.icon("w-4 h-4")}
+            {t.label}
+            <span className={`stat-num !text-[10px] px-1.5 py-0.5 rounded ${view === t.key ? "bg-white/15 text-[#7fe0d4]" : "bg-mist"}`}>
+              {t.count}
+            </span>
+          </button>
+        ))}
+      </div>
+
+      {view === "schedule" && <ScheduleView day={day} setDay={setDay} onOpenPatient={onOpenPatient} onBook={onBook} />}
+      {view === "followups" && <FollowUpsView fus={fuScoped} onOpenPatient={onOpenPatient} />}
+      {view === "history" && <HistoryView sessions={doneSessions} onOpenPatient={onOpenPatient} />}
+
+      {showFu && <FollowUpModal onClose={() => setShowFu(false)} />}
+    </div>
+  );
+}
+
+/* ============================ تبويب: جدول اليوم ============================ */
+
+function ScheduleView({
+  day,
+  setDay,
+  onOpenPatient,
+  onBook,
+}: {
+  day: string;
+  setDay: (d: string) => void;
+  onOpenPatient: (id: string) => void;
+  onBook: (patientId?: string, time?: string) => void;
+}) {
+  const { db, dispatch, patientById, serviceById, doctorById } = useStore();
+  const { apptScope } = useAuth();
+  const { push } = useToast();
+  const HOURS = useMemo(() => hoursBetween(clinicOf(db).workStart, clinicOf(db).workEnd), [db]);
+  const [remindFor, setRemindFor] = useState<Appointment | null>(null);
 
   const days = useMemo(() => Array.from({ length: 7 }, (_, i) => today(i)), []);
-  const dayAppts = useMemo(
-    () => db.appointments.filter((a) => a.date === day).sort((a, b) => a.time.localeCompare(b.time)),
-    [db.appointments, day]
+  const visible = useMemo(
+    () => (apptScope ? db.appointments.filter((a) => a.doctorId === apptScope) : db.appointments),
+    [db.appointments, apptScope]
   );
-  const countFor = (d: string) => db.appointments.filter((a) => a.date === d && a.status !== "cancelled").length;
+  const dayAppts = useMemo(
+    () => visible.filter((a) => a.date === day).sort((a, b) => a.time.localeCompare(b.time)),
+    [visible, day]
+  );
+  const countFor = (d: string) => visible.filter((a) => a.date === d && a.status !== "cancelled").length;
 
   const setStatus = (a: Appointment, status: ApptStatus) => {
     dispatch({ type: "SET_APPT_STATUS", id: a.id, status });
@@ -43,20 +202,9 @@ export default function AppointmentsPage({ onOpenPatient, onBook }: Props) {
   };
 
   return (
-    <div className="space-y-5">
-      <div className="anim-rise flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <h1 className="font-display font-bold text-3xl text-ink">جدول المواعيد</h1>
-          <p className="text-sm text-soft mt-1">{fmtDateFull(day)}</p>
-        </div>
-        <button className="btn-primary" onClick={() => onBook()}>
-          <IconCalendarPlus className="w-4.5 h-4.5" />
-          موعد جديد
-        </button>
-      </div>
-
+    <>
       {/* شريط الأيام */}
-      <div className="grid grid-cols-7 gap-2 anim-rise" style={{ animationDelay: "80ms" }}>
+      <div className="grid grid-cols-7 gap-2 anim-rise" style={{ animationDelay: "100ms" }}>
         {days.map((d, i) => {
           const active = d === day;
           const n = countFor(d);
@@ -158,11 +306,14 @@ export default function AppointmentsPage({ onOpenPatient, onBook }: Props) {
                             </Drop>
                           </div>
                           <div className="flex items-center justify-between mt-2.5 pt-2.5 border-t border-line/70">
-                            <span className="text-[11px] font-bold text-soft flex items-center gap-1.5">
-                              <span style={{ color: d?.color }} className="inline-flex"><IconStetho className="w-3.5 h-3.5" /></span>
-                              {d?.name}
+                            <span className="text-[11px] font-bold text-soft flex items-center gap-1.5 min-w-0">
+                              <span style={{ color: d?.color }} className="inline-flex shrink-0"><IconStetho className="w-3.5 h-3.5" /></span>
+                              <span className="truncate">{d?.name}</span>
                             </span>
                             <div className="flex items-center gap-1.5">
+                              <button onClick={() => setRemindFor(a)} className="icon-btn !w-7 !h-7 hover:!bg-sky-soft hover:!text-sky" aria-label="رسالة تذكير" title="رسالة تذكير للمريض">
+                                <IconChat className="w-3.5 h-3.5" />
+                              </button>
                               {(a.status === "confirmed" || a.status === "waiting") && (
                                 <button onClick={() => setStatus(a, "inprogress")} className="text-[11px] font-bold text-jade-deep bg-jade-soft hover:bg-jade hover:text-white rounded-md px-2.5 py-1.5 cursor-pointer transition-colors">
                                   بدء العلاج
@@ -190,7 +341,607 @@ export default function AppointmentsPage({ onOpenPatient, onBook }: Props) {
           })}
         </ul>
       </div>
+
+      {remindFor && <ReminderModal appt={remindFor} onClose={() => setRemindFor(null)} />}
+    </>
+  );
+}
+
+/* ============================ رسالة تذكير ============================ */
+
+function ReminderModal({ appt, onClose }: { appt: Appointment; onClose: () => void }) {
+  const { patientById, serviceById, doctorById } = useStore();
+  const { push } = useToast();
+  const p = patientById(appt.patientId);
+  const s = serviceById(appt.serviceId);
+  const d = doctorById(appt.doctorId);
+  const [copied, setCopied] = useState(false);
+
+  const T = (body: string) =>
+    `السلام عليكم ${p?.name ?? ""}،\nمعكم عيادة الأسنان — نودّ تذكيركم بما يلي:\n\n${body}\n\nنرجو الحضور قبل الموعد بعشر دقائق، ولأي استفسار أو تعديل يسعدنا تواصلكم.`;
+
+  const templates = [
+    { key: "appt", label: "تذكير بالموعد", text: T(`موعدكم: ${s?.name ?? "جلسة علاج"}\nالتاريخ: ${fmtDate(appt.date)}\nالوقت: ${appt.time}\nالطبيب: ${d?.name ?? "طبيب العيادة"}`) },
+    { key: "confirm", label: "طلب تأكيد الحضور", text: T(`لديكم حجز ${s?.name ?? "جلسة"} بتاريخ ${fmtDate(appt.date)} الساعة ${appt.time}.\nنرجو الرد بـ «نعم» لتأكيد الحضور أو «تأجيل» لإعادة الجدولة.`) },
+    { key: "fasting", label: "تعليمات قبل الجراحة", text: T(`موعدكم لإجراء ${s?.name ?? "الجراحة"} بتاريخ ${fmtDate(appt.date)} الساعة ${appt.time}.\nالتعليمات: الامتناع عن الأكل والشرب قبل الموعد بست ساعات، وإحضار التقارير الطبية والأدوية التي تتناولونها.`) },
+    { key: "thanks", label: "شكر بعد الزيارة", text: `شكراً لثقتكم بنا، ${p?.name ?? ""}.\nنتمنى لكم دوام الصحة والعافية، ويسعدنا استقبال ملاحظاتكم في أي وقت.` },
+  ];
+  const [text, setText] = useState(templates[0].text);
+  const [active, setActive] = useState("appt");
+
+  const pick = (k: string) => {
+    setActive(k);
+    setText(templates.find((t) => t.key === k)!.text);
+  };
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      /* تجاهل */
+    }
+    setCopied(true);
+    push("success", "نُسخت الرسالة", "الصقها في واتساب أو تطبيق الرسائل وأرسلها للمريض.");
+    setTimeout(() => setCopied(false), 1600);
+  };
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title={`رسالة تذكير — ${p?.name ?? "المريض"}`}
+      subtitle={`${s?.name ?? ""} · ${fmtDate(appt.date)} ${appt.time}`}
+      width="max-w-xl"
+      footer={
+        <>
+          <button className="btn-ghost" onClick={onClose}>إغلاق</button>
+          <button className="btn-primary" onClick={copy}>
+            <IconCopy className="w-4.5 h-4.5" />
+            {copied ? "نُسخت ✓" : "نسخ الرسالة"}
+          </button>
+        </>
+      }
+    >
+      <div className="space-y-4">
+        <div className="flex flex-wrap gap-2">
+          {templates.map((t) => (
+            <button
+              key={t.key}
+              onClick={() => pick(t.key)}
+              className={`h-9 px-3.5 rounded-lg text-xs font-bold cursor-pointer transition-all border ${
+                active === t.key ? "bg-pine text-white border-pine shadow-sm" : "bg-white text-soft border-line hover:border-jade/50"
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+        <div>
+          <p className="label">نص الرسالة (قابل للتعديل)</p>
+          <textarea value={text} onChange={(e) => setText(e.target.value)} className="input !h-44 py-3 leading-relaxed text-[13px]" dir="rtl" />
+        </div>
+        <p className="text-[11px] text-soft leading-relaxed">
+          تُعوَّض بيانات المريض والموعد والطبيب تلقائياً من السجل. انسخ النص وأرسله عبر واتساب أو الرسائل النصية.
+        </p>
+      </div>
+    </Modal>
+  );
+}
+
+/* ============================ تبويب: العودات والمتابعة ============================ */
+
+function FollowUpsView({ fus, onOpenPatient }: { fus: FollowUp[]; onOpenPatient: (id: string) => void }) {
+  const { db, dispatch, patientById } = useStore();
+  const { push } = useToast();
+  const [filter, setFilter] = useState<"all" | "pending" | "overdue" | "booked" | "done">("all");
+
+  const pending = fus.filter((f) => f.status === "pending");
+  const overdue = pending.filter((f) => dayDiff(f.dueDate) < 0).length;
+  const dueToday = pending.filter((f) => dayDiff(f.dueDate) === 0).length;
+  const alertWindow = clinicOf(db).followUpAlertDays;
+  const inWeek = pending.filter((f) => {
+    const d = dayDiff(f.dueDate);
+    return d > 0 && d <= alertWindow;
+  }).length;
+  const doneCount = fus.filter((f) => f.status === "done").length;
+
+  const list = useMemo(() => {
+    let arr = [...fus];
+    if (filter === "pending") arr = arr.filter((f) => f.status === "pending");
+    if (filter === "overdue") arr = arr.filter((f) => f.status === "pending" && dayDiff(f.dueDate) < 0);
+    if (filter === "booked") arr = arr.filter((f) => f.status === "booked");
+    if (filter === "done") arr = arr.filter((f) => f.status === "done");
+    const rank = (f: FollowUp) => (f.status === "pending" ? 0 : f.status === "booked" ? 1 : 2);
+    return arr.sort((a, b) => rank(a) - rank(b) || a.dueDate.localeCompare(b.dueDate));
+  }, [fus, filter]);
+
+  const bookFollowUp = (f: FollowUp) => {
+    const date = f.dueDate >= today(0) ? f.dueDate : today(0);
+    let time = "12:00";
+    outer: for (let h = 9; h <= 20; h++)
+      for (const m of [0, 30]) {
+        const t = `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+        if (!db.appointments.some((a) => a.date === date && a.doctorId === f.doctorId && a.time === t && a.status !== "cancelled")) {
+          time = t;
+          break outer;
+        }
+      }
+    const a: Appointment = {
+      id: uid(),
+      patientId: f.patientId,
+      serviceId: "s1",
+      doctorId: f.doctorId,
+      date,
+      time,
+      status: "confirmed",
+      notes: `عودة: ${f.reason}`,
+    };
+    dispatch({ type: "ADD_APPT", a });
+    dispatch({ type: "UPDATE_FOLLOWUP", f: { ...f, status: "booked", apptId: a.id } });
+    push("success", "حُجز موعد العودة", `${patientById(f.patientId)?.name} — ${fmtDate(date)} ${time} · يظهر في جدول اليوم`);
+  };
+
+  const arrive = (f: FollowUp) => {
+    dispatch({ type: "UPDATE_FOLLOWUP", f: { ...f, status: "done" } });
+    push("success", "سُجلت مراجعة المريض", `${patientById(f.patientId)?.name} — ${f.reason}`);
+  };
+
+  const postpone = (f: FollowUp) => {
+    const base = f.dueDate >= today(0) ? f.dueDate : today(0);
+    const d = new Date(base + "T12:00:00");
+    d.setDate(d.getDate() + 7);
+    dispatch({ type: "UPDATE_FOLLOWUP", f: { ...f, dueDate: dstr(d) } });
+    push("info", "أُجلت العودة أسبوعاً", `${patientById(f.patientId)?.name} — الموعد الجديد ${fmtDate(dstr(d))}`);
+  };
+
+  const STATS = [
+    { label: "متأخرة", value: overdue, cls: "bg-coral-soft text-coral", icon: <IconAlert className="w-4.5 h-4.5" /> },
+    { label: "مستحقة اليوم", value: dueToday, cls: "bg-amber-soft text-[#a06410]", icon: <IconClock className="w-4.5 h-4.5" /> },
+    { label: `خلال ${alertWindow} أيام`, value: inWeek, cls: "bg-sky-soft text-sky", icon: <IconCalendar className="w-4.5 h-4.5" /> },
+    { label: "مكتملة", value: doneCount, cls: "bg-mint-soft text-[#1d6b47]", icon: <IconCheck className="w-4.5 h-4.5" /> },
+  ];
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
+        {STATS.map((s, i) => (
+          <div key={s.label} className="card card-hover p-4 flex items-center gap-3 anim-rise" style={{ animationDelay: `${i * 60}ms` }}>
+            <span className={`inline-flex items-center justify-center w-10 h-10 rounded-xl ${s.cls}`}>{s.icon}</span>
+            <div>
+              <p className="stat-num text-2xl text-ink leading-none">{s.value}</p>
+              <p className="text-[11px] font-bold text-soft mt-1">{s.label}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2">
+        {(
+          [
+            ["all", "الكل"],
+            ["pending", "بانتظار المراجعة"],
+            ["overdue", "المتأخرة فقط"],
+            ["booked", "محجوزة"],
+            ["done", "مكتملة"],
+          ] as const
+        ).map(([k, l]) => (
+          <button
+            key={k}
+            onClick={() => setFilter(k)}
+            className={`h-9 px-3.5 rounded-lg text-[11px] font-bold cursor-pointer transition-all border ${
+              filter === k ? "bg-pine text-white border-pine shadow-sm" : "bg-white text-soft border-line hover:border-jade/50"
+            }`}
+          >
+            {l}
+          </button>
+        ))}
+        <p className="text-[11px] text-soft font-medium ms-auto hidden md:block">
+          اضغط «حجز موعد» لتحويل العودة إلى موعد حقيقي في جدول الطبيب
+        </p>
+      </div>
+
+      <div className="card overflow-hidden anim-rise" style={{ animationDelay: "120ms" }}>
+        {list.length === 0 ? (
+          <EmptyState
+            icon={<IconCalendarPlus className="w-6 h-6" />}
+            title="لا عودات في هذا التصنيف"
+            desc="تُنشأ العودات تلقائياً عند إنهاء جلسات العلاج، أو يدوياً بزر «عودة جديدة»."
+          />
+        ) : (
+          <ul className="divide-y divide-line/60">
+            {list.map((f, i) => {
+              const p = patientById(f.patientId);
+              const d = db.doctors.find((x) => x.id === f.doctorId);
+              const linkedAppt = f.apptId ? db.appointments.find((a) => a.id === f.apptId) : undefined;
+              const late = f.status === "pending" && dayDiff(f.dueDate) < 0;
+              return (
+                <li
+                  key={f.id}
+                  className={`flex flex-wrap items-center gap-3 px-5 py-3.5 transition-colors anim-fade ${late ? "bg-coral-soft/25 hover:bg-coral-soft/40" : "hover:bg-jade-soft/25"}`}
+                  style={{ animationDelay: `${i * 35}ms` }}
+                >
+                  <button onClick={() => p && onOpenPatient(p.id)} className="cursor-pointer shrink-0">
+                    <Avatar name={p?.name ?? "؟"} size="w-10 h-10 text-xs" />
+                  </button>
+                  <div className="flex-1 min-w-44">
+                    <button onClick={() => p && onOpenPatient(p.id)} className="font-bold text-sm text-ink hover:text-jade-deep cursor-pointer transition-colors">
+                      {p?.name}
+                    </button>
+                    <p className="text-[11px] text-soft mt-0.5 truncate flex items-center gap-1.5">
+                      <IconCalendarPlus className="w-3 h-3 shrink-0" />
+                      {f.reason}
+                    </p>
+                  </div>
+                  <span className="chip bg-mist text-soft hidden sm:inline-flex">
+                    <span className="w-1.5 h-1.5 rounded-full" style={{ background: d?.color }} />
+                    {d?.name}
+                  </span>
+                  <div className="text-center min-w-24">
+                    <p className="stat-num text-xs text-ink">{fmtDate(f.dueDate)}</p>
+                    <span className={`chip mt-1 ${dueTone(f)}`}>{f.status === "pending" ? dueLabel(f.dueDate) : FU_META[f.status].label}</span>
+                  </div>
+                  {linkedAppt && (
+                    <span className="chip bg-jade-soft text-jade-deep hidden md:inline-flex">
+                      <IconClock className="w-3 h-3" />
+                      موعد {fmtDate(linkedAppt.date)} {linkedAppt.time}
+                    </span>
+                  )}
+                  <Badge cls={FU_META[f.status].cls}>
+                    <span className="w-1.5 h-1.5 rounded-full" style={{ background: FU_META[f.status].dot }} />
+                    {FU_META[f.status].label}
+                  </Badge>
+                  <div className="flex items-center gap-1.5 ms-auto">
+                    {f.status === "pending" && (
+                      <>
+                        <button onClick={() => bookFollowUp(f)} className="text-[11px] font-bold text-white bg-jade hover:bg-jade-deep rounded-md px-3 py-2 cursor-pointer transition-colors inline-flex items-center gap-1.5">
+                          <IconCalendarPlus className="w-3.5 h-3.5" />
+                          حجز موعد
+                        </button>
+                        <button onClick={() => arrive(f)} className="text-[11px] font-bold text-[#1d6b47] bg-mint-soft hover:bg-mint hover:text-white rounded-md px-2.5 py-2 cursor-pointer transition-colors">
+                          وصل
+                        </button>
+                        <button onClick={() => postpone(f)} className="text-[11px] font-bold text-soft bg-mist hover:bg-line rounded-md px-2.5 py-2 cursor-pointer transition-colors" title="تأجيل أسبوع">
+                          +7 أيام
+                        </button>
+                      </>
+                    )}
+                    {f.status === "booked" && (
+                      <button onClick={() => arrive(f)} className="text-[11px] font-bold text-[#1d6b47] bg-mint-soft hover:bg-mint hover:text-white rounded-md px-2.5 py-2 cursor-pointer transition-colors">
+                        وصل
+                      </button>
+                    )}
+                    <TwoStepDelete
+                      onConfirm={() => {
+                        dispatch({ type: "DELETE_FOLLOWUP", id: f.id });
+                        push("warn", "حُذفت العودة", f.reason);
+                      }}
+                    />
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
     </div>
+  );
+}
+
+/* ============================ تبويب: الجلسات المكتملة ============================ */
+
+function HistoryView({ sessions, onOpenPatient }: { sessions: import("../store").ClinicalSession[]; onOpenPatient: (id: string) => void }) {
+  const { db, patientById, serviceById, doctorById } = useStore();
+  const money = useMoney();
+  const [docFilter, setDocFilter] = useState("all");
+  const [openId, setOpenId] = useState<string | null>(null);
+  const [fuFor, setFuFor] = useState<string | null>(null);
+
+  const list = useMemo(
+    () =>
+      sessions
+        .filter((s) => docFilter === "all" || s.doctorId === docFilter)
+        .sort((a, b) => (b.endedAt ?? "").localeCompare(a.endedAt ?? "")),
+    [sessions, docFilter]
+  );
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          onClick={() => setDocFilter("all")}
+          className={`h-9 px-3.5 rounded-lg text-[11px] font-bold cursor-pointer transition-all border ${
+            docFilter === "all" ? "bg-pine text-white border-pine shadow-sm" : "bg-white text-soft border-line hover:border-jade/50"
+          }`}
+        >
+          كل الأطباء
+        </button>
+        {db.doctors.map((d) => (
+          <button
+            key={d.id}
+            onClick={() => setDocFilter(d.id)}
+            className={`h-9 px-3.5 rounded-lg text-[11px] font-bold cursor-pointer transition-all border inline-flex items-center gap-1.5 ${
+              docFilter === d.id ? "bg-pine text-white border-pine shadow-sm" : "bg-white text-soft border-line hover:border-jade/50"
+            }`}
+          >
+            <span className="w-1.5 h-1.5 rounded-full" style={{ background: d.color }} />
+            {d.name}
+          </button>
+        ))}
+      </div>
+
+      {list.length === 0 ? (
+        <div className="card">
+          <EmptyState icon={<IconCheck className="w-6 h-6" />} title="لا جلسات مكتملة" desc="عند إنهاء جلسة علاج من محطة العمل ستظهر هنا بكل تفاصيلها." />
+        </div>
+      ) : (
+        <ul className="space-y-3">
+          {list.map((s, i) => {
+            const p = patientById(s.patientId);
+            const d = doctorById(s.doctorId);
+            const inv = s.invoiceId ? db.invoices.find((x) => x.id === s.invoiceId) : undefined;
+            const invTotal = inv ? invoiceTotal(inv) : 0;
+            const val = s.procedures.reduce((sum, pr) => sum + (serviceById(pr.serviceId)?.price ?? 0), 0);
+            const fu = s.fuId ? db.followUps.find((f) => f.id === s.fuId) : undefined;
+            const fuOverdue = !!fu && fu.status === "pending" && fu.dueDate < today(0);
+            const isOpen = openId === s.id;
+            return (
+              <li key={s.id} className={`card p-4 anim-fade transition-all ${isOpen ? "!border-jade/60 shadow-[0_12px_30px_-14px_rgba(11,47,43,0.3)]" : "card-hover"}`} style={{ animationDelay: `${i * 50}ms`, borderInlineStartWidth: 4, borderInlineStartColor: d?.color }}>
+                <div className="flex flex-wrap items-center gap-3 cursor-pointer" onClick={() => setOpenId(isOpen ? null : s.id)}>
+                  <button onClick={(e) => { e.stopPropagation(); p && onOpenPatient(p.id); }} className="cursor-pointer shrink-0">
+                    <Avatar name={p?.name ?? "؟"} size="w-11 h-11 text-sm" />
+                  </button>
+                  <div className="flex-1 min-w-56">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <button onClick={() => p && onOpenPatient(p.id)} className="font-bold text-sm text-ink hover:text-jade-deep cursor-pointer transition-colors">
+                        {p?.name}
+                      </button>
+                      <span className="text-[10px] font-bold text-soft">· {d?.name}</span>
+                    </div>
+                    <p className="text-[11px] text-soft mt-1 truncate">
+                      {s.procedures.map((pr) => serviceById(pr.serviceId)?.name).join(" · ") || "استشارة وفحص"}
+                      {s.diagnosis ? ` — ${s.diagnosis}` : ""}
+                    </p>
+                    <div className="flex items-center gap-1.5 flex-wrap mt-2">
+                      {s.procedures.filter((pr) => pr.tooth).map((pr, j) => (
+                        <span key={j} className="chip bg-amber-soft text-[#a06410]">
+                          <IconTooth className="w-3 h-3" />
+                          سن {pr.tooth}
+                        </span>
+                      ))}
+                      {s.meds.length > 0 && (
+                        <span className="chip bg-sky-soft text-sky">
+                          <IconSpark className="w-3 h-3" />
+                          روشتة {s.meds.length} أدوية
+                        </span>
+                      )}
+                      {inv && (
+                        <span className="chip bg-mint-soft text-[#1d6b47]">
+                          <IconReceipt className="w-3 h-3" />
+                          {inv.number} · {money(val)}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="text-end shrink-0">
+                    <p className="stat-num text-sm text-ink">{fmtDate(s.date)}</p>
+                    <p className="stat-num text-[11px] text-soft mt-0.5" dir="ltr">
+                      {fmtClock(s.startedAt)}–{fmtClock(s.endedAt!)}
+                    </p>
+                    <span className="chip bg-mist text-soft mt-1.5">
+                      <IconClock className="w-3 h-3" />
+                      {fmtDur(new Date(s.endedAt!).getTime() - new Date(s.startedAt).getTime())}
+                    </span>
+                  </div>
+                  <span className={`icon-btn transition-transform duration-300 ${isOpen ? "rotate-180 !text-jade-deep" : ""}`} aria-label="التفاصيل">
+                    <IconChevronDown className="w-5 h-5" />
+                  </span>
+                </div>
+
+                {/* التفاصيل الموسعة: تقرير العمل وكل ما تم في الجلسة */}
+                {isOpen && (
+                  <div className="anim-pop mt-4 pt-4 border-t border-line/70 grid md:grid-cols-2 gap-5">
+                    <div className="space-y-4">
+                      <div>
+                        <p className="label !mb-1.5">تقرير العمل السريري</p>
+                        {s.summary.trim() ? (
+                          <p className="text-[12.5px] leading-relaxed text-ink bg-mist/70 border border-line rounded-lg px-3.5 py-3 whitespace-pre-line">
+                            {s.summary}
+                          </p>
+                        ) : (
+                          <p className="text-xs text-soft bg-mist/60 rounded-lg px-3.5 py-3">لم يُكتب تقرير لهذه الجلسة.</p>
+                        )}
+                      </div>
+                      <div>
+                        <p className="label !mb-1.5">الإجراءات المنفذة ({s.procedures.length})</p>
+                        {s.procedures.length === 0 ? (
+                          <p className="text-xs text-soft">استشارة وفحص فقط.</p>
+                        ) : (
+                          <ul className="space-y-1.5">
+                            {s.procedures.map((pr, j) => {
+                              const sv = serviceById(pr.serviceId);
+                              return (
+                                <li key={j} className="flex items-center gap-2 text-xs font-semibold text-ink">
+                                  <span className="w-2 h-2 rounded-full shrink-0" style={{ background: sv?.color }} />
+                                  {sv?.name}
+                                  {pr.tooth && <span className="chip bg-amber-soft text-[#a06410] !py-0.5"><IconTooth className="w-3 h-3" /> سن {pr.tooth}</span>}
+                                  <span className="stat-num text-soft ms-auto">{money(sv?.price ?? 0)}</span>
+                                </li>
+                              );
+                            })}
+                          </ul>
+                        )}
+                      </div>
+                      {s.meds.length > 0 && (
+                        <div>
+                          <p className="label !mb-1.5">الأدوية الموصوفة</p>
+                          <div className="flex flex-wrap gap-1.5">
+                            {s.meds.map((m, j) => (
+                              <span key={j} className="chip bg-sky-soft text-sky">{m.name} — {m.dose}</span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                    <div className="space-y-4">
+                      <div>
+                        <p className="label !mb-1.5">الأسنان المعدَّلة ({s.teethTreated.length})</p>
+                        {s.teethTreated.length === 0 ? (
+                          <p className="text-xs text-soft">لا تغييرات على خريطة الأسنان.</p>
+                        ) : (
+                          <div className="flex flex-wrap gap-1.5">
+                            {s.teethTreated.map((t, j) => (
+                              <span key={j} className="chip" style={{ background: TOOTH_META[t.status].fill === "#ffffff" ? "#eef4f2" : TOOTH_META[t.status].fill, color: TOOTH_META[t.status].stroke }}>
+                                سن {t.tooth} — {TOOTH_META[t.status].label}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                      <div>
+                        <p className="label !mb-1.5">الفاتورة</p>
+                        {inv ? (
+                          <div className="rounded-lg border border-line bg-white px-3.5 py-2.5 text-xs space-y-1">
+                            <div className="flex justify-between"><span className="text-soft font-semibold">الرقم</span><b className="stat-num" dir="ltr">{inv.number}</b></div>
+                            <div className="flex justify-between"><span className="text-soft font-semibold">الإجمالي</span><b className="stat-num">{money(invTotal)}</b></div>
+                            <div className="flex justify-between"><span className="text-soft font-semibold">المدفوع</span><b className="stat-num text-mint">{money(inv.paid)}</b></div>
+                            <div className="flex justify-between border-t border-line/70 pt-1"><span className="text-soft font-semibold">المتبقي</span><b className={`stat-num ${invTotal - inv.paid > 0 ? "text-coral" : "text-mint"}`}>{money(Math.max(0, invTotal - inv.paid))}</b></div>
+                          </div>
+                        ) : (
+                          <p className="text-xs text-soft">جلسة بدون فوترة.</p>
+                        )}
+                      </div>
+                      <div>
+                        <p className="label !mb-1.5">العودة المرتبطة بالجلسة</p>
+                        {fu ? (
+                          <span className={`chip ${fu.status === "done" ? "bg-mint-soft text-[#1d6b47]" : fu.status === "booked" ? "bg-sky-soft text-sky" : fuOverdue ? "bg-coral-soft text-coral" : "bg-amber-soft text-[#a06410]"}`}>
+                            <span className="w-1.5 h-1.5 rounded-full bg-current" />
+                            {fu.status === "done" ? "عودة مكتملة" : fu.status === "booked" ? `عودة محجوزة — ${fmtDate(fu.dueDate)}` : fuOverdue ? `عودة متأخرة — ${fmtDate(fu.dueDate)}` : `عودة مقررة — ${fmtDate(fu.dueDate)}`}
+                          </span>
+                        ) : (
+                          <button onClick={(e) => { e.stopPropagation(); setFuFor(s.patientId); }} className="btn-soft !h-8 !px-3 !text-[11px]">
+                            <IconCalendarPlus className="w-3.5 h-3.5" />
+                            جدولة عودة متابعة
+                          </button>
+                        )}
+                        <p className="text-[10px] text-soft mt-1.5">{fu ? fu.reason : "لم تُسجَّل عودة — يمكن جدولتها الآن وستظهر في تبويب العودات."}</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      {fuFor && <FollowUpModal patientId={fuFor} onClose={() => setFuFor(null)} />}
+    </div>
+  );
+}
+
+/* ============================ نافذة: عودة جديدة ============================ */
+
+const QUICK_REASONS = [
+  "مراجعة عامة",
+  "تنظيف دوري كل 6 أشهر",
+  "فك الغرز ومراجعة الجرح",
+  "تركيب التاج بعد علاج العصب",
+  "موعد شد التقويم الشهري",
+  "كشف مرحلة الالتئام للزرعة",
+  "مراجعة ما بعد الخلع",
+];
+
+export function FollowUpModal({
+  patientId,
+  onClose,
+  defaultDoctor,
+}: {
+  patientId?: string;
+  onClose: () => void;
+  defaultDoctor?: string;
+}) {
+  const { db, dispatch, patientById } = useStore();
+  const { apptScope } = useAuth();
+  const { push } = useToast();
+  const [pid, setPid] = useState(patientId ?? "");
+  const [doctorId, setDoctorId] = useState(apptScope ?? defaultDoctor ?? "d1");
+  const [reason, setReason] = useState("");
+  const [dueDate, setDueDate] = useState(today(7));
+  const [notes, setNotes] = useState("");
+  const [err, setErr] = useState("");
+
+  const save = () => {
+    if (!pid) return setErr("اختر المريض أولاً.");
+    if (reason.trim().length < 3) return setErr("اكتب سبب العودة.");
+    if (!dueDate) return setErr("حدد تاريخ الاستحقاق.");
+    dispatch({
+      type: "ADD_FOLLOWUP",
+      f: { id: uid(), patientId: pid, doctorId, reason: reason.trim(), dueDate, status: "pending", createdAt: new Date().toISOString(), notes: notes.trim() || undefined },
+    });
+    push("success", "جُدولت العودة", `${patientById(pid)?.name} — ${reason.trim()} · ${fmtDate(dueDate)}`);
+    onClose();
+  };
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title="جدولة عودة للمتابعة"
+      subtitle="ستظهر في تبويب «العودات والمتابعة» ويُنبَّه الفريق عند استحقاقها"
+      footer={
+        <>
+          <button className="btn-ghost" onClick={onClose}>إلغاء</button>
+          <button className="btn-primary" onClick={save}>
+            <IconCalendarPlus className="w-4 h-4" />
+            جدولة العودة
+          </button>
+        </>
+      }
+    >
+      <div className="grid grid-cols-2 gap-4">
+        <div className="col-span-2">
+          <Field label="المريض *">
+            <TSelect value={pid} onChange={(e) => setPid(e.target.value)} disabled={!!patientId}>
+              <option value="">— اختر من السجل —</option>
+              {db.patients.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name} · {p.phone}
+                </option>
+              ))}
+            </TSelect>
+          </Field>
+        </div>
+        <div className="col-span-2">
+          <Field label="سبب العودة *">
+            <TInput value={reason} onChange={(e) => setReason(e.target.value)} placeholder="مثال: تركيب التاج بعد علاج العصب" />
+            <div className="flex flex-wrap gap-1.5 mt-2">
+              {QUICK_REASONS.map((r) => (
+                <button key={r} onClick={() => setReason(r)} className={`chip cursor-pointer transition-colors ${reason === r ? "bg-jade text-white" : "bg-mist text-soft hover:bg-jade-soft hover:text-jade-deep"}`}>
+                  {r}
+                </button>
+              ))}
+            </div>
+          </Field>
+        </div>
+        <Field label="طبيب المتابعة">
+          <TSelect value={doctorId} onChange={(e) => setDoctorId(e.target.value)} disabled={!!apptScope}>
+            {db.doctors.map((d) => (
+              <option key={d.id} value={d.id}>
+                {d.name} — {d.specialty}
+              </option>
+            ))}
+          </TSelect>
+        </Field>
+        <Field label="تاريخ الاستحقاق *">
+          <TInput type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
+        </Field>
+        <div className="col-span-2">
+          <Field label="ملاحظات">
+            <TArea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="تفاصيل تهم فريق الاستقبال عند الاتصال بالمريض…" />
+          </Field>
+        </div>
+      </div>
+      {err && <p className="mt-3 text-xs font-bold text-coral bg-coral-soft rounded-lg px-3 py-2.5 anim-pop">{err}</p>}
+    </Modal>
   );
 }
 
@@ -210,6 +961,7 @@ export function AddAppointmentModal({
   defaultDate?: string;
 }) {
   const { db, dispatch, patientById, serviceById } = useStore();
+  const { apptScope } = useAuth();
   const money = useMoney();
   const { push } = useToast();
   const [patientId, setPatientId] = useState("");
@@ -224,7 +976,7 @@ export function AddAppointmentModal({
     if (open) {
       setPatientId(defaultPatient ?? "");
       setServiceId("");
-      setDoctorId("d1");
+      setDoctorId(apptScope ?? "d1");
       setDate(defaultDate ?? today(0));
       setTime(defaultTime ?? "10:00");
       setNotes("");
@@ -233,13 +985,16 @@ export function AddAppointmentModal({
   }, [open, defaultPatient, defaultTime, defaultDate]);
 
   const times = useMemo(() => {
+    const { workStart, workEnd } = clinicOf(db);
+    const s = parseInt(workStart.slice(0, 2), 10);
+    const e = parseInt(workEnd.slice(0, 2), 10);
     const arr: string[] = [];
-    for (let h = 9; h <= 20; h++) {
+    for (let h = s; h < e; h++) {
       arr.push(`${String(h).padStart(2, "0")}:00`);
       arr.push(`${String(h).padStart(2, "0")}:30`);
     }
-    return arr;
-  }, []);
+    return arr.length ? arr : ["09:00", "09:30", "10:00", "10:30", "11:00", "11:30", "12:00", "12:30"];
+  }, [db]);
 
   const busy = (t: string) => db.appointments.some((a) => a.date === date && a.doctorId === doctorId && a.time === t && a.status !== "cancelled");
 
@@ -283,12 +1038,12 @@ export function AddAppointmentModal({
           <TSelect value={serviceId} onChange={(e) => setServiceId(e.target.value)}>
             <option value="">— اختر —</option>
             {db.services.filter((s) => s.active).map((s) => (
-              <option key={s.id} value={s.id}>{s.name} — {s.price} ر.س</option>
+              <option key={s.id} value={s.id}>{s.name} — {money(s.price)}</option>
             ))}
           </TSelect>
         </Field>
-        <Field label="الطبيب">
-          <TSelect value={doctorId} onChange={(e) => setDoctorId(e.target.value)}>
+        <Field label="الطبيب" hint={apptScope ? "مقيّد بطبيبك حسب صلاحياتك — تغيّره الإدارة" : undefined}>
+          <TSelect value={doctorId} onChange={(e) => setDoctorId(e.target.value)} disabled={!!apptScope} className={apptScope ? "opacity-70 cursor-not-allowed" : ""}>
             {db.doctors.map((d) => (
               <option key={d.id} value={d.id}>{d.name} — {d.specialty}</option>
             ))}

@@ -6,7 +6,6 @@ import {
   monthName,
   relTime,
   today,
-  useAuth,
   useMoney,
   useStore,
 } from "../store";
@@ -41,7 +40,6 @@ const greeting = () => {
 
 export default function Dashboard({ onOpenPatient, onQuickBook, onNewPatient, onNav }: Props) {
   const { db, patientById, serviceById, doctorById, patientBalance } = useStore();
-  const { user, patientScope, apptScope } = useAuth();
   const money = useMoney();
   const cur = db.currencies.find((c) => c.code === db.defaultCurrency) ?? db.currencies[0];
   const rate = cur?.rate || 1;
@@ -49,10 +47,9 @@ export default function Dashboard({ onOpenPatient, onQuickBook, onNewPatient, on
   const todayAppts = useMemo(
     () =>
       db.appointments
-        .filter((a) => (apptScope ? a.doctorId === apptScope : true))
         .filter((a) => a.date === today(0))
         .sort((a, b) => a.time.localeCompare(b.time)),
-    [db.appointments, apptScope]
+    [db.appointments]
   );
   const doneToday = todayAppts.filter((a) => a.status === "done").length;
   const activeToday = todayAppts.filter((a) => a.status !== "cancelled").length;
@@ -94,12 +91,11 @@ export default function Dashboard({ onOpenPatient, onQuickBook, onNewPatient, on
   const cariesPatients = useMemo(
     () =>
       db.patients
-        .filter((p) => (patientScope ? patientScope.has(p.id) : true))
         .map((p) => ({ p, n: Object.values(p.teeth).filter((s) => s === "caries").length }))
         .filter((x) => x.n > 0)
         .sort((a, b) => b.n - a.n)
         .slice(0, 4),
-    [db.patients, patientScope]
+    [db.patients]
   );
 
   const stats = [
@@ -170,12 +166,9 @@ export default function Dashboard({ onOpenPatient, onQuickBook, onNewPatient, on
       <div className="anim-rise flex flex-wrap items-end justify-between gap-4">
         <div>
           <p className="text-sm text-soft font-medium">{fmtDateFull(today(0))}</p>
-          <h1 className="font-display font-bold text-3xl sm:text-4xl text-ink mt-1 leading-tight flex items-center gap-3 flex-wrap">
-            {greeting()}، {user?.name ?? ""}
+          <h1 className="font-display font-bold text-3xl sm:text-4xl text-ink mt-1 leading-tight flex items-center gap-3">
+            {greeting()}، د. عبدالله
             <span className="inline-flex text-jade"><IconTooth className="w-8 h-8" /></span>
-            {apptScope && (
-              <span className="chip bg-amber-soft text-[#a06410] !py-1.5 !text-[10px]">جدولك الخاص فقط</span>
-            )}
           </h1>
           <p className="text-sm text-soft mt-1.5">
             لديك <b className="text-jade-deep">{activeToday - doneToday}</b> موعداً متبقياً اليوم — الجدول يسير بسلاسة.

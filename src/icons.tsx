@@ -203,6 +203,8 @@ export const IconIdCard = (p: P) =>
       <path d="M6 15.5c.5-1.4 1.4-2 2.5-2s2 .6 2.5 2M14 9.5h4M14 12.5h4M14 15.5h2.5" />
     </>
   );
+export const IconPulse = (p: P) => base(p, <path d="M3 12h4l2.5-6 4.5 12 2.5-6H21" />);
+
 export const IconStetho = (p: P) =>
   base(
     p,
@@ -210,6 +212,81 @@ export const IconStetho = (p: P) =>
       <path d="M5 4v5a5 5 0 0 0 10 0V4" />
       <path d="M10 14v2.5a4.5 4.5 0 0 0 9 0V14" />
       <circle cx="19" cy="11.5" r="2.2" />
+    </>
+  );
+/* زرعة سن (لولب) */
+export const IconImplant = (p: P) =>
+  base(
+    p,
+    <>
+      <path d="M9.5 4h5l-.6 3.5h-3.8L9.5 4Z" />
+      <path d="M10.3 9.5h3.4l-.4 3h-2.6l-.4-3ZM10.7 14.5h2.6l-.3 2.5h-2l-.3-2.5ZM11 19h2l-.4 2h-1.2L11 19Z" />
+      <path d="M9.8 8h4.4M10.2 12.6h3.6" />
+    </>
+  );
+/* تقويم (سلك وأقواس) */
+export const IconBraces = (p: P) =>
+  base(
+    p,
+    <>
+      <path d="M3.5 12c2.5-1.5 5.5-1.5 8.5 0s6 1.5 8.5 0" />
+      <rect x="5.5" y="8.8" width="4" height="4.4" rx="1" />
+      <rect x="10" y="10.3" width="4" height="4.4" rx="1" />
+      <rect x="14.5" y="8.8" width="4" height="4.4" rx="1" />
+    </>
+  );
+/* أشعة (فيلم وسن) */
+export const IconXray = (p: P) =>
+  base(
+    p,
+    <>
+      <rect x="4" y="4" width="16" height="16" rx="2.5" />
+      <path d="M12 7.2c-1.1-.7-2.7-.9-3.7-.1-1.2.9-1.4 2.4-.9 3.7.4 1.1.7 2.2.9 3.4.1 1 .3 2.6 1.4 2.6s1-.9 1.2-2.3c.1-.7.5-1.1 1.1-1.1s1 .4 1.1 1.1c.2 1.4.2 2.3 1.2 2.3s1.3-1.6 1.4-2.6c.2-1.2.5-2.3.9-3.4.5-1.3.3-2.8-.9-3.7-1-.8-2.6-.6-3.7.1Z" />
+    </>
+  );
+export const IconLogout = (p: P) =>
+  base(
+    p,
+    <>
+      <path d="M9 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h3" />
+      <path d="M15 8l4 4-4 4M19 12H9" />
+    </>
+  );
+
+export const IconSettings = (p: P) =>
+  base(
+    p,
+    <>
+      <circle cx="12" cy="12" r="3.2" />
+      <path d="M12 3v2.4M12 18.6V21M3 12h2.4M18.6 12H21M5.5 5.5l1.7 1.7M16.8 16.8l1.7 1.7M18.5 5.5l-1.7 1.7M7.2 16.8l-1.7 1.7" />
+    </>
+  );
+
+export const IconChat = (p: P) =>
+  base(
+    p,
+    <>
+      <path d="M4 6.5A2.5 2.5 0 0 1 6.5 4h11A2.5 2.5 0 0 1 20 6.5v7a2.5 2.5 0 0 1-2.5 2.5H12l-4.5 4v-4h-1A2.5 2.5 0 0 1 4 13.5v-7Z" />
+      <path d="M8 8.5h8M8 11.5h5" />
+    </>
+  );
+
+export const IconBox = (p: P) =>
+  base(
+    p,
+    <>
+      <path d="M3.5 5h17v3.5h-17z" />
+      <path d="M5 8.5V19a1.5 1.5 0 0 0 1.5 1.5h11A1.5 1.5 0 0 0 19 19V8.5" />
+      <path d="M9.5 12.5h5" />
+    </>
+  );
+
+export const IconCopy = (p: P) =>
+  base(
+    p,
+    <>
+      <rect x="8.5" y="8.5" width="11.5" height="11.5" rx="2" />
+      <path d="M15.5 8.5v-2a2 2 0 0 0-2-2h-7a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h2" />
     </>
   );
 
