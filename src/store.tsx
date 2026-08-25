@@ -3,7 +3,7 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useR
 /* ============================== Types ============================== */
 
 export type ToothStatus = "healthy" | "caries" | "filled" | "root" | "crown" | "missing";
-export type ApptStatus = "confirmed" | "waiting" | "inprogress" | "done" | "cancelled";
+export type ApptStatus = "confirmed" | "waiting" | "inprogress" | "done" | "cancelled" | "noshow";
 export type InvoiceStatus = "paid" | "partial" | "unpaid";
 
 export interface Patient {
@@ -71,6 +71,8 @@ export interface Invoice {
   date: string;
   items: InvoiceItem[];
   paid: number;
+  discount?: number;
+  method?: string;
 }
 export interface Activity {
   id: string;
@@ -303,6 +305,9 @@ export interface DB {
   orthoCases: OrthoCase[];
   xrays: XrayRec[];
   followUps: FollowUp[];
+  supplies: SupplyItem[];
+  supplyMoves: SupplyMove[];
+  plans: TreatmentPlan[];
   users: User[];
   settings: ClinicSettings;
   nextInv: number;
@@ -310,6 +315,43 @@ export interface DB {
 
 export const CLINIC_NAME = "عيادة د. عبدالله الشرفي";
 export const CLINIC_LATIN = "AL-SHARAFI DENTAL CLINIC";
+
+/* ---------- المخزون والمستهلكات ---------- */
+export interface SupplyItem {
+  id: string;
+  name: string;
+  category: string;
+  unit: string;
+  qty: number;
+  minQty: number;
+  cost: number;
+  expiry?: string;
+}
+export interface SupplyMove {
+  id: string;
+  itemId: string;
+  delta: number;
+  note: string;
+  date: string; // ISO
+}
+
+/* ---------- خطط العلاج ---------- */
+export interface PlanItem {
+  id: string;
+  name: string;
+  tooth?: string;
+  cost: number;
+  done: boolean;
+}
+export interface TreatmentPlan {
+  id: string;
+  patientId: string;
+  title: string;
+  doctorId: string;
+  created: string;
+  items: PlanItem[];
+  notes?: string;
+}
 
 /* ---------- إعدادات العيادة ---------- */
 export interface ClinicSettings {
@@ -361,6 +403,7 @@ export const APPT_META: Record<ApptStatus, { label: string; cls: string; dot: st
   inprogress: { label: "قيد العلاج", cls: "bg-jade-soft text-jade-deep", dot: "#0d8f83" },
   done: { label: "مكتمل", cls: "bg-mint-soft text-[#1d6b47]", dot: "#2c9c69" },
   cancelled: { label: "ملغي", cls: "bg-coral-soft text-coral", dot: "#d9503a" },
+  noshow: { label: "لم يحضر", cls: "bg-mist text-soft", dot: "#7d8ba0" },
 };
 
 export const INV_META: Record<InvoiceStatus, { label: string; cls: string }> = {
@@ -421,7 +464,11 @@ export const addMinutes = (time: string, mins: number) => {
   return `${pad(Math.floor(t / 60))}:${pad(t % 60)}`;
 };
 
-export const invoiceTotal = (inv: Invoice) => inv.items.reduce((s, i) => s + i.qty * i.price, 0);
+export const invoiceTotal = (inv: Invoice) => {
+  const gross = inv.items.reduce((s, i) => s + i.qty * i.price, 0);
+  return Math.max(0, Math.round(gross * (1 - (inv.discount || 0) / 100)));
+};
+export const PAY_METHODS: Record<string, string> = { cash: "نقداً", card: "بطاقة بنكية", transfer: "حوالة / تحويل" };
 export const invoiceStatus = (inv: Invoice): InvoiceStatus => {
   const t = invoiceTotal(inv);
   if (inv.paid >= t) return "paid";
@@ -681,7 +728,71 @@ function seed(): DB {
     { id: uid(), patientId: "p6", kind: "سيفالومترية", date: today(-40), findings: "تحليل ما قبل التقويم: صنف هيكلي أول مع بروز قاطعي خفيف", doctorId: "d2" },
   ];
 
-  return { patients, doctors, staff, currencies, defaultCurrency: "YER", services, appointments, invoices, activity, expenses, prescriptions, sessions, implants, prosthetics, orthoCases, xrays, followUps, users, settings: DEFAULT_CLINIC_SETTINGS, nextInv: 1043 };
+  const SUP = (name: string, category: string, unit: string, qty: number, minQty: number, cost: number, expiry?: string): SupplyItem =>
+    ({ id: uid(), name, category, unit, qty, minQty, cost, expiry });
+  const supplies: SupplyItem[] = [
+    SUP("أمبولات تخدير ليدوكائين", "تخدير", "علبة 50", 45, 20, 8500, today(240)),
+    SUP("قفازات نتريل وسط", "وقاية", "علبة 100", 8, 15, 12000),
+    SUP("كومبوزيت حشوات A2", "حشوات", "حقنة", 12, 6, 45000, today(300)),
+    SUP("إبر تخدير 30G", "تخدير", "علبة 100", 30, 10, 6000),
+    SUP("أكياس تعقيم ذاتية اللصق", "تعقيم", "رزمة 200", 5, 10, 9500),
+    SUP("شاش معقم", "جراحة", "رزمة", 60, 25, 3500),
+    SUP("بلانكات زيركون", "مختبر", "قرص", 14, 5, 55000),
+    SUP("سيلانت شقوق وقائي", "وقاية", "عبوة", 7, 4, 28000, today(180)),
+    SUP("حمض حفر (إيتش)", "حشوات", "حقنة", 3, 4, 18000),
+    SUP("ماصات لعاب", "استهلاكي عام", "رزمة 100", 100, 40, 5000),
+    SUP("مبارد قنوات روتاري", "علاج عصب", "طقم", 6, 3, 35000),
+    SUP("خيوط جراحية 4/0", "جراحة", "علبة 12", 9, 4, 15000, today(400)),
+  ];
+  const MV = (itemId: string, delta: number, note: string, hoursAgo: number): SupplyMove =>
+    ({ id: uid(), itemId, delta, note, date: new Date(Date.now() - hoursAgo * 3600000).toISOString() });
+  const supplyMoves: SupplyMove[] = [
+    MV(supplies[0].id, 20, "توريد من المورد الطبي", 20),
+    MV(supplies[1].id, -2, "استهلاك يومي — عيادتا 1 و2", 8),
+    MV(supplies[2].id, -1, "حشوة تجميلية — محمد العباسي", 6),
+    MV(supplies[4].id, -1, "تشغيل معقم الأوتوكلاف", 30),
+    MV(supplies[9].id, -5, "استهلاك جلسة تنظيف", 5),
+    MV(supplies[7].id, 4, "توريد وقاية أطفال", 52),
+    MV(supplies[10].id, -1, "علاج عصب — ريام الحميري", 26),
+    MV(supplies[8].id, -1, "تجهيز حشوة", 3),
+    MV(supplies[11].id, 6, "توريد جراحة", 76),
+    MV(supplies[5].id, -3, "خلع ضرس عقل — فهد", 49),
+    MV(supplies[3].id, -10, "مناوبة نهاية الأسبوع", 96),
+    MV(supplies[6].id, 8, "طلبية مختبر الزيركون", 120),
+    MV(supplies[2].id, 5, "توريد حشوات", 140),
+    MV(supplies[1].id, -4, "نفاد جزئي — يلزم طلب عاجل", 2),
+  ];
+  const plans: TreatmentPlan[] = [
+    {
+      id: uid(),
+      patientId: "p2",
+      title: "خطة الابتسامة الشاملة",
+      doctorId: "d1",
+      created: today(-30),
+      notes: "تجميل الجبهة الأمامية العلوية على ثلاث مراحل",
+      items: [
+        { id: uid(), name: "فينير خزفي", tooth: "11", cost: 350000, done: true },
+        { id: uid(), name: "فينير خزفي", tooth: "21", cost: 350000, done: true },
+        { id: uid(), name: "تبييض ضوئي بالعيادة", cost: 60000, done: false },
+        { id: uid(), name: "تنظيف وتلميع نهائي", cost: 15000, done: false },
+      ],
+    },
+    {
+      id: uid(),
+      patientId: "p5",
+      title: "تأهيل الفك السفلي بالزراعة",
+      doctorId: "d3",
+      created: today(-70),
+      notes: "يعوّض الأسنان المفقودة 35-37 بزرعتين وجسر",
+      items: [
+        { id: uid(), name: "زراعة سن Osstem", tooth: "35", cost: 450000, done: true },
+        { id: uid(), name: "زراعة سن Osstem", tooth: "37", cost: 450000, done: false },
+        { id: uid(), name: "جسر زيركون 3 وحدات", tooth: "35–37", cost: 700000, done: false },
+      ],
+    },
+  ];
+
+  return { patients, doctors, staff, currencies, defaultCurrency: "YER", services, appointments, invoices, activity, expenses, prescriptions, sessions, implants, prosthetics, orthoCases, xrays, followUps, supplies, supplyMoves, plans, users, settings: DEFAULT_CLINIC_SETTINGS, nextInv: 1043 };
 }
 
 /* ============================== Store ============================== */
@@ -733,6 +844,12 @@ export type Action =
   | { type: "UPDATE_FOLLOWUP"; f: FollowUp }
   | { type: "DELETE_FOLLOWUP"; id: string }
   | { type: "UPDATE_SETTINGS"; patch: Partial<ClinicSettings> }
+  | { type: "ADD_SUPPLY"; item: SupplyItem }
+  | { type: "MOVE_SUPPLY"; itemId: string; delta: number; note: string }
+  | { type: "DELETE_SUPPLY"; id: string }
+  | { type: "ADD_PLAN"; plan: TreatmentPlan }
+  | { type: "UPDATE_PLAN"; plan: TreatmentPlan }
+  | { type: "DELETE_PLAN"; id: string }
   | { type: "RESET" };
 
 const nowIso = () => new Date().toISOString();
@@ -1033,6 +1150,32 @@ function reducer(db: DB, action: Action): DB {
     case "UPDATE_SETTINGS":
       return { ...db, settings: { ...db.settings, ...action.patch } };
 
+    /* ---------- المخزون ---------- */
+    case "ADD_SUPPLY":
+      return { ...db, supplies: [...db.supplies, action.item] };
+    case "MOVE_SUPPLY": {
+      const item = db.supplies.find((s) => s.id === action.itemId);
+      if (!item) return db;
+      const qty = Math.max(0, item.qty + action.delta);
+      const move: SupplyMove = { id: uid(), itemId: action.itemId, delta: action.delta, note: action.note, date: nowIso() };
+      return {
+        ...db,
+        supplies: db.supplies.map((s) => (s.id === action.itemId ? { ...s, qty } : s)),
+        supplyMoves: [move, ...db.supplyMoves].slice(0, 60),
+        activity: [act(`${action.delta > 0 ? "توريد" : "صرف"} مخزون: ${item.name} (${action.delta > 0 ? "+" : ""}${action.delta})`, "invoice"), ...db.activity].slice(0, 30),
+      };
+    }
+    case "DELETE_SUPPLY":
+      return { ...db, supplies: db.supplies.filter((s) => s.id !== action.id) };
+
+    /* ---------- خطط العلاج ---------- */
+    case "ADD_PLAN":
+      return { ...db, plans: [action.plan, ...db.plans] };
+    case "UPDATE_PLAN":
+      return { ...db, plans: db.plans.map((p) => (p.id === action.plan.id ? action.plan : p)) };
+    case "DELETE_PLAN":
+      return { ...db, plans: db.plans.filter((p) => p.id !== action.id) };
+
     case "RESET":
       return seed();
     default:
@@ -1060,6 +1203,9 @@ function load(): DB {
       orthoCases: db.orthoCases ?? [],
       xrays: db.xrays ?? [],
       followUps: db.followUps ?? [],
+      supplies: db.supplies ?? [],
+      supplyMoves: db.supplyMoves ?? [],
+      plans: db.plans ?? [],
       settings: { ...DEFAULT_CLINIC_SETTINGS, ...(db.settings ?? {}) },
       users: (db.users?.length ? db.users : seed().users).map((u) =>
         // طاقم الاستقبال والمساعدة يرى السجل والجدول كاملين دائماً

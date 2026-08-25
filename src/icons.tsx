@@ -262,6 +262,25 @@ export const IconSettings = (p: P) =>
     </>
   );
 
+export const IconChat = (p: P) =>
+  base(
+    p,
+    <>
+      <path d="M4 6.5A2.5 2.5 0 0 1 6.5 4h11A2.5 2.5 0 0 1 20 6.5v7a2.5 2.5 0 0 1-2.5 2.5H12l-4.5 4v-4h-1A2.5 2.5 0 0 1 4 13.5v-7Z" />
+      <path d="M8 8.5h8M8 11.5h5" />
+    </>
+  );
+
+export const IconBox = (p: P) =>
+  base(
+    p,
+    <>
+      <path d="M3.5 5h17v3.5h-17z" />
+      <path d="M5 8.5V19a1.5 1.5 0 0 0 1.5 1.5h11A1.5 1.5 0 0 0 19 19V8.5" />
+      <path d="M9.5 12.5h5" />
+    </>
+  );
+
 export const IconCopy = (p: P) =>
   base(
     p,

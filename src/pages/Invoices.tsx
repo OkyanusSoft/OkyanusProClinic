@@ -4,6 +4,7 @@ import {
   invoiceStatus,
   invoiceTotal,
   INV_META,
+  PAY_METHODS,
   today,
   uid,
   useMoney,
@@ -128,11 +129,17 @@ export default function InvoicesPage() {
                           {inv.items.map((it) => `${serviceById(it.serviceId)?.name ?? "خدمة"} ×${it.qty}`).join("، ")}
                         </span>
                       </td>
-                      <td className="td stat-num font-bold text-ink">{money(total)}</td>
+                      <td className="td">
+                        <span className="stat-num font-bold text-ink block">{money(total)}</span>
+                        {inv.discount ? <span className="chip bg-amber-soft text-[#a06410] !py-0.5 mt-1">خصم {inv.discount}%</span> : null}
+                      </td>
                       <td className="td">
                         {rem > 0 ? <span className="stat-num font-bold text-coral">{money(rem)}</span> : <span className="text-mint font-bold text-xs">—</span>}
                       </td>
-                      <td className="td"><Badge cls={INV_META[st].cls}>{INV_META[st].label}</Badge></td>
+                      <td className="td">
+                        <Badge cls={INV_META[st].cls}>{INV_META[st].label}</Badge>
+                        <span className="chip bg-mist text-soft mt-1.5 !py-0.5">{PAY_METHODS[inv.method ?? "cash"]}</span>
+                      </td>
                       <td className="td">
                         <div className="flex items-center gap-1.5">
                           {rem > 0 && (
@@ -179,6 +186,8 @@ function NewInvoiceModal({ open, onClose }: { open: boolean; onClose: () => void
   const [patientId, setPatientId] = useState("");
   const [rows, setRows] = useState<{ serviceId: string; qty: number }[]>([{ serviceId: "", qty: 1 }]);
   const [paid, setPaid] = useState("");
+  const [discount, setDiscount] = useState("");
+  const [method, setMethod] = useState("cash");
   const [err, setErr] = useState("");
 
   useEffect(() => {
@@ -186,11 +195,15 @@ function NewInvoiceModal({ open, onClose }: { open: boolean; onClose: () => void
       setPatientId("");
       setRows([{ serviceId: "", qty: 1 }]);
       setPaid("");
+      setDiscount("");
+      setMethod("cash");
       setErr("");
     }
   }, [open]);
 
-  const total = rows.reduce((s, r) => s + (serviceById(r.serviceId)?.price ?? 0) * r.qty, 0);
+  const gross = rows.reduce((s, r) => s + (serviceById(r.serviceId)?.price ?? 0) * r.qty, 0);
+  const discPct = Math.min(100, Math.max(0, Number(discount) || 0));
+  const total = Math.round(gross * (1 - discPct / 100));
 
   const save = () => {
     if (!patientId) return setErr("اختر المريض.");
@@ -204,9 +217,11 @@ function NewInvoiceModal({ open, onClose }: { open: boolean; onClose: () => void
       date: today(0),
       items: valid.map((r) => ({ serviceId: r.serviceId, qty: r.qty, price: serviceById(r.serviceId)!.price })),
       paid: paidNum,
+      discount: discPct || undefined,
+      method,
     };
     dispatch({ type: "ADD_INVOICE", inv });
-    push("success", `أُنشئت الفاتورة ${inv.number}`, `الإجمالي ${money(total)}${paidNum > 0 ? ` — دُفع منها ${money(paidNum)}` : ""}`);
+    push("success", `أُنشئت الفاتورة ${inv.number}`, `الإجمالي ${money(total)}${discPct ? ` (بعد خصم ${discPct}%)` : ""}${paidNum > 0 ? ` — دُفع منها ${money(paidNum)}` : ""}`);
     onClose();
   };
 
@@ -220,7 +235,7 @@ function NewInvoiceModal({ open, onClose }: { open: boolean; onClose: () => void
       footer={
         <>
           <div className="me-auto text-start">
-            <p className="text-[11px] font-bold text-soft">الإجمالي المستحق</p>
+            <p className="text-[11px] font-bold text-soft">الإجمالي المستحق{discPct ? ` (خصم ${discPct}%)` : ""}</p>
             <p className="stat-num text-xl text-jade-deep">{money(total)}</p>
           </div>
           <button className="btn-ghost" onClick={onClose}>إلغاء</button>
@@ -274,9 +289,26 @@ function NewInvoiceModal({ open, onClose }: { open: boolean; onClose: () => void
           </button>
         </div>
 
+        <div className="grid grid-cols-2 gap-4">
+          <Field label="خصم (%)" hint="يطبَّق على إجمالي البنود">
+            <TInput type="number" min={0} max={100} value={discount} onChange={(e) => setDiscount(e.target.value)} placeholder="0" />
+          </Field>
+          <Field label="طريقة الدفع">
+            <TSelect value={method} onChange={(e) => setMethod(e.target.value)}>
+              {Object.entries(PAY_METHODS).map(([k, v]) => (
+                <option key={k} value={k}>{v}</option>
+              ))}
+            </TSelect>
+          </Field>
+        </div>
         <Field label="الدفعة المقدمة (اختياري)" hint="اتركه فارغاً لتسجيل الفاتورة كغير مدفوعة">
           <TInput type="number" min={0} value={paid} onChange={(e) => setPaid(e.target.value)} placeholder="0" />
         </Field>
+        {discPct > 0 && (
+          <p className="text-xs font-bold text-jade-deep bg-jade-soft rounded-lg px-3.5 py-2.5 anim-pop">
+            الإجمالي قبل الخصم {money(gross)} — بعد خصم {discPct}% يصبح {money(total)}
+          </p>
+        )}
         {err && <p className="text-xs font-bold text-coral bg-coral-soft rounded-lg px-3 py-2.5 anim-pop">{err}</p>}
       </div>
     </Modal>

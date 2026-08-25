@@ -1,5 +1,5 @@
 import React from "react";
-import { clinicOf, fmtDate, fmtMoney, invoiceTotal, useMoney, useStore, type Invoice, type Prescription } from "../store";
+import { clinicOf, fmtDate, fmtMoney, invoiceTotal, PAY_METHODS, useMoney, useStore, type Invoice, type Prescription } from "../store";
 import { IconPrinter, IconX, Logo } from "../icons";
 import { Modal } from "./ui";
 
@@ -112,10 +112,17 @@ export function InvoicePrint({ inv }: { inv: Invoice }) {
         </tbody>
       </table>
       <div className="flex justify-end mt-4">
-        <div className="w-64 text-sm space-y-1.5">
-          <div className="flex justify-between"><span className="text-soft">الإجمالي:</span><b className="stat-num">{money(total)}</b></div>
+        <div className="w-72 text-sm space-y-1.5">
+          {inv.discount ? (
+            <>
+              <div className="flex justify-between"><span className="text-soft">الإجمالي قبل الخصم:</span><b className="stat-num">{money(total / (1 - inv.discount / 100))}</b></div>
+              <div className="flex justify-between text-[#a06410]"><span>الخصم ({inv.discount}%):</span><b className="stat-num">− {money(total / (1 - inv.discount / 100) - total)}</b></div>
+            </>
+          ) : null}
+          <div className="flex justify-between"><span className="text-soft">الإجمالي المستحق:</span><b className="stat-num">{money(total)}</b></div>
           <div className="flex justify-between text-mint"><span>المدفوع:</span><b className="stat-num">{money(inv.paid)}</b></div>
           <div className="flex justify-between border-t-2 border-pine pt-1.5 text-base"><span className="font-bold">المتبقي:</span><b className="stat-num text-coral">{money(rem)}</b></div>
+          <div className="flex justify-between text-[11px] pt-1"><span className="text-soft">طريقة الدفع:</span><b>{PAY_METHODS[inv.method ?? "cash"]}</b></div>
         </div>
       </div>
       <p className="text-[10px] text-soft mt-5 leading-relaxed">{clinic.invoiceFooter}</p>

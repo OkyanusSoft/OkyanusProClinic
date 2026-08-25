@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { APPT_META, AuthProvider, clinicOf, invoiceTotal, ROLE_META, StoreProvider, today, useAuth, useStore } from "./store";
 import {
   IconBell,
+  IconBox,
   IconCalendar,
   IconCoins,
   IconGrid,
@@ -33,9 +34,10 @@ import ReportsPage from "./pages/Reports";
 import SessionPage from "./pages/Session";
 import UsersPage from "./pages/Users";
 import SettingsPage from "./pages/Settings";
+import InventoryPage from "./pages/Inventory";
 import Login from "./pages/Login";
 
-type Tab = "dashboard" | "appointments" | "session" | "patients" | "invoices" | "expenses" | "reports" | "services" | "team" | "currencies" | "users" | "settings";
+type Tab = "dashboard" | "appointments" | "session" | "patients" | "invoices" | "inventory" | "expenses" | "reports" | "services" | "team" | "currencies" | "users" | "settings";
 
 const NAV: { key: Tab; label: string; icon: (c: string) => React.ReactNode }[] = [
   { key: "dashboard", label: "لوحة التحكم", icon: (c) => <IconGrid className={c} /> },
@@ -43,6 +45,7 @@ const NAV: { key: Tab; label: string; icon: (c: string) => React.ReactNode }[] =
   { key: "session", label: "محطة عمل الدكتور", icon: (c) => <IconPulse className={c} /> },
   { key: "patients", label: "المرضى", icon: (c) => <IconUsers className={c} /> },
   { key: "invoices", label: "الفواتير", icon: (c) => <IconReceipt className={c} /> },
+  { key: "inventory", label: "المخزون والمستهلكات", icon: (c) => <IconBox className={c} /> },
   { key: "services", label: "قائمة الأسعار", icon: (c) => <IconSpark className={c} /> },
   { key: "expenses", label: "المصروفات", icon: (c) => <IconWallet className={c} /> },
   { key: "reports", label: "التقارير", icon: (c) => <IconTrendUp className={c} /> },
@@ -58,6 +61,7 @@ const TITLES: Record<Tab, string> = {
   session: "محطة عمل الدكتور",
   patients: "المرضى",
   invoices: "الفواتير",
+  inventory: "المخزون والمستهلكات",
   services: "قائمة الأسعار",
   expenses: "المصروفات",
   reports: "التقارير",
@@ -93,7 +97,8 @@ function Shell() {
 
   const todayCount = db.appointments.filter((a) => a.date === today(0) && a.status !== "cancelled" && (!apptScope || a.doctorId === apptScope)).length;
   const unpaidCount = db.invoices.filter((i) => i.paid < invoiceTotal(i)).length;
-  const badges: Partial<Record<Tab, number>> = { appointments: todayCount, invoices: unpaidCount };
+  const lowStock = db.supplies.filter((s) => s.qty <= s.minQty).length;
+  const badges: Partial<Record<Tab, number>> = { appointments: todayCount, invoices: unpaidCount, inventory: lowStock || undefined };
 
   const openBook = (patientId?: string, time?: string) =>
     setBook({ open: true, patientId, time, date: today(0) });
@@ -161,6 +166,7 @@ function Shell() {
           {tab === "session" && <SessionPage />}
           {tab === "patients" && <PatientsPage addSignal={addPatientSignal} onOpenPatient={setDrawerId} onBook={(pid) => openBook(pid)} />}
           {tab === "invoices" && <InvoicesPage />}
+          {tab === "inventory" && <InventoryPage />}
           {tab === "services" && <ServicesPage />}
           {tab === "expenses" && <ExpensesPage />}
           {tab === "reports" && <ReportsPage />}

@@ -23,7 +23,9 @@ import {
   IconAlert,
   IconCalendar,
   IconCalendarPlus,
+  IconChat,
   IconCheck,
+  IconCopy,
   IconChevronDown,
   IconClock,
   IconPlus,
@@ -180,6 +182,7 @@ function ScheduleView({
   const { apptScope } = useAuth();
   const { push } = useToast();
   const HOURS = useMemo(() => hoursBetween(clinicOf(db).workStart, clinicOf(db).workEnd), [db]);
+  const [remindFor, setRemindFor] = useState<Appointment | null>(null);
 
   const days = useMemo(() => Array.from({ length: 7 }, (_, i) => today(i)), []);
   const visible = useMemo(
@@ -303,11 +306,14 @@ function ScheduleView({
                             </Drop>
                           </div>
                           <div className="flex items-center justify-between mt-2.5 pt-2.5 border-t border-line/70">
-                            <span className="text-[11px] font-bold text-soft flex items-center gap-1.5">
-                              <span style={{ color: d?.color }} className="inline-flex"><IconStetho className="w-3.5 h-3.5" /></span>
-                              {d?.name}
+                            <span className="text-[11px] font-bold text-soft flex items-center gap-1.5 min-w-0">
+                              <span style={{ color: d?.color }} className="inline-flex shrink-0"><IconStetho className="w-3.5 h-3.5" /></span>
+                              <span className="truncate">{d?.name}</span>
                             </span>
                             <div className="flex items-center gap-1.5">
+                              <button onClick={() => setRemindFor(a)} className="icon-btn !w-7 !h-7 hover:!bg-sky-soft hover:!text-sky" aria-label="رسالة تذكير" title="رسالة تذكير للمريض">
+                                <IconChat className="w-3.5 h-3.5" />
+                              </button>
                               {(a.status === "confirmed" || a.status === "waiting") && (
                                 <button onClick={() => setStatus(a, "inprogress")} className="text-[11px] font-bold text-jade-deep bg-jade-soft hover:bg-jade hover:text-white rounded-md px-2.5 py-1.5 cursor-pointer transition-colors">
                                   بدء العلاج
@@ -335,7 +341,90 @@ function ScheduleView({
           })}
         </ul>
       </div>
+
+      {remindFor && <ReminderModal appt={remindFor} onClose={() => setRemindFor(null)} />}
     </>
+  );
+}
+
+/* ============================ رسالة تذكير ============================ */
+
+function ReminderModal({ appt, onClose }: { appt: Appointment; onClose: () => void }) {
+  const { patientById, serviceById, doctorById } = useStore();
+  const { push } = useToast();
+  const p = patientById(appt.patientId);
+  const s = serviceById(appt.serviceId);
+  const d = doctorById(appt.doctorId);
+  const [copied, setCopied] = useState(false);
+
+  const T = (body: string) =>
+    `السلام عليكم ${p?.name ?? ""}،\nمعكم عيادة الأسنان — نودّ تذكيركم بما يلي:\n\n${body}\n\nنرجو الحضور قبل الموعد بعشر دقائق، ولأي استفسار أو تعديل يسعدنا تواصلكم.`;
+
+  const templates = [
+    { key: "appt", label: "تذكير بالموعد", text: T(`موعدكم: ${s?.name ?? "جلسة علاج"}\nالتاريخ: ${fmtDate(appt.date)}\nالوقت: ${appt.time}\nالطبيب: ${d?.name ?? "طبيب العيادة"}`) },
+    { key: "confirm", label: "طلب تأكيد الحضور", text: T(`لديكم حجز ${s?.name ?? "جلسة"} بتاريخ ${fmtDate(appt.date)} الساعة ${appt.time}.\nنرجو الرد بـ «نعم» لتأكيد الحضور أو «تأجيل» لإعادة الجدولة.`) },
+    { key: "fasting", label: "تعليمات قبل الجراحة", text: T(`موعدكم لإجراء ${s?.name ?? "الجراحة"} بتاريخ ${fmtDate(appt.date)} الساعة ${appt.time}.\nالتعليمات: الامتناع عن الأكل والشرب قبل الموعد بست ساعات، وإحضار التقارير الطبية والأدوية التي تتناولونها.`) },
+    { key: "thanks", label: "شكر بعد الزيارة", text: `شكراً لثقتكم بنا، ${p?.name ?? ""}.\nنتمنى لكم دوام الصحة والعافية، ويسعدنا استقبال ملاحظاتكم في أي وقت.` },
+  ];
+  const [text, setText] = useState(templates[0].text);
+  const [active, setActive] = useState("appt");
+
+  const pick = (k: string) => {
+    setActive(k);
+    setText(templates.find((t) => t.key === k)!.text);
+  };
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      /* تجاهل */
+    }
+    setCopied(true);
+    push("success", "نُسخت الرسالة", "الصقها في واتساب أو تطبيق الرسائل وأرسلها للمريض.");
+    setTimeout(() => setCopied(false), 1600);
+  };
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title={`رسالة تذكير — ${p?.name ?? "المريض"}`}
+      subtitle={`${s?.name ?? ""} · ${fmtDate(appt.date)} ${appt.time}`}
+      width="max-w-xl"
+      footer={
+        <>
+          <button className="btn-ghost" onClick={onClose}>إغلاق</button>
+          <button className="btn-primary" onClick={copy}>
+            <IconCopy className="w-4.5 h-4.5" />
+            {copied ? "نُسخت ✓" : "نسخ الرسالة"}
+          </button>
+        </>
+      }
+    >
+      <div className="space-y-4">
+        <div className="flex flex-wrap gap-2">
+          {templates.map((t) => (
+            <button
+              key={t.key}
+              onClick={() => pick(t.key)}
+              className={`h-9 px-3.5 rounded-lg text-xs font-bold cursor-pointer transition-all border ${
+                active === t.key ? "bg-pine text-white border-pine shadow-sm" : "bg-white text-soft border-line hover:border-jade/50"
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+        <div>
+          <p className="label">نص الرسالة (قابل للتعديل)</p>
+          <textarea value={text} onChange={(e) => setText(e.target.value)} className="input !h-44 py-3 leading-relaxed text-[13px]" dir="rtl" />
+        </div>
+        <p className="text-[11px] text-soft leading-relaxed">
+          تُعوَّض بيانات المريض والموعد والطبيب تلقائياً من السجل. انسخ النص وأرسله عبر واتساب أو الرسائل النصية.
+        </p>
+      </div>
+    </Modal>
   );
 }
 
