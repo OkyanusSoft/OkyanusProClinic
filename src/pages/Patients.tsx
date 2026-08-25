@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import {
   APPT_META,
   fmtDate,
+  FU_META,
   invoiceStatus,
   invoiceTotal,
   INV_META,
@@ -11,13 +12,26 @@ import {
   useMoney,
   useStore,
   YEMEN_CITIES,
+  type FollowUp,
   type Patient,
 } from "../store";
-import { IconCalendarPlus, IconPhone, IconPlus, IconPrinter, IconSearch, IconSpark, IconUserPlus, IconUsers, IconAlert } from "../icons";
+import { IconCalendar, IconCalendarPlus, IconClock, IconPhone, IconPlus, IconPrinter, IconSearch, IconSpark, IconUserPlus, IconUsers, IconAlert } from "../icons";
 import { Avatar, Badge, EmptyState, Field, Modal, TArea, TInput, TSelect, TwoStepDelete, useToast } from "../components/ui";
 import DentalChart from "../components/DentalChart";
 import { PrintModal, RxPrint } from "../components/PrintSheet";
+import { FollowUpModal } from "./Appointments";
 import type { Prescription, RxItem } from "../store";
+
+/* فرق الأيام بين تاريخ واليوم */
+const dayDiff = (d: string) =>
+  Math.round((new Date(d + "T12:00:00").getTime() - new Date(today(0) + "T12:00:00").getTime()) / 86400000);
+const dueLabel = (d: string) => {
+  const diff = dayDiff(d);
+  if (diff < 0) return `متأخرة ${-diff} ${-diff === 1 ? "يوم" : "أيام"}`;
+  if (diff === 0) return "مستحقة اليوم";
+  if (diff === 1) return "غداً";
+  return `بعد ${diff} أيام`;
+};
 
 /* ============================ صفحة المرضى ============================ */
 
@@ -323,6 +337,7 @@ export function PatientDrawer({
   const { push } = useToast();
   const p = id ? patientById(id) : undefined;
   const [showRx, setShowRx] = useState(false);
+  const [showFu, setShowFu] = useState(false);
   const [printRx, setPrintRx] = useState<Prescription | null>(null);
 
   useEffect(() => {
@@ -339,6 +354,10 @@ export function PatientDrawer({
     .sort((a, b) => (b.date + b.time).localeCompare(a.date + a.time));
   const invoices = db.invoices.filter((i) => i.patientId === p.id);
   const rxs = db.prescriptions.filter((r) => r.patientId === p.id);
+  const fus = db.followUps
+    .filter((f) => f.patientId === p.id)
+    .sort((a, b) => (a.status === b.status ? a.dueDate.localeCompare(b.dueDate) : a.status === "pending" ? -1 : 1));
+  const nextFu = fus.find((f) => f.status === "pending");
   const bal = patientBalance(p.id);
   const hasAllergy = p.allergies && p.allergies !== "لا يوجد";
 
@@ -380,7 +399,7 @@ export function PatientDrawer({
 
         {/* المحتوى */}
         <div className="flex-1 overflow-y-auto p-6 space-y-5">
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
             <div className="card p-4 text-center">
               <p className="text-[11px] font-bold text-soft">المستحقات</p>
               <p className={`stat-num text-xl mt-1 ${bal > 0 ? "text-coral" : "text-mint"}`}>{bal > 0 ? money(bal) : "لا يوجد"}</p>
@@ -392,6 +411,17 @@ export function PatientDrawer({
             <div className="card p-4 text-center">
               <p className="text-[11px] font-bold text-soft">الزيارات</p>
               <p className="stat-num text-xl mt-1 text-ink">{visits.filter((v) => v.status !== "cancelled").length}</p>
+            </div>
+            <div className="card p-4 text-center">
+              <p className="text-[11px] font-bold text-soft">العودة القادمة</p>
+              {nextFu ? (
+                <>
+                  <p className={`stat-num text-xl mt-1 ${dayDiff(nextFu.dueDate) < 0 ? "text-coral" : "text-jade-deep"}`}>{fmtDate(nextFu.dueDate)}</p>
+                  <p className="text-[9px] font-bold text-soft mt-0.5 truncate">{dueLabel(nextFu.dueDate)}</p>
+                </>
+              ) : (
+                <p className="stat-num text-xl mt-1 text-soft/50">—</p>
+              )}
             </div>
           </div>
 
@@ -447,6 +477,51 @@ export function PatientDrawer({
                     </div>
                   </li>
                 ))}
+              </ul>
+            )}
+          </section>
+
+          {/* العودات المقررة */}
+          <section className="card overflow-hidden">
+            <div className="flex items-center justify-between px-5 pt-4 pb-3 border-b border-line">
+              <h3 className="font-display font-bold text-lg text-ink flex items-center gap-2">
+                <IconCalendarPlus className="w-5 h-5 text-jade-deep" />
+                العودات المقررة
+              </h3>
+              <button onClick={() => setShowFu(true)} className="text-[11px] font-bold text-jade-deep bg-jade-soft hover:bg-jade hover:text-white rounded-lg px-3 py-2 cursor-pointer transition-colors inline-flex items-center gap-1.5">
+                <IconPlus className="w-3.5 h-3.5" />
+                جدولة عودة
+              </button>
+            </div>
+            {fus.length === 0 ? (
+              <EmptyState icon={<IconCalendar className="w-6 h-6" />} title="لا عودات مقررة" desc="جدولة عودة تظهر في تنبيهات الفريق عند استحقاقها." />
+            ) : (
+              <ul className="divide-y divide-line/60">
+                {fus.map((f) => {
+                  const d = db.doctors.find((x) => x.id === f.doctorId);
+                  const late = f.status === "pending" && dayDiff(f.dueDate) < 0;
+                  return (
+                    <li key={f.id} className={`flex items-center gap-3 px-5 py-3 ${late ? "bg-coral-soft/25" : ""}`}>
+                      <span className={`w-2 h-2 rounded-full shrink-0 ${late ? "bg-coral" : ""}`} style={late ? undefined : { background: FU_META[f.status].dot }} />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-bold text-ink truncate">{f.reason}</p>
+                        <p className="text-[11px] text-soft mt-0.5">
+                          {fmtDate(f.dueDate)} · {d?.name}
+                        </p>
+                      </div>
+                      <span className={`chip ${late ? "bg-coral-soft text-coral" : FU_META[f.status].cls}`}>
+                        {f.status === "pending" ? dueLabel(f.dueDate) : FU_META[f.status].label}
+                      </span>
+                      <TwoStepDelete
+                        label=""
+                        onConfirm={() => {
+                          dispatch({ type: "DELETE_FOLLOWUP", id: f.id });
+                          push("warn", "حُذفت العودة", f.reason);
+                        }}
+                      />
+                    </li>
+                  );
+                })}
               </ul>
             )}
           </section>
@@ -515,6 +590,7 @@ export function PatientDrawer({
       </aside>
 
       {showRx && <RxModal patientId={p.id} onClose={() => setShowRx(false)} />}
+      {showFu && <FollowUpModal patientId={p.id} onClose={() => setShowFu(false)} />}
       {printRx && (
         <PrintModal open onClose={() => setPrintRx(null)} title="طباعة الروشتة">
           <RxPrint rx={printRx} />

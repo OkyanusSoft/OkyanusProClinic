@@ -11,6 +11,7 @@ import {
   INV_META,
   ORTHO_KINDS,
   PROSTHETIC_KINDS,
+  suggestFollowUp,
   today,
   uid,
   useAuth,
@@ -44,7 +45,7 @@ import {
   IconWallet,
   IconXray,
 } from "../icons";
-import { Avatar, Badge, EmptyState, Field, Modal, TArea, TInput, TSelect, TwoStepDelete, useToast } from "../components/ui";
+import { Avatar, Badge, EmptyState, Field, Modal, Switch, TArea, TInput, TSelect, TwoStepDelete, useToast } from "../components/ui";
 import DentalChart from "../components/DentalChart";
 import { InvoicePrint, PrintModal, RxPrint } from "../components/PrintSheet";
 
@@ -342,6 +343,9 @@ function Workstation({ session }: { session: ClinicalSession }) {
   const p = patientById(session.patientId);
   const [tab, setTab] = useState<WTab>("treatment");
   const [paid, setPaid] = useState("0");
+  const [fuEnabled, setFuEnabled] = useState(false);
+  const [fuReason, setFuReason] = useState("");
+  const [fuDate, setFuDate] = useState("");
   const [procService, setProcService] = useState("");
   const [procTooth, setProcTooth] = useState("");
   const [armCancel, setArmCancel] = useState(false);
@@ -370,6 +374,16 @@ function Workstation({ session }: { session: ClinicalSession }) {
   const total = session.procedures.reduce((s, pr) => s + (serviceById(pr.serviceId)?.price ?? 0), 0);
   const paidNum = Math.min(Math.max(0, Number(paid) || 0), total);
   const remaining = total - paidNum;
+
+  /* اقتراح عودة المتابعة حسب الإجراءات المنفذة */
+  const suggestion = useMemo(
+    () => suggestFollowUp(session.procedures.map((pr) => serviceById(pr.serviceId)?.name ?? "")),
+    [session.procedures, serviceById]
+  );
+  useEffect(() => {
+    setFuReason(suggestion.reason);
+    setFuDate(today(suggestion.days));
+  }, [suggestion]);
 
   const stages = [
     { label: "دخول المريض", done: true },
@@ -417,14 +431,29 @@ function Workstation({ session }: { session: ClinicalSession }) {
   const end = () => {
     const invNo = session.procedures.length > 0 ? `INV-${db.nextInv}` : null;
     dispatch({ type: "END_SESSION", id: session.id, paid: paidNum });
+    const withFu = fuEnabled && fuReason.trim() && fuDate;
+    if (withFu) {
+      dispatch({
+        type: "ADD_FOLLOWUP",
+        f: {
+          id: uid(),
+          patientId: session.patientId,
+          doctorId: session.doctorId,
+          reason: fuReason.trim(),
+          dueDate: fuDate,
+          status: "pending",
+          createdAt: new Date().toISOString(),
+        },
+      });
+    }
     push(
       "success",
       "انتهت الجلسة — خرج المريض",
-      invNo
+      (invNo
         ? `أُصدرت الفاتورة ${invNo} بإجمالي ${money(total)}${session.meds.length ? " مع روشتة إلكترونية" : ""}`
         : session.meds.length
         ? "أُرفقت روشتة إلكترونية بالملف"
-        : "جلسة استشارية بدون فوترة"
+        : "جلسة استشارية بدون فوترة") + (withFu ? ` + عودة متابعة في ${fuDate}` : "")
     );
   };
 
@@ -551,6 +580,23 @@ function Workstation({ session }: { session: ClinicalSession }) {
             {session.teethTreated.length > 0 && (
               <span className="chip bg-amber-soft text-[#a06410]">{session.teethTreated.length} تعديل أسنان معلّق</span>
             )}
+            {/* جدولة عودة المتابعة */}
+            <div className={`flex items-center gap-3 rounded-xl border px-3.5 py-2 transition-all ${fuEnabled ? "border-jade bg-jade-soft/60" : "border-line bg-mist/70"}`}>
+              <Switch on={fuEnabled} onChange={setFuEnabled} />
+              <div>
+                <p className="text-[10px] font-bold text-ink">عودة للمتابعة</p>
+                {fuEnabled ? (
+                  <div className="flex gap-1.5 mt-1">
+                    <TInput value={fuReason} onChange={(e) => setFuReason(e.target.value)} className="!h-8 !w-52 !text-[11px]" placeholder="سبب العودة" />
+                    <TInput type="date" value={fuDate} onChange={(e) => setFuDate(e.target.value)} className="!h-8 !w-36 !text-[11px]" />
+                  </div>
+                ) : (
+                  <p className="text-[10px] text-soft mt-0.5">
+                    مقترح: <b className="text-jade-deep">{suggestion.reason}</b> بعد {suggestion.days} يوم
+                  </p>
+                )}
+              </div>
+            </div>
           </div>
           <div className="flex items-end gap-2.5 ms-auto flex-wrap">
             <div>

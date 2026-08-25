@@ -123,6 +123,47 @@ export interface ClinicalSession {
   rxId?: string;
 }
 
+/* ============================== العودات والمتابعة ============================== */
+
+export type FollowUpStatus = "pending" | "booked" | "done";
+export interface FollowUp {
+  id: string;
+  patientId: string;
+  doctorId: string;
+  reason: string;
+  dueDate: string; // YYYY-MM-DD
+  status: FollowUpStatus;
+  createdAt: string;
+  apptId?: string; // موعد مرتبط عند التحويل
+  notes?: string;
+}
+
+export const FU_META: Record<FollowUpStatus, { label: string; cls: string; dot: string }> = {
+  pending: { label: "بانتظار المراجعة", cls: "bg-sky-soft text-sky", dot: "#3a86c4" },
+  booked: { label: "محجوزة", cls: "bg-jade-soft text-jade-deep", dot: "#0d8f83" },
+  done: { label: "مكتملة", cls: "bg-mint-soft text-[#1d6b47]", dot: "#2c9c69" },
+};
+
+/* اقتراح العودة تلقائياً حسب نوع العلاج المنفذ */
+export const FOLLOWUP_SUGGESTIONS: { match: RegExp; reason: string; days: number }[] = [
+  { match: /عصب/, reason: "تركيب التاج بعد علاج العصب", days: 7 },
+  { match: /زراعة/, reason: "كشف مرحلة الالتئام للزرعة", days: 56 },
+  { match: /ضرس عقل/, reason: "فك الغرز ومراجعة الجرح", days: 7 },
+  { match: /خلع/, reason: "مراجعة ما بعد الخلع", days: 5 },
+  { match: /تقويم/, reason: "موعد شد التقويم الدوري", days: 30 },
+  { match: /تبييض/, reason: "متابعة نتيجة التبييض", days: 90 },
+  { match: /حشوة/, reason: "مراجعة الحشوة والتأكد من الإطباق", days: 14 },
+  { match: /تاج|زيركون/, reason: "تسليم وتركيب التاج", days: 10 },
+  { match: /تنظيف/, reason: "تنظيف دوري كل 6 أشهر", days: 180 },
+];
+export function suggestFollowUp(serviceNames: string[]) {
+  for (const s of serviceNames) {
+    const hit = FOLLOWUP_SUGGESTIONS.find((x) => x.match.test(s));
+    if (hit) return hit;
+  }
+  return { reason: "مراجعة عامة", days: 30 };
+}
+
 /* ---------- السجلات السريرية الدائمة ---------- */
 export interface Implant {
   id: string;
@@ -258,6 +299,7 @@ export interface DB {
   prosthetics: Prosthetic[];
   orthoCases: OrthoCase[];
   xrays: XrayRec[];
+  followUps: FollowUp[];
   users: User[];
   nextInv: number;
 }
@@ -580,6 +622,18 @@ function seed(): DB {
     { id: uid(), patientId: "p6", kind: "تقويم معدني", started: today(-45), nextAdjust: today(5), progress: 35, notes: "المرحلة الأولى من الإطباق — شد الأقواس شهرياً" },
   ];
 
+  const FU = (patientId: string, doctorId: string, reason: string, dueDate: string, status: FollowUpStatus, notes?: string): FollowUp =>
+    ({ id: uid(), patientId, doctorId, reason, dueDate, status, createdAt: new Date().toISOString(), notes });
+  const followUps: FollowUp[] = [
+    FU("p1", "d1", "تركيب التاج بعد علاج العصب — السن 36", today(-2), "pending", "التاج قيد التصنيع في المختبر"),
+    FU("p9", "d1", "بدء المرحلة الثانية — حشو القنوات للسن 46", today(0), "pending"),
+    FU("p3", "d3", "فك الغرز ومراجعة جرح الخلع", today(1), "pending", "المريض لديه حساسية بنسلين"),
+    FU("p6", "d2", "موعد شد التقويم الشهري", today(3), "pending"),
+    FU("p5", "d1", "كشف الغطاء للزرعة — السن 15", today(12), "pending", "غرسة Straumann"),
+    FU("p2", "d2", "تنظيف دوري كل 6 أشهر", today(60), "pending"),
+    FU("p8", "d1", "مراجعة ما بعد تركيب التاجين", today(-5), "done", "تمت المراجعة والإطباق سليم"),
+  ];
+
   const xrays: XrayRec[] = [
     { id: uid(), patientId: "p3", kind: "CBCT ثلاثي الأبعاد", date: today(-4), findings: "ضرس عقل سفلي أيمن منطمر أفقياً ملامس للقناة العصبية — يُوصى بخلع جراحي بحذر", doctorId: "d3" },
     { id: uid(), patientId: "p4", kind: "بيريابيكال", date: today(-3), findings: "آفة ذروية مبكرة على السن 13 مع widening في الرباط السني", doctorId: "d1" },
@@ -587,7 +641,7 @@ function seed(): DB {
     { id: uid(), patientId: "p6", kind: "سيفالومترية", date: today(-40), findings: "تحليل ما قبل التقويم: صنف هيكلي أول مع بروز قاطعي خفيف", doctorId: "d2" },
   ];
 
-  return { patients, doctors, staff, currencies, defaultCurrency: "YER", services, appointments, invoices, activity, expenses, prescriptions, sessions, implants, prosthetics, orthoCases, xrays, users, nextInv: 1043 };
+  return { patients, doctors, staff, currencies, defaultCurrency: "YER", services, appointments, invoices, activity, expenses, prescriptions, sessions, implants, prosthetics, orthoCases, xrays, followUps, users, nextInv: 1043 };
 }
 
 /* ============================== Store ============================== */
@@ -635,6 +689,9 @@ export type Action =
   | { type: "DELETE_ORTHO"; id: string }
   | { type: "ADD_XRAY"; r: XrayRec }
   | { type: "DELETE_XRAY"; id: string }
+  | { type: "ADD_FOLLOWUP"; f: FollowUp }
+  | { type: "UPDATE_FOLLOWUP"; f: FollowUp }
+  | { type: "DELETE_FOLLOWUP"; id: string }
   | { type: "RESET" };
 
 const nowIso = () => new Date().toISOString();
@@ -681,8 +738,15 @@ function reducer(db: DB, action: Action): DB {
         activity: [act(`حجز موعد ${s?.name ?? ""} للمريض ${p?.name ?? ""} — ${action.a.date} ${action.a.time}`, "appt"), ...db.activity].slice(0, 30),
       };
     }
-    case "SET_APPT_STATUS":
-      return { ...db, appointments: db.appointments.map((a) => (a.id === action.id ? { ...a, status: action.status } : a)) };
+    case "SET_APPT_STATUS": {
+      const appointments = db.appointments.map((a) => (a.id === action.id ? { ...a, status: action.status } : a));
+      // عند إتمام موعد مرتبط بعودة — تُكمل العودة تلقائياً
+      const followUps =
+        action.status === "done"
+          ? db.followUps.map((f) => (f.apptId === action.id && f.status !== "done" ? { ...f, status: "done" as FollowUpStatus } : f))
+          : db.followUps;
+      return { ...db, appointments, followUps };
+    }
     case "DELETE_APPT":
       return { ...db, appointments: db.appointments.filter((a) => a.id !== action.id) };
     case "ADD_INVOICE": {
@@ -917,6 +981,14 @@ function reducer(db: DB, action: Action): DB {
     case "DELETE_XRAY":
       return { ...db, xrays: db.xrays.filter((x) => x.id !== action.id) };
 
+    /* ---------- العودات والمتابعة ---------- */
+    case "ADD_FOLLOWUP":
+      return { ...db, followUps: [action.f, ...db.followUps] };
+    case "UPDATE_FOLLOWUP":
+      return { ...db, followUps: db.followUps.map((x) => (x.id === action.f.id ? action.f : x)) };
+    case "DELETE_FOLLOWUP":
+      return { ...db, followUps: db.followUps.filter((x) => x.id !== action.id) };
+
     case "RESET":
       return seed();
     default:
@@ -943,6 +1015,7 @@ function load(): DB {
       prosthetics: db.prosthetics ?? [],
       orthoCases: db.orthoCases ?? [],
       xrays: db.xrays ?? [],
+      followUps: db.followUps ?? [],
       users: (db.users?.length ? db.users : seed().users).map((u) =>
         // طاقم الاستقبال والمساعدة يرى السجل والجدول كاملين دائماً
         u.role === "secretary" || u.role === "assistant"
