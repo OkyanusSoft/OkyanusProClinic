@@ -2,13 +2,14 @@ import React, { useEffect, useMemo, useState } from "react";
 import {
   APPT_META,
   fmtDate,
-  fmtMoney,
   invoiceStatus,
   invoiceTotal,
   INV_META,
   today,
   uid,
+  useMoney,
   useStore,
+  YEMEN_CITIES,
   type Patient,
 } from "../store";
 import { IconCalendarPlus, IconPhone, IconSearch, IconUserPlus, IconUsers, IconAlert } from "../icons";
@@ -25,6 +26,7 @@ interface PageProps {
 
 export default function PatientsPage({ addSignal, onOpenPatient, onBook }: PageProps) {
   const { db, dispatch, patientBalance, lastVisit } = useStore();
+  const money = useMoney();
   const { push } = useToast();
   const [q, setQ] = useState("");
   const [filter, setFilter] = useState("all");
@@ -132,7 +134,7 @@ export default function PatientsPage({ addSignal, onOpenPatient, onBook }: PageP
                       <td className="td text-soft">{p.city || "—"}</td>
                       <td className="td text-soft">{lv ? fmtDate(lv) : "لم يزر بعد"}</td>
                       <td className="td">
-                        {bal > 0 ? <span className="font-display font-bold text-coral">{fmtMoney(bal)}</span> : <span className="text-mint font-bold text-xs">مسدَّد</span>}
+                        {bal > 0 ? <span className="font-display font-bold text-coral">{money(bal)}</span> : <span className="text-mint font-bold text-xs">مسدَّد</span>}
                       </td>
                       <td className="td">
                         <div className="flex items-center gap-1.5">
@@ -264,7 +266,12 @@ function AddPatientModal({
         </Field>
         <div className="col-span-2">
           <Field label="المدينة">
-            <TInput value={city} onChange={(e) => setCity(e.target.value)} placeholder="الرياض" />
+            <TInput list="yemen-cities" value={city} onChange={(e) => setCity(e.target.value)} placeholder="صنعاء" />
+            <datalist id="yemen-cities">
+              {YEMEN_CITIES.map((c) => (
+                <option key={c} value={c} />
+              ))}
+            </datalist>
           </Field>
         </div>
         <div className="col-span-2">
@@ -297,6 +304,7 @@ export function PatientDrawer({
   onBook: (patientId: string) => void;
 }) {
   const { db, dispatch, patientById, serviceById, doctorById, patientBalance, lastVisit } = useStore();
+  const money = useMoney();
   const { push } = useToast();
   const p = id ? patientById(id) : undefined;
 
@@ -357,7 +365,7 @@ export function PatientDrawer({
           <div className="grid grid-cols-3 gap-3">
             <div className="card p-4 text-center">
               <p className="text-[11px] font-bold text-soft">المستحقات</p>
-              <p className={`stat-num text-xl mt-1 ${bal > 0 ? "text-coral" : "text-mint"}`}>{bal > 0 ? fmtMoney(bal) : "لا يوجد"}</p>
+              <p className={`stat-num text-xl mt-1 ${bal > 0 ? "text-coral" : "text-mint"}`}>{bal > 0 ? money(bal) : "لا يوجد"}</p>
             </div>
             <div className="card p-4 text-center">
               <p className="text-[11px] font-bold text-soft">آخر زيارة</p>
@@ -416,7 +424,7 @@ export function PatientDrawer({
                     <li key={inv.id} className="flex items-center gap-3 px-5 py-3">
                       <span className="stat-num text-sm text-jade-deep w-24 shrink-0" dir="ltr">{inv.number}</span>
                       <span className="text-xs text-soft flex-1">{fmtDate(inv.date)}</span>
-                      <span className="stat-num text-sm text-ink">{fmtMoney(invoiceTotal(inv))}</span>
+                      <span className="stat-num text-sm text-ink">{money(invoiceTotal(inv))}</span>
                       <Badge cls={INV_META[st].cls}>{INV_META[st].label}</Badge>
                     </li>
                   );

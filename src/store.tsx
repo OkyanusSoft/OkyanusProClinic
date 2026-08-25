@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useMemo, useReducer } from "react";
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useReducer } from "react";
 
 /* ============================== Types ============================== */
 
@@ -23,13 +23,28 @@ export interface Doctor {
   id: string;
   name: string;
   specialty: string;
+  phone: string;
   color: string;
+  active: boolean;
+}
+export interface Staff {
+  id: string;
+  name: string;
+  role: string;
+  phone: string;
+  active: boolean;
+}
+export interface Currency {
+  code: string;
+  name: string;
+  symbol: string;
+  rate: number; // كم يساوي بالعملة الأساسية (ر.ي)
 }
 export interface Service {
   id: string;
   name: string;
   category: string;
-  price: number;
+  price: number; // بالعملة الأساسية
   duration: number;
   color: string;
   active: boolean;
@@ -39,8 +54,8 @@ export interface Appointment {
   patientId: string;
   serviceId: string;
   doctorId: string;
-  date: string; // YYYY-MM-DD
-  time: string; // HH:MM
+  date: string;
+  time: string;
   status: ApptStatus;
   notes?: string;
 }
@@ -60,18 +75,25 @@ export interface Invoice {
 export interface Activity {
   id: string;
   text: string;
-  time: string; // ISO
-  kind: "patient" | "appt" | "invoice" | "tooth";
+  time: string;
+  kind: "patient" | "appt" | "invoice" | "tooth" | "team";
 }
 export interface DB {
   patients: Patient[];
   doctors: Doctor[];
+  staff: Staff[];
+  currencies: Currency[];
+  defaultCurrency: string;
   services: Service[];
   appointments: Appointment[];
   invoices: Invoice[];
   activity: Activity[];
   nextInv: number;
 }
+
+export const CLINIC_NAME = "عيادة د. عبدالله الشرفي";
+export const CLINIC_LATIN = "AL-SHARAFI DENTAL CLINIC";
+export const BASE_CURRENCY = "YER";
 
 /* ============================== Meta ============================== */
 
@@ -98,6 +120,10 @@ export const INV_META: Record<InvoiceStatus, { label: string; cls: string }> = {
   unpaid: { label: "غير مدفوعة", cls: "bg-coral-soft text-coral" },
 };
 
+export const YEMEN_CITIES = ["صنعاء", "عدن", "تعز", "الحديدة", "إب", "المكلا", "ذمار", "سيئون", "مأرب", "عمران", "لحج", "الضالع"];
+
+export const STAFF_ROLES = ["مساعد أسنان", "استقبال وعلاقات مرضى", "فني تعقيم", "فني مختبر أسنان", "محاسب", "ممرض"];
+
 /* ============================== Helpers ============================== */
 
 export const uid = () => Math.random().toString(36).slice(2, 10);
@@ -108,7 +134,7 @@ export const today = (offset = 0) => {
   d.setDate(d.getDate() + offset);
   return dstr(d);
 };
-export const fmtMoney = (n: number) => `${Math.round(n).toLocaleString("en-US")} ر.س`;
+export const fmtMoney = (n: number) => `${Math.round(n).toLocaleString("en-US")} ر.ي`;
 const AR = "ar-EG-u-nu-latn";
 export const fmtDate = (ds: string) =>
   new Intl.DateTimeFormat(AR, { day: "numeric", month: "long" }).format(new Date(ds + "T12:00:00"));
@@ -146,35 +172,49 @@ export const invoiceStatus = (inv: Invoice): InvoiceStatus => {
 
 function seed(): DB {
   const doctors: Doctor[] = [
-    { id: "d1", name: "د. أحمد الشمري", specialty: "طب أسنان عام وترميم", color: "#0d8f83" },
-    { id: "d2", name: "د. سارة العتيبي", specialty: "تقويم الأسنان", color: "#3a86c4" },
-    { id: "d3", name: "د. خالد المطيري", specialty: "جراحة الفم", color: "#e2952b" },
+    { id: "d1", name: "د. عبدالله الشرفي", specialty: "طب أسنان عام وترميم", phone: "771100110", color: "#0d8f83", active: true },
+    { id: "d2", name: "د. أمل الحميري", specialty: "تقويم الأسنان", phone: "771200200", color: "#3a86c4", active: true },
+    { id: "d3", name: "د. محمد باصهيب", specialty: "جراحة الفم والوجه", phone: "771300300", color: "#e2952b", active: true },
+    { id: "d4", name: "د. سميرة الأهدل", specialty: "طب أسنان الأطفال", phone: "771400400", color: "#b23a48", active: true },
+  ];
+  const staff: Staff[] = [
+    { id: "st1", name: "أ. خالد السقاف", role: "استقبال وعلاقات مرضى", phone: "770111222", active: true },
+    { id: "st2", name: "أ. أروى العنسي", role: "مساعد أسنان", phone: "773334455", active: true },
+    { id: "st3", name: "أ. فهد البعداني", role: "فني تعقيم", phone: "775554433", active: true },
+    { id: "st4", name: "أ. منى الشامي", role: "محاسب", phone: "776667788", active: true },
+    { id: "st5", name: "أ. وليد الجوفي", role: "فني مختبر أسنان", phone: "778881122", active: true },
+  ];
+  const currencies: Currency[] = [
+    { code: "YER", name: "ريال يمني", symbol: "ر.ي", rate: 1 },
+    { code: "SAR", name: "ريال سعودي", symbol: "ر.س", rate: 141 },
+    { code: "USD", name: "دولار أمريكي", symbol: "$", rate: 530 },
+    { code: "AED", name: "درهم إماراتي", symbol: "د.إ", rate: 144 },
   ];
   const services: Service[] = [
-    { id: "s1", name: "كشف واستشارة", category: "تشخيص", price: 100, duration: 30, color: "#0d8f83", active: true },
-    { id: "s2", name: "تنظيف وتلميع", category: "وقاية", price: 150, duration: 45, color: "#2c9c69", active: true },
-    { id: "s3", name: "أشعة بانورامية", category: "تشخيص", price: 200, duration: 20, color: "#3a86c4", active: true },
-    { id: "s4", name: "حشوة تجميلية", category: "علاج", price: 250, duration: 45, color: "#0a6158", active: true },
-    { id: "s5", name: "علاج عصب", category: "علاج", price: 600, duration: 90, color: "#e2952b", active: true },
-    { id: "s6", name: "خلع بسيط", category: "جراحة", price: 150, duration: 30, color: "#d9503a", active: true },
-    { id: "s7", name: "خلع ضرس عقل", category: "جراحة", price: 450, duration: 60, color: "#b23a48", active: true },
-    { id: "s8", name: "تبييض أسنان", category: "تجميل", price: 400, duration: 60, color: "#3a86c4", active: true },
-    { id: "s9", name: "تاج زيركون", category: "تعويضات", price: 900, duration: 60, color: "#e2952b", active: true },
-    { id: "s10", name: "زراعة سن", category: "تعويضات", price: 2500, duration: 90, color: "#0a6158", active: true },
-    { id: "s11", name: "متابعة تقويم", category: "تقويم", price: 300, duration: 30, color: "#3a86c4", active: true },
-    { id: "s12", name: "فلورايد وقائي", category: "وقاية", price: 120, duration: 20, color: "#2c9c69", active: true },
+    { id: "s1", name: "كشف واستشارة", category: "تشخيص", price: 2000, duration: 30, color: "#0d8f83", active: true },
+    { id: "s2", name: "تنظيف وتلميع", category: "وقاية", price: 4000, duration: 45, color: "#2c9c69", active: true },
+    { id: "s3", name: "أشعة بانورامية", category: "تشخيص", price: 5000, duration: 20, color: "#3a86c4", active: true },
+    { id: "s4", name: "حشوة تجميلية", category: "علاج", price: 7000, duration: 45, color: "#0a6158", active: true },
+    { id: "s5", name: "علاج عصب", category: "علاج", price: 18000, duration: 90, color: "#e2952b", active: true },
+    { id: "s6", name: "خلع بسيط", category: "جراحة", price: 5000, duration: 30, color: "#d9503a", active: true },
+    { id: "s7", name: "خلع ضرس عقل", category: "جراحة", price: 15000, duration: 60, color: "#b23a48", active: true },
+    { id: "s8", name: "تبييض أسنان", category: "تجميل", price: 12000, duration: 60, color: "#3a86c4", active: true },
+    { id: "s9", name: "تاج زيركون", category: "تعويضات", price: 30000, duration: 60, color: "#e2952b", active: true },
+    { id: "s10", name: "زراعة سن", category: "تعويضات", price: 80000, duration: 90, color: "#0a6158", active: true },
+    { id: "s11", name: "متابعة تقويم", category: "تقويم", price: 8000, duration: 30, color: "#3a86c4", active: true },
+    { id: "s12", name: "فلورايد وقائي", category: "وقاية", price: 3000, duration: 20, color: "#2c9c69", active: true },
   ];
   const patients: Patient[] = [
-    { id: "p1", name: "محمد العبدالله", phone: "0501234567", age: 34, gender: "m", blood: "O+", allergies: "لا يوجد", city: "الرياض", notes: "يفضل المواعيد المسائية", joined: today(-160), teeth: { 16: "filled", 26: "caries", 36: "root", 46: "crown", 18: "missing" } },
-    { id: "p2", name: "نورة القحطاني", phone: "0559876543", age: 28, gender: "f", blood: "A+", allergies: "لا يوجد", city: "جدة", notes: "", joined: today(-92), teeth: { 11: "filled", 21: "filled", 31: "caries" } },
-    { id: "p3", name: "فهد الدوسري", phone: "0533334444", age: 41, gender: "m", blood: "B+", allergies: "حساسية بنسلين", city: "الدمام", notes: "ارتفاع ضغط — مراجعة قبل الجراحة", joined: today(-210), teeth: { 17: "root", 27: "crown", 37: "caries", 38: "missing", 48: "missing" } },
-    { id: "p4", name: "ريم السبيعي", phone: "0567778888", age: 22, gender: "f", blood: "O-", allergies: "لا يوجد", city: "الرياض", notes: "", joined: today(-5), teeth: { 13: "caries" } },
-    { id: "p5", name: "عبدالله الحربي", phone: "0544445555", age: 55, gender: "m", blood: "AB+", allergies: "أسبرين", city: "مكة المكرمة", notes: "سكري نوع ثانٍ", joined: today(-340), teeth: { 14: "crown", 15: "missing", 16: "crown", 24: "crown", 26: "root", 35: "missing", 36: "crown", 46: "crown" } },
-    { id: "p6", name: "لمى الشهري", phone: "0512223333", age: 19, gender: "f", blood: "A-", allergies: "لا يوجد", city: "أبها", notes: "حالة تقويم نشطة", joined: today(-45), teeth: {} },
-    { id: "p7", name: "سعود الغامدي", phone: "0555556666", age: 37, gender: "m", blood: "O+", allergies: "لا يوجد", city: "الرياض", notes: "", joined: today(-3), teeth: { 25: "filled", 34: "caries" } },
-    { id: "p8", name: "هند الزهراني", phone: "0568889999", age: 45, gender: "f", blood: "B-", allergies: "لاتكس", city: "المدينة المنورة", notes: "", joined: today(-120), teeth: { 11: "crown", 21: "crown", 22: "filled" } },
-    { id: "p9", name: "تركي العنزي", phone: "0533221100", age: 31, gender: "m", blood: "O+", allergies: "لا يوجد", city: "تبوك", notes: "", joined: today(-60), teeth: { 46: "caries", 47: "caries" } },
-    { id: "p10", name: "جواهر المالكي", phone: "0509998877", age: 26, gender: "f", blood: "A+", allergies: "لا يوجد", city: "الخبر", notes: "", joined: today(-30), teeth: { 38: "caries", 18: "filled" } },
+    { id: "p1", name: "عبده الحمزي", phone: "777123456", age: 34, gender: "m", blood: "O+", allergies: "لا يوجد", city: "صنعاء", notes: "يفضل المواعيد المسائية", joined: today(-160), teeth: { 16: "filled", 26: "caries", 36: "root", 46: "crown", 18: "missing" } },
+    { id: "p2", name: "أمل الحرازي", phone: "771234567", age: 28, gender: "f", blood: "A+", allergies: "لا يوجد", city: "عدن", notes: "", joined: today(-92), teeth: { 11: "filled", 21: "filled", 31: "caries" } },
+    { id: "p3", name: "صالح الحداء", phone: "733456789", age: 41, gender: "m", blood: "B+", allergies: "حساسية بنسلين", city: "تعز", notes: "ارتفاع ضغط — مراجعة قبل الجراحة", joined: today(-210), teeth: { 17: "root", 27: "crown", 37: "caries", 38: "missing", 48: "missing" } },
+    { id: "p4", name: "أمة الرحمن الشرعبي", phone: "775556677", age: 22, gender: "f", blood: "O-", allergies: "لا يوجد", city: "الحديدة", notes: "", joined: today(-5), teeth: { 13: "caries" } },
+    { id: "p5", name: "نبيل العنسي", phone: "770001122", age: 55, gender: "m", blood: "AB+", allergies: "أسبرين", city: "ذمار", notes: "سكري نوع ثانٍ", joined: today(-340), teeth: { 14: "crown", 15: "missing", 16: "crown", 24: "crown", 26: "root", 35: "missing", 36: "crown", 46: "crown" } },
+    { id: "p6", name: "وديع بازرعة", phone: "772223344", age: 19, gender: "m", blood: "A-", allergies: "لا يوجد", city: "المكلا", notes: "حالة تقويم نشطة", joined: today(-45), teeth: {} },
+    { id: "p7", name: "سحر المطري", phone: "778889900", age: 37, gender: "f", blood: "O+", allergies: "لا يوجد", city: "إب", notes: "", joined: today(-3), teeth: { 25: "filled", 34: "caries" } },
+    { id: "p8", name: "غمدان القحوم", phone: "776665544", age: 45, gender: "m", blood: "B-", allergies: "لاتكس", city: "صنعاء", notes: "", joined: today(-120), teeth: { 11: "crown", 21: "crown", 22: "filled" } },
+    { id: "p9", name: "ريام الحميري", phone: "773334455", age: 31, gender: "f", blood: "O+", allergies: "لا يوجد", city: "لحج", notes: "", joined: today(-60), teeth: { 46: "caries", 47: "caries" } },
+    { id: "p10", name: "توفيق الآنسي", phone: "774443322", age: 26, gender: "m", blood: "A+", allergies: "لا يوجد", city: "تعز", notes: "", joined: today(-30), teeth: { 38: "caries", 18: "filled" } },
   ];
 
   const A = (patientId: string, serviceId: string, doctorId: string, date: string, time: string, status: ApptStatus): Appointment =>
@@ -184,19 +224,20 @@ function seed(): DB {
     // اليوم
     A("p2", "s2", "d1", today(0), "09:00", "done"),
     A("p1", "s4", "d1", today(0), "10:00", "inprogress"),
-    A("p4", "s1", "d1", today(0), "11:30", "confirmed"),
+    A("p4", "s1", "d4", today(0), "11:00", "confirmed"),
     A("p8", "s9", "d1", today(0), "13:00", "confirmed"),
     A("p6", "s11", "d2", today(0), "15:00", "waiting"),
+    A("p3", "s7", "d3", today(0), "16:30", "confirmed"),
     A("p9", "s5", "d1", today(0), "17:30", "confirmed"),
     A("p10", "s2", "d2", today(0), "19:00", "cancelled"),
-    // غداً وما بعده
-    A("p3", "s7", "d3", today(1), "10:30", "confirmed"),
+    // قادمة
     A("p7", "s11", "d2", today(1), "12:00", "confirmed"),
     A("p5", "s1", "d1", today(1), "16:00", "confirmed"),
+    A("p4", "s12", "d4", today(1), "10:30", "confirmed"),
     A("p2", "s8", "d1", today(2), "11:00", "confirmed"),
     A("p9", "s4", "d1", today(2), "18:00", "confirmed"),
-    A("p10", "s12", "d2", today(3), "10:00", "confirmed"),
-    // الأيام السابقة
+    A("p10", "s12", "d4", today(3), "10:00", "confirmed"),
+    // السابقة
     A("p5", "s9", "d1", today(-1), "09:30", "done"),
     A("p7", "s4", "d1", today(-1), "11:00", "done"),
     A("p2", "s1", "d1", today(-1), "13:30", "done"),
@@ -204,44 +245,46 @@ function seed(): DB {
     A("p1", "s1", "d1", today(-2), "10:00", "done"),
     A("p6", "s11", "d2", today(-2), "12:30", "done"),
     A("p3", "s5", "d1", today(-2), "17:00", "done"),
+    A("p4", "s1", "d4", today(-2), "14:00", "done"),
     A("p10", "s1", "d1", today(-3), "09:00", "done"),
     A("p4", "s3", "d1", today(-3), "14:00", "done"),
+    A("p7", "s12", "d4", today(-3), "16:00", "done"),
     A("p9", "s1", "d1", today(-4), "10:30", "done"),
     A("p8", "s9", "d1", today(-4), "12:00", "done"),
     A("p7", "s2", "d2", today(-4), "15:30", "cancelled"),
-    A("p2", "s12", "d2", today(-4), "18:00", "done"),
+    A("p2", "s12", "d4", today(-4), "18:00", "done"),
     A("p1", "s2", "d1", today(-5), "11:00", "done"),
     A("p5", "s1", "d1", today(-5), "13:00", "done"),
     A("p6", "s3", "d1", today(-6), "10:00", "done"),
-    A("p3", "s1", "d1", today(-6), "12:30", "done"),
+    A("p3", "s1", "d3", today(-6), "12:30", "done"),
     A("p10", "s4", "d1", today(-6), "17:30", "done"),
   ];
 
   const I = (num: number, patientId: string, date: string, paid: number, items: InvoiceItem[]): Invoice =>
     ({ id: uid(), number: `INV-${num}`, patientId, date, items, paid });
   const invoices: Invoice[] = [
-    I(1042, "p1", today(-1), 350, [{ serviceId: "s4", qty: 1, price: 250 }, { serviceId: "s1", qty: 1, price: 100 }]),
-    I(1041, "p8", today(-2), 900, [{ serviceId: "s9", qty: 2, price: 900 }]),
-    I(1040, "p5", today(-3), 0, [{ serviceId: "s1", qty: 1, price: 100 }]),
-    I(1039, "p2", today(-4), 150, [{ serviceId: "s2", qty: 1, price: 150 }]),
-    I(1038, "p3", today(-6), 700, [{ serviceId: "s5", qty: 1, price: 600 }, { serviceId: "s1", qty: 1, price: 100 }]),
-    I(1037, "p10", today(-8), 270, [{ serviceId: "s2", qty: 1, price: 150 }, { serviceId: "s12", qty: 1, price: 120 }]),
-    I(1036, "p7", today(-12), 100, [{ serviceId: "s4", qty: 1, price: 250 }]),
-    I(1035, "p6", today(-15), 300, [{ serviceId: "s11", qty: 1, price: 300 }]),
-    I(1034, "p9", today(-20), 300, [{ serviceId: "s1", qty: 1, price: 100 }, { serviceId: "s3", qty: 1, price: 200 }]),
-    I(1033, "p4", today(-24), 100, [{ serviceId: "s1", qty: 1, price: 100 }]),
+    I(1042, "p1", today(-1), 9000, [{ serviceId: "s4", qty: 1, price: 7000 }, { serviceId: "s1", qty: 1, price: 2000 }]),
+    I(1041, "p8", today(-2), 30000, [{ serviceId: "s9", qty: 2, price: 30000 }]),
+    I(1040, "p5", today(-3), 0, [{ serviceId: "s1", qty: 1, price: 2000 }]),
+    I(1039, "p2", today(-4), 4000, [{ serviceId: "s2", qty: 1, price: 4000 }]),
+    I(1038, "p3", today(-6), 20000, [{ serviceId: "s5", qty: 1, price: 18000 }, { serviceId: "s1", qty: 1, price: 2000 }]),
+    I(1037, "p10", today(-8), 7000, [{ serviceId: "s2", qty: 1, price: 4000 }, { serviceId: "s12", qty: 1, price: 3000 }]),
+    I(1036, "p7", today(-12), 3000, [{ serviceId: "s4", qty: 1, price: 7000 }]),
+    I(1035, "p6", today(-15), 8000, [{ serviceId: "s11", qty: 1, price: 8000 }]),
+    I(1034, "p9", today(-20), 7000, [{ serviceId: "s1", qty: 1, price: 2000 }, { serviceId: "s3", qty: 1, price: 5000 }]),
+    I(1033, "p4", today(-24), 2000, [{ serviceId: "s1", qty: 1, price: 2000 }]),
   ];
 
   const ago = (mins: number) => new Date(Date.now() - mins * 60000).toISOString();
   const activity: Activity[] = [
-    { id: uid(), text: "بدأ علاج حشوة تجميلية للمريض محمد العبدالله", time: ago(12), kind: "appt" },
-    { id: uid(), text: "تم تحصيل فاتورة INV-1042 بقيمة 350 ر.س", time: ago(95), kind: "invoice" },
-    { id: uid(), text: "انضم المريض سعود الغامدي إلى سجل العيادة", time: ago(180), kind: "patient" },
-    { id: uid(), text: "تحديث حالة السن 37 لفهد الدوسري — تسوس", time: ago(300), kind: "tooth" },
-    { id: uid(), text: "حجز موعد تقويم للمريضة لمى الشهري غداً 12:00", time: ago(420), kind: "appt" },
+    { id: uid(), text: "بدأ علاج حشوة تجميلية للمريض عبده الحمزي", time: ago(12), kind: "appt" },
+    { id: uid(), text: "تم تحصيل فاتورة INV-1042 بقيمة 9,000 ر.ي", time: ago(95), kind: "invoice" },
+    { id: uid(), text: "انضم المريض سحر المطري إلى سجل العيادة", time: ago(180), kind: "patient" },
+    { id: uid(), text: "تحديث حالة السن 37 لصالح الحداء — تسوس", time: ago(300), kind: "tooth" },
+    { id: uid(), text: "حجز موعد متابعة تقويم للمريض وديع بازرعة غداً 15:00", time: ago(420), kind: "appt" },
   ];
 
-  return { patients, doctors, services, appointments, invoices, activity, nextInv: 1043 };
+  return { patients, doctors, staff, currencies, defaultCurrency: "YER", services, appointments, invoices, activity, nextInv: 1043 };
 }
 
 /* ============================== Store ============================== */
@@ -258,6 +301,16 @@ export type Action =
   | { type: "ADD_SERVICE"; s: Service }
   | { type: "UPDATE_SERVICE"; s: Service }
   | { type: "DELETE_SERVICE"; id: string }
+  | { type: "ADD_DOCTOR"; d: Doctor }
+  | { type: "UPDATE_DOCTOR"; d: Doctor }
+  | { type: "DELETE_DOCTOR"; id: string }
+  | { type: "ADD_STAFF"; s: Staff }
+  | { type: "UPDATE_STAFF"; s: Staff }
+  | { type: "DELETE_STAFF"; id: string }
+  | { type: "ADD_CURRENCY"; c: Currency }
+  | { type: "UPDATE_CURRENCY"; c: Currency }
+  | { type: "DELETE_CURRENCY"; code: string }
+  | { type: "SET_DEFAULT_CURRENCY"; code: string }
   | { type: "RESET" };
 
 const nowIso = () => new Date().toISOString();
@@ -333,6 +386,40 @@ function reducer(db: DB, action: Action): DB {
       return { ...db, services: db.services.map((s) => (s.id === action.s.id ? action.s : s)) };
     case "DELETE_SERVICE":
       return { ...db, services: db.services.filter((s) => s.id !== action.id) };
+    case "ADD_DOCTOR":
+      return {
+        ...db,
+        doctors: [...db.doctors, action.d],
+        activity: [act(`انضم ${action.d.name} إلى الفريق الطبي — ${action.d.specialty}`, "team"), ...db.activity].slice(0, 30),
+      };
+    case "UPDATE_DOCTOR":
+      return { ...db, doctors: db.doctors.map((d) => (d.id === action.d.id ? action.d : d)) };
+    case "DELETE_DOCTOR":
+      return { ...db, doctors: db.doctors.filter((d) => d.id !== action.id) };
+    case "ADD_STAFF":
+      return {
+        ...db,
+        staff: [...db.staff, action.s],
+        activity: [act(`انضم ${action.s.name} إلى طاقم العيادة — ${action.s.role}`, "team"), ...db.activity].slice(0, 30),
+      };
+    case "UPDATE_STAFF":
+      return { ...db, staff: db.staff.map((s) => (s.id === action.s.id ? action.s : s)) };
+    case "DELETE_STAFF":
+      return { ...db, staff: db.staff.filter((s) => s.id !== action.id) };
+    case "ADD_CURRENCY":
+      return { ...db, currencies: [...db.currencies, action.c] };
+    case "UPDATE_CURRENCY":
+      return { ...db, currencies: db.currencies.map((c) => (c.code === action.c.code ? action.c : c)) };
+    case "DELETE_CURRENCY": {
+      const currencies = db.currencies.filter((c) => c.code !== action.code);
+      return {
+        ...db,
+        currencies,
+        defaultCurrency: db.defaultCurrency === action.code ? BASE_CURRENCY : db.defaultCurrency,
+      };
+    }
+    case "SET_DEFAULT_CURRENCY":
+      return { ...db, defaultCurrency: action.code };
     case "RESET":
       return seed();
     default:
@@ -340,14 +427,14 @@ function reducer(db: DB, action: Action): DB {
   }
 }
 
-const KEY = "lulua-dental-v1";
+const KEY = "sharafi-dental-v1";
 
 function load(): DB {
   let db: DB;
   try {
     const raw = localStorage.getItem(KEY);
     db = raw ? (JSON.parse(raw) as DB) : seed();
-    if (!db.patients?.length) db = seed();
+    if (!db.patients?.length || !db.currencies?.length) db = seed();
   } catch {
     db = seed();
   }
@@ -416,4 +503,19 @@ export function useStore() {
   const ctx = useContext(StoreCtx);
   if (!ctx) throw new Error("useStore outside provider");
   return ctx;
+}
+
+/* منسّق المبالغ حسب العملة الافتراضية المختارة */
+export function useMoney() {
+  const { db } = useStore();
+  const cur = db.currencies.find((c) => c.code === db.defaultCurrency) ?? db.currencies[0];
+  return useCallback(
+    (n: number) => {
+      const rate = cur?.rate || 1;
+      const v = n / rate;
+      const rounded = Math.abs(v) >= 1000 ? Math.round(v) : Math.round(v * 100) / 100;
+      return `${rounded.toLocaleString("en-US")} ${cur?.symbol ?? "ر.ي"}`;
+    },
+    [cur]
+  );
 }

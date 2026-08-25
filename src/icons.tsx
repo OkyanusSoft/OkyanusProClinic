@@ -169,6 +169,40 @@ export const IconHeart = (p: P) =>
     p,
     <path d="M12 20s-7.5-4.6-7.5-10A4.4 4.4 0 0 1 12 7.2 4.4 4.4 0 0 1 19.5 10c0 5.4-7.5 10-7.5 10Z" />
   );
+export const IconCoins = (p: P) =>
+  base(
+    p,
+    <>
+      <ellipse cx="12" cy="6" rx="7" ry="3" />
+      <path d="M5 6v6c0 1.66 3.13 3 7 3s7-1.34 7-3V6" />
+      <path d="M5 12v6c0 1.66 3.13 3 7 3s7-1.34 7-3v-6" />
+    </>
+  );
+export const IconScalpel = (p: P) =>
+  base(
+    p,
+    <>
+      <path d="M4 20c4-.5 7-2 9-4l5-5a2.12 2.12 0 0 0-3-3l-5 5c-2 2-3.5 5-6 7Z" />
+      <path d="m13 8 3 3" />
+    </>
+  );
+export const IconCrown = (p: P) =>
+  base(
+    p,
+    <>
+      <path d="M4 17 5 8l4 3 3-5 3 5 4-3 1 9H4Z" />
+      <path d="M4 20h16" />
+    </>
+  );
+export const IconIdCard = (p: P) =>
+  base(
+    p,
+    <>
+      <rect x="3.5" y="5" width="17" height="14" rx="2.5" />
+      <circle cx="8.5" cy="11" r="1.8" />
+      <path d="M6 15.5c.5-1.4 1.4-2 2.5-2s2 .6 2.5 2M14 9.5h4M14 12.5h4M14 15.5h2.5" />
+    </>
+  );
 export const IconStetho = (p: P) =>
   base(
     p,

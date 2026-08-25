@@ -1,13 +1,15 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { APPT_META, fmtMoney, invoiceTotal, StoreProvider, today, useStore } from "./store";
+import { APPT_META, CLINIC_LATIN, CLINIC_NAME, invoiceTotal, StoreProvider, today, useStore } from "./store";
 import {
   IconBell,
   IconCalendar,
+  IconCoins,
   IconGrid,
   IconMenu,
   IconReceipt,
   IconSearch,
   IconSpark,
+  IconStetho,
   IconUsers,
   IconX,
   Logo,
@@ -18,8 +20,10 @@ import PatientsPage, { PatientDrawer } from "./pages/Patients";
 import AppointmentsPage, { AddAppointmentModal } from "./pages/Appointments";
 import InvoicesPage from "./pages/Invoices";
 import ServicesPage from "./pages/Services";
+import TeamPage from "./pages/Team";
+import CurrenciesPage from "./pages/Currencies";
 
-type Tab = "dashboard" | "appointments" | "patients" | "invoices" | "services";
+type Tab = "dashboard" | "appointments" | "patients" | "invoices" | "services" | "team" | "currencies";
 
 const NAV: { key: Tab; label: string; icon: (c: string) => React.ReactNode }[] = [
   { key: "dashboard", label: "لوحة التحكم", icon: (c) => <IconGrid className={c} /> },
@@ -27,6 +31,8 @@ const NAV: { key: Tab; label: string; icon: (c: string) => React.ReactNode }[] =
   { key: "patients", label: "المرضى", icon: (c) => <IconUsers className={c} /> },
   { key: "invoices", label: "الفواتير", icon: (c) => <IconReceipt className={c} /> },
   { key: "services", label: "قائمة الأسعار", icon: (c) => <IconSpark className={c} /> },
+  { key: "team", label: "الفريق الطبي", icon: (c) => <IconStetho className={c} /> },
+  { key: "currencies", label: "العملات", icon: (c) => <IconCoins className={c} /> },
 ];
 
 const TITLES: Record<Tab, string> = {
@@ -35,6 +41,8 @@ const TITLES: Record<Tab, string> = {
   patients: "المرضى",
   invoices: "الفواتير",
   services: "قائمة الأسعار",
+  team: "الفريق الطبي",
+  currencies: "العملات",
 };
 
 function Shell() {
@@ -114,9 +122,11 @@ function Shell() {
           {tab === "patients" && <PatientsPage addSignal={addPatientSignal} onOpenPatient={setDrawerId} onBook={(pid) => openBook(pid)} />}
           {tab === "invoices" && <InvoicesPage />}
           {tab === "services" && <ServicesPage />}
+          {tab === "team" && <TeamPage />}
+          {tab === "currencies" && <CurrenciesPage />}
 
           <footer className="mt-10 pb-4 flex flex-wrap items-center justify-between gap-2 text-[11px] text-soft/80 font-medium">
-            <span>نظام عيادة اللؤلؤة · إصدار 2.4</span>
+            <span>نظام {CLINIC_NAME} · إصدار 2.5</span>
             <span>البيانات تُحفَظ محلياً على هذا الجهاز</span>
           </footer>
         </main>
@@ -159,8 +169,8 @@ function SidebarContent({
       <div className="flex items-center gap-3 px-5 pt-6 pb-5">
         <Logo className="w-11 h-11 shrink-0" />
         <div className="min-w-0">
-          <p className="font-display font-bold text-lg leading-tight">عيادة اللؤلؤة</p>
-          <p className="text-[10px] text-white/50 font-semibold tracking-wide">LULUA DENTAL CLINIC</p>
+          <p className="font-display font-bold text-[17px] leading-tight">{CLINIC_NAME}</p>
+          <p className="text-[9px] text-white/50 font-semibold tracking-wider mt-0.5" dir="ltr">{CLINIC_LATIN}</p>
         </div>
         {onClose && (
           <button onClick={onClose} className="icon-btn !text-white/60 hover:!bg-white/10 hover:!text-white ms-auto" aria-label="إغلاق القائمة">
@@ -351,9 +361,9 @@ function Topbar({ tab, onMenu, onOpenPatient }: { tab: Tab; onMenu: () => void; 
 
         {/* الحساب */}
         <div className="flex items-center gap-2.5 ps-2 border-s border-line">
-          <Avatar name="أحمد الشمري" size="w-9 h-9 text-xs" />
+          <Avatar name="عبدالله الشرفي" size="w-9 h-9 text-xs" />
           <div className="hidden sm:block leading-tight">
-            <p className="text-xs font-bold text-ink">د. أحمد الشمري</p>
+            <p className="text-xs font-bold text-ink">د. عبدالله الشرفي</p>
             <p className="text-[10px] text-soft">مدير العيادة</p>
           </div>
         </div>

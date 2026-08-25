@@ -7,6 +7,7 @@ import {
   fmtDateFull,
   today,
   uid,
+  useMoney,
   useStore,
   type Appointment,
   type ApptStatus,
@@ -209,6 +210,7 @@ export function AddAppointmentModal({
   defaultDate?: string;
 }) {
   const { db, dispatch, patientById, serviceById } = useStore();
+  const money = useMoney();
   const { push } = useToast();
   const [patientId, setPatientId] = useState("");
   const [serviceId, setServiceId] = useState("");

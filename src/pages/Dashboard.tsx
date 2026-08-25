@@ -2,11 +2,11 @@ import React, { useMemo } from "react";
 import {
   APPT_META,
   fmtDateFull,
-  fmtMoney,
   invoiceTotal,
   monthName,
   relTime,
   today,
+  useMoney,
   useStore,
 } from "../store";
 import {
@@ -39,6 +39,9 @@ const greeting = () => {
 
 export default function Dashboard({ onOpenPatient, onQuickBook, onNewPatient, onNav }: Props) {
   const { db, patientById, serviceById, doctorById, patientBalance } = useStore();
+  const money = useMoney();
+  const cur = db.currencies.find((c) => c.code === db.defaultCurrency) ?? db.currencies[0];
+  const rate = cur?.rate || 1;
 
   const todayAppts = useMemo(
     () =>
@@ -98,7 +101,7 @@ export default function Dashboard({ onOpenPatient, onQuickBook, onNewPatient, on
     {
       label: "المرضى المسجلون",
       value: db.patients.length,
-      money: false,
+      isMoney: false,
       sub: `${newThisWeek} انضموا هذا الأسبوع`,
       icon: <IconUsers className="w-5 h-5" />,
       tint: "bg-jade-soft text-jade-deep",
@@ -113,7 +116,7 @@ export default function Dashboard({ onOpenPatient, onQuickBook, onNewPatient, on
     {
       label: "مواعيد اليوم",
       value: activeToday,
-      money: false,
+      isMoney: false,
       sub: `${doneToday} مكتمل · ${Math.max(0, activeToday - doneToday)} متبقٍ`,
       icon: <IconCalendar className="w-5 h-5" />,
       tint: "bg-sky-soft text-sky",
@@ -125,8 +128,8 @@ export default function Dashboard({ onOpenPatient, onQuickBook, onNewPatient, on
     },
     {
       label: `إيرادات ${monthName()}`,
-      value: monthRevenue,
-      money: true,
+      value: Math.round(monthRevenue / rate),
+      isMoney: true,
       sub: `${monthInvoices.length} فاتورة هذا الشهر`,
       icon: <IconWallet className="w-5 h-5" />,
       tint: "bg-mint-soft text-[#1d6b47]",
@@ -139,8 +142,8 @@ export default function Dashboard({ onOpenPatient, onQuickBook, onNewPatient, on
     },
     {
       label: "مستحقات معلّقة",
-      value: outstanding,
-      money: true,
+      value: Math.round(outstanding / rate),
+      isMoney: true,
       sub: `${outstandingCount} فاتورة غير مسددة`,
       icon: <IconAlert className="w-5 h-5" />,
       tint: "bg-coral-soft text-coral",
@@ -154,7 +157,7 @@ export default function Dashboard({ onOpenPatient, onQuickBook, onNewPatient, on
   ];
 
   const actIcon = (kind: string) =>
-    kind === "patient" ? <IconUserPlus className="w-4 h-4" /> : kind === "appt" ? <IconCalendar className="w-4 h-4" /> : kind === "invoice" ? <IconReceipt className="w-4 h-4" /> : <IconTooth className="w-4 h-4" />;
+    kind === "patient" ? <IconUserPlus className="w-4 h-4" /> : kind === "appt" ? <IconCalendar className="w-4 h-4" /> : kind === "invoice" ? <IconReceipt className="w-4 h-4" /> : kind === "team" ? <IconUsers className="w-4 h-4" /> : <IconTooth className="w-4 h-4" />;
 
   return (
     <div className="space-y-5">
@@ -163,7 +166,7 @@ export default function Dashboard({ onOpenPatient, onQuickBook, onNewPatient, on
         <div>
           <p className="text-sm text-soft font-medium">{fmtDateFull(today(0))}</p>
           <h1 className="font-display font-bold text-3xl sm:text-4xl text-ink mt-1 leading-tight flex items-center gap-3">
-            {greeting()}، د. أحمد
+            {greeting()}، د. عبدالله
             <span className="inline-flex text-jade"><IconTooth className="w-8 h-8" /></span>
           </h1>
           <p className="text-sm text-soft mt-1.5">
@@ -190,8 +193,10 @@ export default function Dashboard({ onOpenPatient, onQuickBook, onNewPatient, on
               <p className="text-xs font-bold text-soft">{s.label}</p>
               <span className={`inline-flex items-center justify-center w-9 h-9 rounded-lg ${s.tint}`}>{s.icon}</span>
             </div>
-            <AnimatedNumber value={s.value} className="stat-num text-[32px] text-ink mt-1" />
-            {s.money && <span className="text-xs font-bold text-soft me-1">ر.س</span>}
+            <div className="flex items-baseline gap-1.5 mt-1">
+              <AnimatedNumber value={s.value} className="stat-num text-[32px] text-ink" />
+              {s.isMoney && <span className="text-xs font-bold text-soft">{cur?.symbol}</span>}
+            </div>
             <p className="text-[11px] text-soft mt-1.5 font-medium">{s.sub}</p>
             {s.extra}
           </div>
@@ -221,7 +226,6 @@ export default function Dashboard({ onOpenPatient, onQuickBook, onNewPatient, on
                   const dimmed = a.status === "done" || a.status === "cancelled";
                   return (
                     <li key={a.id} className="relative flex gap-4 pb-4 last:pb-0">
-                      {/* الخط الزمني */}
                       <div className="flex flex-col items-center">
                         <span className="stat-num text-sm text-ink w-12 text-center pt-2">{a.time}</span>
                       </div>
@@ -243,7 +247,7 @@ export default function Dashboard({ onOpenPatient, onQuickBook, onNewPatient, on
                           <div className="min-w-0 flex-1">
                             <p className={`font-bold text-sm text-ink truncate ${a.status === "cancelled" ? "line-through" : ""}`}>{p?.name}</p>
                             <p className="text-[11px] text-soft mt-0.5 truncate">
-                              {s?.name} · {d?.name}
+                              {s?.name} · {d?.name ?? "طبيب غير محدد"}
                             </p>
                           </div>
                           <Badge cls={meta.cls}>
@@ -299,7 +303,7 @@ export default function Dashboard({ onOpenPatient, onQuickBook, onNewPatient, on
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-bold text-ink truncate">{p.name}</p>
                         <p className="text-[11px] text-soft mt-0.5">
-                          {patientBalance(p.id) > 0 ? `مستحقات ${fmtMoney(patientBalance(p.id))}` : "لا مستحقات"}
+                          {patientBalance(p.id) > 0 ? `مستحقات ${money(patientBalance(p.id))}` : "لا مستحقات"}
                         </p>
                       </div>
                       <span className="chip bg-coral-soft text-coral">{n} تسوس</span>

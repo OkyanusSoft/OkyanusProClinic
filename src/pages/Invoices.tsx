@@ -1,12 +1,12 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {
   fmtDate,
-  fmtMoney,
   invoiceStatus,
   invoiceTotal,
   INV_META,
   today,
   uid,
+  useMoney,
   useStore,
   type Invoice,
 } from "../store";
@@ -15,11 +15,14 @@ import { AnimatedNumber, Avatar, Badge, EmptyState, Field, Modal, TInput, TSelec
 
 export default function InvoicesPage() {
   const { db, dispatch, patientById, serviceById } = useStore();
+  const money = useMoney();
   const { push } = useToast();
   const [showNew, setShowNew] = useState(false);
   const [payInv, setPayInv] = useState<Invoice | null>(null);
   const [filter, setFilter] = useState<"all" | "paid" | "partial" | "unpaid">("all");
 
+  const cur = db.currencies.find((c) => c.code === db.defaultCurrency) ?? db.currencies[0];
+  const rate = cur?.rate || 1;
   const collected = db.invoices.reduce((s, i) => s + Math.min(i.paid, invoiceTotal(i)), 0);
   const outstanding = db.invoices.reduce((s, i) => s + Math.max(0, invoiceTotal(i) - i.paid), 0);
 
@@ -36,7 +39,7 @@ export default function InvoicesPage() {
       <div className="anim-rise flex flex-wrap items-center justify-between gap-4">
         <div>
           <h1 className="font-display font-bold text-3xl text-ink">الفواتير والتحصيل</h1>
-          <p className="text-sm text-soft mt-1">{db.invoices.length} فاتورة · آخر إصدار {db.nextInv - 1}</p>
+          <p className="text-sm text-soft mt-1">{db.invoices.length} فاتورة · آخر إصدار {db.nextInv - 1} · العملة: {cur?.name}</p>
         </div>
         <button className="btn-primary" onClick={() => setShowNew(true)}>
           <IconPlus className="w-4.5 h-4.5" />
@@ -50,14 +53,14 @@ export default function InvoicesPage() {
             <p className="text-xs font-bold text-soft">إجمالي المحصَّل</p>
             <span className="inline-flex items-center justify-center w-9 h-9 rounded-lg bg-mint-soft text-[#1d6b47]"><IconWallet className="w-5 h-5" /></span>
           </div>
-          <p className="mt-1"><AnimatedNumber value={collected} className="stat-num text-3xl text-ink" /> <span className="text-xs font-bold text-soft">ر.س</span></p>
+          <p className="mt-1"><AnimatedNumber value={Math.round(collected / rate)} className="stat-num text-3xl text-ink" /> <span className="text-xs font-bold text-soft">{cur?.symbol}</span></p>
         </div>
         <div className="card p-5 anim-rise" style={{ animationDelay: "140ms" }}>
           <div className="flex items-center justify-between">
             <p className="text-xs font-bold text-soft">مبالغ معلّقة</p>
             <span className="inline-flex items-center justify-center w-9 h-9 rounded-lg bg-coral-soft text-coral"><IconReceipt className="w-5 h-5" /></span>
           </div>
-          <p className="mt-1"><AnimatedNumber value={outstanding} className="stat-num text-3xl text-coral" /> <span className="text-xs font-bold text-soft">ر.س</span></p>
+          <p className="mt-1"><AnimatedNumber value={Math.round(outstanding / rate)} className="stat-num text-3xl text-coral" /> <span className="text-xs font-bold text-soft">{cur?.symbol}</span></p>
         </div>
         <div className="card p-5 anim-rise" style={{ animationDelay: "210ms" }}>
           <p className="text-xs font-bold text-soft mb-3">تصفية حسب الحالة</p>
@@ -123,9 +126,9 @@ export default function InvoicesPage() {
                           {inv.items.map((it) => `${serviceById(it.serviceId)?.name ?? "خدمة"} ×${it.qty}`).join("، ")}
                         </span>
                       </td>
-                      <td className="td stat-num font-bold text-ink">{fmtMoney(total)}</td>
+                      <td className="td stat-num font-bold text-ink">{money(total)}</td>
                       <td className="td">
-                        {rem > 0 ? <span className="stat-num font-bold text-coral">{fmtMoney(rem)}</span> : <span className="text-mint font-bold text-xs">—</span>}
+                        {rem > 0 ? <span className="stat-num font-bold text-coral">{money(rem)}</span> : <span className="text-mint font-bold text-xs">—</span>}
                       </td>
                       <td className="td"><Badge cls={INV_META[st].cls}>{INV_META[st].label}</Badge></td>
                       <td className="td">
@@ -163,6 +166,7 @@ export default function InvoicesPage() {
 
 function NewInvoiceModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { db, dispatch, serviceById } = useStore();
+  const money = useMoney();
   const { push } = useToast();
   const [patientId, setPatientId] = useState("");
   const [rows, setRows] = useState<{ serviceId: string; qty: number }[]>([{ serviceId: "", qty: 1 }]);
@@ -194,7 +198,7 @@ function NewInvoiceModal({ open, onClose }: { open: boolean; onClose: () => void
       paid: paidNum,
     };
     dispatch({ type: "ADD_INVOICE", inv });
-    push("success", `أُنشئت الفاتورة ${inv.number}`, `الإجمالي ${fmtMoney(total)}${paidNum > 0 ? ` — دُفع منها ${fmtMoney(paidNum)}` : ""}`);
+    push("success", `أُنشئت الفاتورة ${inv.number}`, `الإجمالي ${money(total)}${paidNum > 0 ? ` — دُفع منها ${money(paidNum)}` : ""}`);
     onClose();
   };
 
@@ -209,7 +213,7 @@ function NewInvoiceModal({ open, onClose }: { open: boolean; onClose: () => void
         <>
           <div className="me-auto text-start">
             <p className="text-[11px] font-bold text-soft">الإجمالي المستحق</p>
-            <p className="stat-num text-xl text-jade-deep">{fmtMoney(total)}</p>
+            <p className="stat-num text-xl text-jade-deep">{money(total)}</p>
           </div>
           <button className="btn-ghost" onClick={onClose}>إلغاء</button>
           <button className="btn-primary" onClick={save}>إصدار الفاتورة</button>
@@ -234,7 +238,7 @@ function NewInvoiceModal({ open, onClose }: { open: boolean; onClose: () => void
                 <TSelect value={r.serviceId} onChange={(e) => setRows(rows.map((x, j) => (j === i ? { ...x, serviceId: e.target.value } : x)))}>
                   <option value="">— اختر خدمة —</option>
                   {db.services.filter((s) => s.active).map((s) => (
-                    <option key={s.id} value={s.id}>{s.name} — {s.price} ر.س</option>
+                    <option key={s.id} value={s.id}>{s.name} — {money(s.price)}</option>
                   ))}
                 </TSelect>
                 <TInput
@@ -244,7 +248,7 @@ function NewInvoiceModal({ open, onClose }: { open: boolean; onClose: () => void
                   onChange={(e) => setRows(rows.map((x, j) => (j === i ? { ...x, qty: Math.max(1, Number(e.target.value) || 1) } : x)))}
                   className="!w-20 text-center"
                 />
-                <span className="stat-num text-sm text-ink w-24 text-end shrink-0">{fmtMoney((serviceById(r.serviceId)?.price ?? 0) * r.qty)}</span>
+                <span className="stat-num text-sm text-ink w-24 text-end shrink-0">{money((serviceById(r.serviceId)?.price ?? 0) * r.qty)}</span>
                 <button
                   onClick={() => setRows(rows.filter((_, j) => j !== i))}
                   disabled={rows.length === 1}
@@ -275,6 +279,7 @@ function NewInvoiceModal({ open, onClose }: { open: boolean; onClose: () => void
 
 function PayModal({ inv, onClose }: { inv: Invoice; onClose: () => void }) {
   const { dispatch, patientById } = useStore();
+  const money = useMoney();
   const { push } = useToast();
   const remaining = Math.max(0, invoiceTotal(inv) - inv.paid);
   const [amount, setAmount] = useState(String(remaining));
@@ -283,7 +288,7 @@ function PayModal({ inv, onClose }: { inv: Invoice; onClose: () => void }) {
     const amt = Math.min(remaining, Math.max(0, Number(amount) || 0));
     if (amt <= 0) return;
     dispatch({ type: "PAY_INVOICE", id: inv.id, amount: amt });
-    push("success", `تم تحصيل ${fmtMoney(amt)}`, `${inv.number} — ${patientById(inv.patientId)?.name}`);
+    push("success", `تم تحصيل ${money(amt)}`, `${inv.number} — ${patientById(inv.patientId)?.name}`);
     onClose();
   };
 
@@ -292,7 +297,7 @@ function PayModal({ inv, onClose }: { inv: Invoice; onClose: () => void }) {
       open
       onClose={onClose}
       title={`تحصيل ${inv.number}`}
-      subtitle={`${patientById(inv.patientId)?.name} — المتبقي ${fmtMoney(remaining)}`}
+      subtitle={`${patientById(inv.patientId)?.name} — المتبقي ${money(remaining)}`}
       footer={
         <>
           <button className="btn-ghost" onClick={onClose}>إلغاء</button>
