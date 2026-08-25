@@ -9,6 +9,7 @@ import {
   FU_META,
   invoiceTotal,
   today,
+  clinicOf,
   TOOTH_META,
   uid,
   useAuth,
@@ -34,7 +35,14 @@ import {
 } from "../icons";
 import { Avatar, Badge, Drop, DropItem, EmptyState, Field, Modal, TArea, TInput, TSelect, TwoStepDelete, useToast } from "../components/ui";
 
-const HOURS = ["09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00", "18:00", "19:00", "20:00"];
+/* ساعات الحجز — تُشتق من إعدادات الدوام العامة */
+const hoursBetween = (start: string, end: string) => {
+  const s = parseInt(start.slice(0, 2), 10);
+  const e = parseInt(end.slice(0, 2), 10);
+  const arr: string[] = [];
+  for (let h = s; h < e; h++) arr.push(`${String(h).padStart(2, "0")}:00`);
+  return arr.length ? arr : ["09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00", "18:00", "19:00", "20:00"];
+};
 
 type View = "schedule" | "followups" | "history";
 
@@ -171,6 +179,7 @@ function ScheduleView({
   const { db, dispatch, patientById, serviceById, doctorById } = useStore();
   const { apptScope } = useAuth();
   const { push } = useToast();
+  const HOURS = useMemo(() => hoursBetween(clinicOf(db).workStart, clinicOf(db).workEnd), [db]);
 
   const days = useMemo(() => Array.from({ length: 7 }, (_, i) => today(i)), []);
   const visible = useMemo(
@@ -340,9 +349,10 @@ function FollowUpsView({ fus, onOpenPatient }: { fus: FollowUp[]; onOpenPatient:
   const pending = fus.filter((f) => f.status === "pending");
   const overdue = pending.filter((f) => dayDiff(f.dueDate) < 0).length;
   const dueToday = pending.filter((f) => dayDiff(f.dueDate) === 0).length;
+  const alertWindow = clinicOf(db).followUpAlertDays;
   const inWeek = pending.filter((f) => {
     const d = dayDiff(f.dueDate);
-    return d > 0 && d <= 7;
+    return d > 0 && d <= alertWindow;
   }).length;
   const doneCount = fus.filter((f) => f.status === "done").length;
 
@@ -398,7 +408,7 @@ function FollowUpsView({ fus, onOpenPatient }: { fus: FollowUp[]; onOpenPatient:
   const STATS = [
     { label: "متأخرة", value: overdue, cls: "bg-coral-soft text-coral", icon: <IconAlert className="w-4.5 h-4.5" /> },
     { label: "مستحقة اليوم", value: dueToday, cls: "bg-amber-soft text-[#a06410]", icon: <IconClock className="w-4.5 h-4.5" /> },
-    { label: "خلال 7 أيام", value: inWeek, cls: "bg-sky-soft text-sky", icon: <IconCalendar className="w-4.5 h-4.5" /> },
+    { label: `خلال ${alertWindow} أيام`, value: inWeek, cls: "bg-sky-soft text-sky", icon: <IconCalendar className="w-4.5 h-4.5" /> },
     { label: "مكتملة", value: doneCount, cls: "bg-mint-soft text-[#1d6b47]", icon: <IconCheck className="w-4.5 h-4.5" /> },
   ];
 
@@ -886,13 +896,16 @@ export function AddAppointmentModal({
   }, [open, defaultPatient, defaultTime, defaultDate]);
 
   const times = useMemo(() => {
+    const { workStart, workEnd } = clinicOf(db);
+    const s = parseInt(workStart.slice(0, 2), 10);
+    const e = parseInt(workEnd.slice(0, 2), 10);
     const arr: string[] = [];
-    for (let h = 9; h <= 20; h++) {
+    for (let h = s; h < e; h++) {
       arr.push(`${String(h).padStart(2, "0")}:00`);
       arr.push(`${String(h).padStart(2, "0")}:30`);
     }
-    return arr;
-  }, []);
+    return arr.length ? arr : ["09:00", "09:30", "10:00", "10:30", "11:00", "11:30", "12:00", "12:30"];
+  }, [db]);
 
   const busy = (t: string) => db.appointments.some((a) => a.date === date && a.doctorId === doctorId && a.time === t && a.status !== "cancelled");
 

@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from "react";
 import {
-  CLINIC_NAME,
+  clinicOf,
   expCatColor,
   EXPENSE_CATS,
   fmtDate,
@@ -58,6 +58,7 @@ function downloadCsv(name: string, rows: (string | number)[][]) {
 
 export default function ReportsPage() {
   const { db, serviceById, patientById, doctorById } = useStore();
+  const clinic = clinicOf(db);
   const money = useMoney();
   const cur = db.currencies.find((c) => c.code === db.defaultCurrency) ?? db.currencies[0];
   const sym = cur?.symbol ?? "ر.ي";
@@ -256,8 +257,8 @@ export default function ReportsPage() {
         {/* ترويسة الطباعة */}
         <div className="hidden print:flex items-center justify-between pb-4 mb-5 border-b-2 border-pine">
           <div>
-            <p className="font-display font-bold text-xl">{CLINIC_NAME}</p>
-            <p className="text-[10px] text-soft tracking-wider" dir="ltr">AL-SHARAFI DENTAL CLINIC</p>
+            <p className="font-display font-bold text-xl">{clinic.clinicName}</p>
+            <p className="text-[10px] text-soft tracking-wider" dir="ltr">{clinic.clinicLatin}</p>
           </div>
           <div className="text-end">
             <p className="font-bold text-sm">{TABS.find((t) => t.key === tab)!.label} — {periodLabel}</p>

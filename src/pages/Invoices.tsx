@@ -199,7 +199,7 @@ function NewInvoiceModal({ open, onClose }: { open: boolean; onClose: () => void
     const paidNum = Math.min(Math.max(0, Number(paid) || 0), total);
     const inv: Invoice = {
       id: uid(),
-      number: `INV-${db.nextInv}`,
+      number: `${db.settings.invoicePrefix}-${db.nextInv}`,
       patientId,
       date: today(0),
       items: valid.map((r) => ({ serviceId: r.serviceId, qty: r.qty, price: serviceById(r.serviceId)!.price })),
@@ -215,7 +215,7 @@ function NewInvoiceModal({ open, onClose }: { open: boolean; onClose: () => void
       open={open}
       onClose={onClose}
       title="فاتورة جديدة"
-      subtitle={`رقم تسلسلي تلقائي: INV-${db.nextInv}`}
+      subtitle={`رقم تسلسلي تلقائي: ${db.settings.invoicePrefix}-${db.nextInv}`}
       width="max-w-2xl"
       footer={
         <>

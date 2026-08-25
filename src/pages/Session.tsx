@@ -434,7 +434,7 @@ function Workstation({ session }: { session: ClinicalSession }) {
   };
 
   const end = () => {
-    const invNo = session.procedures.length > 0 ? `INV-${db.nextInv}` : null;
+    const invNo = session.procedures.length > 0 ? `${db.settings.invoicePrefix}-${db.nextInv}` : null;
     const withFu = fuEnabled && fuReason.trim() && fuDate;
     const fuId = withFu ? uid() : undefined;
     if (withFu) {

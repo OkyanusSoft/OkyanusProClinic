@@ -1,10 +1,12 @@
 import React from "react";
-import { CLINIC_NAME, fmtDate, fmtMoney, invoiceTotal, useMoney, useStore, type Invoice, type Prescription } from "../store";
+import { clinicOf, fmtDate, fmtMoney, invoiceTotal, useMoney, useStore, type Invoice, type Prescription } from "../store";
 import { IconPrinter, IconX, Logo } from "../icons";
 import { Modal } from "./ui";
 
 /** إطار الطباعة — يعرض معاينة A4 ويطبع عبر نافذة المتصفح */
 export function PrintModal({ open, onClose, title, children }: { open: boolean; onClose: () => void; title: string; children: React.ReactNode }) {
+  const { db } = useStore();
+  const clinic = clinicOf(db);
   return (
     <Modal
       open={open}
@@ -23,18 +25,18 @@ export function PrintModal({ open, onClose, title, children }: { open: boolean; 
       }
     >
       <div className="print-sheet bg-white rounded-xl border border-line shadow-sm p-8" dir="rtl">
-        {/* ترويسة العيادة */}
+        {/* ترويسة العيادة — من الإعدادات العامة */}
         <div className="flex items-center justify-between pb-4 border-b-2 border-pine">
           <div className="flex items-center gap-3">
             <Logo className="w-12 h-12" />
             <div>
-              <p className="font-display font-bold text-lg leading-tight">{CLINIC_NAME}</p>
-              <p className="text-[10px] text-soft tracking-wider" dir="ltr">AL-SHARAFI DENTAL CLINIC</p>
+              <p className="font-display font-bold text-lg leading-tight">{clinic.clinicName}</p>
+              <p className="text-[10px] text-soft tracking-wider" dir="ltr">{clinic.clinicLatin}</p>
             </div>
           </div>
           <div className="text-end text-[10px] text-soft leading-relaxed">
-            <p>صنعاء — شارع الزبيري، عمارة النخبة، الدور الثاني</p>
-            <p dir="ltr">+967 777 220 115 · +967 1 445 880</p>
+            <p>{clinic.address}</p>
+            <p dir="ltr">{clinic.phone}</p>
           </div>
         </div>
         {children}
@@ -50,7 +52,7 @@ export function PrintModal({ open, onClose, title, children }: { open: boolean; 
           </div>
         </div>
         <p className="text-center text-[9px] text-soft mt-4">
-          أُصدرت هذه الوثيقة إلكترونياً من نظام {CLINIC_NAME} — {fmtDate(new Date().toISOString().slice(0, 10))}
+          أُصدرت هذه الوثيقة إلكترونياً من نظام {clinic.clinicName} — {fmtDate(new Date().toISOString().slice(0, 10))}
         </p>
       </div>
     </Modal>
@@ -60,7 +62,8 @@ export function PrintModal({ open, onClose, title, children }: { open: boolean; 
 /* ============================ فاتورة ============================ */
 
 export function InvoicePrint({ inv }: { inv: Invoice }) {
-  const { patientById, serviceById, doctorById } = useStore();
+  const { db, patientById, serviceById } = useStore();
+  const clinic = clinicOf(db);
   const money = useMoney();
   const p = patientById(inv.patientId);
   const total = invoiceTotal(inv);
@@ -69,7 +72,7 @@ export function InvoicePrint({ inv }: { inv: Invoice }) {
     <div className="text-ink">
       <div className="flex items-center justify-between py-4">
         <div>
-          <p className="font-display font-bold text-xl">فاتورة ضريبية مبسطة</p>
+          <p className="font-display font-bold text-xl">{clinic.invoiceTitle}</p>
           <p className="text-xs text-soft mt-1">
             رقم: <b className="stat-num" dir="ltr">{inv.number}</b> · التاريخ: {fmtDate(inv.date)}
           </p>
@@ -115,9 +118,7 @@ export function InvoicePrint({ inv }: { inv: Invoice }) {
           <div className="flex justify-between border-t-2 border-pine pt-1.5 text-base"><span className="font-bold">المتبقي:</span><b className="stat-num text-coral">{money(rem)}</b></div>
         </div>
       </div>
-      <p className="text-[10px] text-soft mt-5 leading-relaxed">
-        يشمل السعر الكشف والمتابعة خلال 7 أيام. يُرجى إحضار هذه الفاتورة عند المراجعة. شكراً لثقتكم.
-      </p>
+      <p className="text-[10px] text-soft mt-5 leading-relaxed">{clinic.invoiceFooter}</p>
     </div>
   );
 }

@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { CLINIC_LATIN, CLINIC_NAME, ROLE_META, useAuth, useStore, type Role } from "../store";
+import { clinicOf, ROLE_META, useAuth, useStore, type Role } from "../store";
 import { IconChevronDown, IconShield, IconTooth, Logo } from "../icons";
 import { Avatar, useToast } from "../components/ui";
 
@@ -12,6 +12,7 @@ const GROUPS: { role: Role; hint: string }[] = [
 
 export default function Login() {
   const { db } = useStore();
+  const clinic = clinicOf(db);
   const { loginById } = useAuth();
   const { push } = useToast();
 
@@ -94,8 +95,8 @@ export default function Login() {
         <div className="relative flex items-center gap-3.5 px-9 pt-10">
           <Logo className="w-14 h-14" />
           <div>
-            <p className="font-display font-bold text-[22px] leading-tight">{CLINIC_NAME}</p>
-            <p className="text-[10px] text-white/50 font-semibold tracking-[0.18em] mt-1" dir="ltr">{CLINIC_LATIN}</p>
+            <p className="font-display font-bold text-[22px] leading-tight">{clinic.clinicName}</p>
+            <p className="text-[10px] text-white/50 font-semibold tracking-[0.18em] mt-1" dir="ltr">{clinic.clinicLatin}</p>
           </div>
         </div>
 
@@ -147,8 +148,8 @@ export default function Login() {
           <div className="lg:hidden flex items-center gap-3 mb-8 justify-center">
             <Logo className="w-12 h-12" />
             <div>
-              <p className="font-display font-bold text-xl leading-tight text-ink">{CLINIC_NAME}</p>
-              <p className="text-[10px] text-soft font-semibold tracking-widest" dir="ltr">{CLINIC_LATIN}</p>
+              <p className="font-display font-bold text-xl leading-tight text-ink">{clinic.clinicName}</p>
+              <p className="text-[10px] text-soft font-semibold tracking-widest" dir="ltr">{clinic.clinicLatin}</p>
             </div>
           </div>
 

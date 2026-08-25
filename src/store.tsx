@@ -921,7 +921,7 @@ function reducer(db: DB, action: Action): DB {
         const total = items.reduce((a, i) => a + i.qty * i.price, 0);
         const inv: Invoice = {
           id: uid(),
-          number: `INV-${nextInv}`,
+          number: `${db.settings.invoicePrefix}-${nextInv}`,
           patientId: s.patientId,
           date: today(0),
           items,
@@ -1060,6 +1060,7 @@ function load(): DB {
       orthoCases: db.orthoCases ?? [],
       xrays: db.xrays ?? [],
       followUps: db.followUps ?? [],
+      settings: { ...DEFAULT_CLINIC_SETTINGS, ...(db.settings ?? {}) },
       users: (db.users?.length ? db.users : seed().users).map((u) =>
         // طاقم الاستقبال والمساعدة يرى السجل والجدول كاملين دائماً
         u.role === "secretary" || u.role === "assistant"
