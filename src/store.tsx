@@ -122,6 +122,63 @@ export interface ClinicalSession {
   invoiceId?: string;
   rxId?: string;
 }
+
+/* ---------- السجلات السريرية الدائمة ---------- */
+export interface Implant {
+  id: string;
+  patientId: string;
+  tooth: number;
+  brand: string;
+  date: string;
+  status: "مخطط له" | "مرحلة الالتئام" | "مكتمل";
+  doctorId: string;
+  notes?: string;
+}
+export interface Prosthetic {
+  id: string;
+  patientId: string;
+  kind: string;
+  teeth: string;
+  date: string;
+  lab: string;
+  status: "قيد التصنيع" | "مركّب";
+  doctorId: string;
+}
+export interface OrthoCase {
+  id: string;
+  patientId: string;
+  kind: string;
+  started: string;
+  nextAdjust: string;
+  progress: number; // 0-100
+  notes?: string;
+}
+export interface XrayRec {
+  id: string;
+  patientId: string;
+  kind: string;
+  date: string;
+  findings: string;
+  doctorId: string;
+}
+
+export const IMPLANT_BRANDS = ["Straumann", "Osstem", "Nobel Biocare", "Dentium", "Megagen"];
+export const IMPLANT_STATUS = ["مخطط له", "مرحلة الالتئام", "مكتمل"] as const;
+export const PROSTHETIC_KINDS = ["تاج زيركون", "تاج بورسلين", "جسر ثابت", "فينير", "طقم كامل", "طقم جزئي"];
+export const ORTHO_KINDS = ["تقويم معدني", "تقويم شفاف", "تقويم خزفي"];
+export const XRAY_KINDS = ["بانورامية (OPG)", "سيفالومترية", "بيريابيكال", "CBCT ثلاثي الأبعاد"];
+
+/* مرجعية أدوية ذات أعراض جانبية مهمة — تُطابق تلقائياً مع روشتة الجلسة */
+export const DRUG_WATCH: { key: string; side: string[]; caution: string }[] = [
+  { key: "أموكسيسيلين", side: ["طفح جلدي", "غثيان", "إسهال"], caution: "يُمنع تماماً مع حساسية البنسلين" },
+  { key: "إيبوبروفين", side: ["تهيّج معدة", "ارتفاع ضغط"], caution: "حذر مع قرحة المعدة والربو والحمل" },
+  { key: "كليندامايسين", side: ["إسهال قد يكون شديداً", "غثيان"], caution: "أوقفه فوراً عند إسهال مائي وأبلغ الطبيب" },
+  { key: "ميترونيدازول", side: ["طعم معدني", "غثيان"], caution: "يُمنع الكحول أثناءه وبعده 48 ساعة" },
+  { key: "باراسيتامول", side: ["آمن غالباً بالجرعات الموصوفة"], caution: "الحد الأقصى 4 جم يومياً — تجاوزُه سام للكبد" },
+  { key: "كلورهيكسيدين", side: ["تصبغ الأسنان", "تغيّر الطعم"], caution: "لا يُستخدم أكثر من أسبوعين متواصلين" },
+  { key: "أسبرين", side: ["نزيف", "تهيّج معدة"], caution: "يوقف قبل الجراحة بـ 7 أيام بموافقة الطبيب" },
+];
+
 /* ============================== المستخدمون والصلاحيات ============================== */
 
 export type Role = "admin" | "doctor" | "secretary" | "assistant";
@@ -197,6 +254,10 @@ export interface DB {
   invoices: Invoice[];
   activity: Activity[];
   sessions: ClinicalSession[];
+  implants: Implant[];
+  prosthetics: Prosthetic[];
+  orthoCases: OrthoCase[];
+  xrays: XrayRec[];
   users: User[];
   nextInv: number;
 }
@@ -502,7 +563,31 @@ function seed(): DB {
     U("u-a1", "ماهر الحداء", "maher", "5555", "assistant", "st2", ROLE_META.assistant.defaults),
   ];
 
-  return { patients, doctors, staff, currencies, defaultCurrency: "YER", services, appointments, invoices, activity, expenses, prescriptions, sessions, users, nextInv: 1043 };
+  const implants: Implant[] = [
+    { id: uid(), patientId: "p5", tooth: 15, brand: "Straumann", date: today(-12), status: "مرحلة الالتئام", doctorId: "d1", notes: "غرسة بعد خلع الضرس العلوي — كشف الغطاء بعد 8 أسابيع" },
+    { id: uid(), patientId: "p5", tooth: 35, brand: "Osstem", date: today(-80), status: "مكتمل", doctorId: "d1" },
+    { id: uid(), patientId: "p3", tooth: 48, brand: "Nobel Biocare", date: today(-4), status: "مخطط له", doctorId: "d3", notes: "بعد تقييم CBCT لموضع ضرس العقل المنطمر" },
+  ];
+
+  const prosthetics: Prosthetic[] = [
+    { id: uid(), patientId: "p8", kind: "تاج زيركون", teeth: "11", date: today(-30), lab: "مختبر الأسنان الحديث", status: "مركّب", doctorId: "d1" },
+    { id: uid(), patientId: "p8", kind: "تاج زيركون", teeth: "21", date: today(-30), lab: "مختبر الأسنان الحديث", status: "مركّب", doctorId: "d1" },
+    { id: uid(), patientId: "p1", kind: "تاج زيركون", teeth: "46", date: today(-2), lab: "مختبر الرواد للأسنان", status: "قيد التصنيع", doctorId: "d1" },
+    { id: uid(), patientId: "p5", kind: "جسر ثابت", teeth: "14–16", date: today(-60), lab: "مختبر الأسنان الحديث", status: "مركّب", doctorId: "d1" },
+  ];
+
+  const orthoCases: OrthoCase[] = [
+    { id: uid(), patientId: "p6", kind: "تقويم معدني", started: today(-45), nextAdjust: today(5), progress: 35, notes: "المرحلة الأولى من الإطباق — شد الأقواس شهرياً" },
+  ];
+
+  const xrays: XrayRec[] = [
+    { id: uid(), patientId: "p3", kind: "CBCT ثلاثي الأبعاد", date: today(-4), findings: "ضرس عقل سفلي أيمن منطمر أفقياً ملامس للقناة العصبية — يُوصى بخلع جراحي بحذر", doctorId: "d3" },
+    { id: uid(), patientId: "p4", kind: "بيريابيكال", date: today(-3), findings: "آفة ذروية مبكرة على السن 13 مع widening في الرباط السني", doctorId: "d1" },
+    { id: uid(), patientId: "p5", kind: "بانورامية (OPG)", date: today(-20), findings: "فقدان عظمي أفقي متوسط في الفك السفلي، والجيوب الأنفية سليمة", doctorId: "d1" },
+    { id: uid(), patientId: "p6", kind: "سيفالومترية", date: today(-40), findings: "تحليل ما قبل التقويم: صنف هيكلي أول مع بروز قاطعي خفيف", doctorId: "d2" },
+  ];
+
+  return { patients, doctors, staff, currencies, defaultCurrency: "YER", services, appointments, invoices, activity, expenses, prescriptions, sessions, implants, prosthetics, orthoCases, xrays, users, nextInv: 1043 };
 }
 
 /* ============================== Store ============================== */
@@ -541,6 +626,15 @@ export type Action =
   | { type: "ADD_USER"; u: User }
   | { type: "UPDATE_USER"; u: User }
   | { type: "DELETE_USER"; id: string }
+  | { type: "ADD_IMPLANT"; r: Implant }
+  | { type: "DELETE_IMPLANT"; id: string }
+  | { type: "ADD_PROSTHETIC"; r: Prosthetic }
+  | { type: "DELETE_PROSTHETIC"; id: string }
+  | { type: "ADD_ORTHO"; r: OrthoCase }
+  | { type: "UPDATE_ORTHO"; r: OrthoCase }
+  | { type: "DELETE_ORTHO"; id: string }
+  | { type: "ADD_XRAY"; r: XrayRec }
+  | { type: "DELETE_XRAY"; id: string }
   | { type: "RESET" };
 
 const nowIso = () => new Date().toISOString();
@@ -802,6 +896,27 @@ function reducer(db: DB, action: Action): DB {
       return { ...db, users: db.users.map((x) => (x.id === action.u.id ? action.u : x)) };
     case "DELETE_USER":
       return { ...db, users: db.users.filter((x) => x.id !== action.id) };
+
+    /* ---------- السجلات السريرية ---------- */
+    case "ADD_IMPLANT":
+      return { ...db, implants: [action.r, ...db.implants] };
+    case "DELETE_IMPLANT":
+      return { ...db, implants: db.implants.filter((x) => x.id !== action.id) };
+    case "ADD_PROSTHETIC":
+      return { ...db, prosthetics: [action.r, ...db.prosthetics] };
+    case "DELETE_PROSTHETIC":
+      return { ...db, prosthetics: db.prosthetics.filter((x) => x.id !== action.id) };
+    case "ADD_ORTHO":
+      return { ...db, orthoCases: [action.r, ...db.orthoCases] };
+    case "UPDATE_ORTHO":
+      return { ...db, orthoCases: db.orthoCases.map((x) => (x.id === action.r.id ? action.r : x)) };
+    case "DELETE_ORTHO":
+      return { ...db, orthoCases: db.orthoCases.filter((x) => x.id !== action.id) };
+    case "ADD_XRAY":
+      return { ...db, xrays: [action.r, ...db.xrays] };
+    case "DELETE_XRAY":
+      return { ...db, xrays: db.xrays.filter((x) => x.id !== action.id) };
+
     case "RESET":
       return seed();
     default:
@@ -824,6 +939,10 @@ function load(): DB {
       sessions: db.sessions ?? [],
       staff: db.staff ?? [],
       activity: db.activity ?? [],
+      implants: db.implants ?? [],
+      prosthetics: db.prosthetics ?? [],
+      orthoCases: db.orthoCases ?? [],
+      xrays: db.xrays ?? [],
       users: (db.users?.length ? db.users : seed().users).map((u) =>
         // طاقم الاستقبال والمساعدة يرى السجل والجدول كاملين دائماً
         u.role === "secretary" || u.role === "assistant"

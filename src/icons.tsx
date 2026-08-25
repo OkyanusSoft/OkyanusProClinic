@@ -214,6 +214,36 @@ export const IconStetho = (p: P) =>
       <circle cx="19" cy="11.5" r="2.2" />
     </>
   );
+/* زرعة سن (لولب) */
+export const IconImplant = (p: P) =>
+  base(
+    p,
+    <>
+      <path d="M9.5 4h5l-.6 3.5h-3.8L9.5 4Z" />
+      <path d="M10.3 9.5h3.4l-.4 3h-2.6l-.4-3ZM10.7 14.5h2.6l-.3 2.5h-2l-.3-2.5ZM11 19h2l-.4 2h-1.2L11 19Z" />
+      <path d="M9.8 8h4.4M10.2 12.6h3.6" />
+    </>
+  );
+/* تقويم (سلك وأقواس) */
+export const IconBraces = (p: P) =>
+  base(
+    p,
+    <>
+      <path d="M3.5 12c2.5-1.5 5.5-1.5 8.5 0s6 1.5 8.5 0" />
+      <rect x="5.5" y="8.8" width="4" height="4.4" rx="1" />
+      <rect x="10" y="10.3" width="4" height="4.4" rx="1" />
+      <rect x="14.5" y="8.8" width="4" height="4.4" rx="1" />
+    </>
+  );
+/* أشعة (فيلم وسن) */
+export const IconXray = (p: P) =>
+  base(
+    p,
+    <>
+      <rect x="4" y="4" width="16" height="16" rx="2.5" />
+      <path d="M12 7.2c-1.1-.7-2.7-.9-3.7-.1-1.2.9-1.4 2.4-.9 3.7.4 1.1.7 2.2.9 3.4.1 1 .3 2.6 1.4 2.6s1-.9 1.2-2.3c.1-.7.5-1.1 1.1-1.1s1 .4 1.1 1.1c.2 1.4.2 2.3 1.2 2.3s1.3-1.6 1.4-2.6c.2-1.2.5-2.3.9-3.4.5-1.3.3-2.8-.9-3.7-1-.8-2.6-.6-3.7.1Z" />
+    </>
+  );
 export const IconLogout = (p: P) =>
   base(
     p,
