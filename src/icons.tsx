@@ -214,6 +214,14 @@ export const IconStetho = (p: P) =>
       <circle cx="19" cy="11.5" r="2.2" />
     </>
   );
+export const IconLogout = (p: P) =>
+  base(
+    p,
+    <>
+      <path d="M9 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h3" />
+      <path d="M15 8l4 4-4 4M19 12H9" />
+    </>
+  );
 
 /* شعار العيادة */
 export function Logo({ className = "w-10 h-10" }: P) {

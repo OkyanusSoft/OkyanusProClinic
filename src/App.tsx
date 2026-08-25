@@ -1,10 +1,11 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { APPT_META, CLINIC_LATIN, CLINIC_NAME, invoiceTotal, StoreProvider, today, useStore } from "./store";
+import { APPT_META, AuthProvider, CLINIC_LATIN, CLINIC_NAME, invoiceTotal, ROLE_META, StoreProvider, today, useAuth, useStore } from "./store";
 import {
   IconBell,
   IconCalendar,
   IconCoins,
   IconGrid,
+  IconLogout,
   IconMenu,
   IconPulse,
   IconReceipt,
@@ -29,8 +30,10 @@ import CurrenciesPage from "./pages/Currencies";
 import ExpensesPage from "./pages/Expenses";
 import ReportsPage from "./pages/Reports";
 import SessionPage from "./pages/Session";
+import UsersPage from "./pages/Users";
+import Login from "./pages/Login";
 
-type Tab = "dashboard" | "appointments" | "session" | "patients" | "invoices" | "expenses" | "reports" | "services" | "team" | "currencies";
+type Tab = "dashboard" | "appointments" | "session" | "patients" | "invoices" | "expenses" | "reports" | "services" | "team" | "currencies" | "users";
 
 const NAV: { key: Tab; label: string; icon: (c: string) => React.ReactNode }[] = [
   { key: "dashboard", label: "لوحة التحكم", icon: (c) => <IconGrid className={c} /> },
@@ -43,6 +46,7 @@ const NAV: { key: Tab; label: string; icon: (c: string) => React.ReactNode }[] =
   { key: "reports", label: "التقارير", icon: (c) => <IconTrendUp className={c} /> },
   { key: "team", label: "الفريق الطبي", icon: (c) => <IconStetho className={c} /> },
   { key: "currencies", label: "العملات", icon: (c) => <IconCoins className={c} /> },
+  { key: "users", label: "المستخدمون والصلاحيات", icon: (c) => <IconShield className={c} /> },
 ];
 
 const TITLES: Record<Tab, string> = {
@@ -56,16 +60,32 @@ const TITLES: Record<Tab, string> = {
   reports: "التقارير",
   team: "الفريق الطبي",
   currencies: "العملات",
+  users: "المستخدمون والصلاحيات",
 };
 
 function Shell() {
   const { db, dispatch, patientById, serviceById } = useStore();
+  const { user, can } = useAuth();
   const { push } = useToast();
   const [tab, setTab] = useState<Tab>("dashboard");
   const [drawerId, setDrawerId] = useState<string | null>(null);
   const [addPatientSignal, setAddPatientSignal] = useState(0);
   const [mobileNav, setMobileNav] = useState(false);
   const [book, setBook] = useState<{ open: boolean; patientId?: string; time?: string; date?: string }>({ open: false });
+
+  // تصفية القائمة حسب الصلاحيات
+  const allowedNav = NAV.filter((n) => can(n.key));
+
+  // عند تغيّر المستخدم أو صلاحياته: اضمن أن التبويب الحالي مسموح
+  useEffect(() => {
+    if (user && !can(tab)) {
+      setTab(allowedNav[0]?.key ?? "dashboard");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id, allowedNav.length]);
+
+  // بوابة الدخول: لا نظام بدون مستخدم مسجّل
+  if (!user) return <Login />;
 
   const todayCount = db.appointments.filter((a) => a.date === today(0) && a.status !== "cancelled").length;
   const unpaidCount = db.invoices.filter((i) => i.paid < invoiceTotal(i)).length;
@@ -85,6 +105,7 @@ function Shell() {
       <SidebarContent
         tab={tab}
         badges={badges}
+        items={allowedNav}
         onNav={(t) => {
           setTab(t as Tab);
           setMobileNav(false);
@@ -101,6 +122,7 @@ function Shell() {
           <SidebarContent
             tab={tab}
             badges={badges}
+            items={allowedNav}
             onNav={(t) => {
               setTab(t as Tab);
               setMobileNav(false);
@@ -140,6 +162,7 @@ function Shell() {
           {tab === "reports" && <ReportsPage />}
           {tab === "team" && <TeamPage />}
           {tab === "currencies" && <CurrenciesPage />}
+          {tab === "users" && <UsersPage />}
 
           <footer className="mt-10 pb-4 flex flex-wrap items-center justify-between gap-2 text-[11px] text-soft/80 font-medium">
             <span>نظام {CLINIC_NAME} · إصدار 2.5</span>
@@ -170,6 +193,7 @@ function SidebarContent({
   onReset,
   onClose,
   className,
+  items,
 }: {
   tab: Tab;
   badges: Partial<Record<Tab, number>>;
@@ -177,6 +201,7 @@ function SidebarContent({
   onReset: () => void;
   onClose?: () => void;
   className: string;
+  items: typeof NAV;
 }) {
   const { db } = useStore();
   const doc = db.doctors[0];
@@ -197,7 +222,7 @@ function SidebarContent({
 
       <p className="px-6 text-[10px] font-bold text-white/35 tracking-widest mb-2 mt-2">القائمة الرئيسية</p>
       <nav className="px-4 space-y-1">
-        {NAV.map((n) => (
+        {items.map((n) => (
           <button key={n.key} className={`navlink ${tab === n.key ? "active" : ""}`} onClick={() => onNav(n.key)}>
             {n.icon("w-5 h-5")}
             <span className="flex-1 text-start">{n.label}</span>
@@ -432,15 +457,41 @@ function Topbar({ tab, onMenu, onOpenPatient }: { tab: Tab; onMenu: () => void; 
         </Drop>
 
         {/* الحساب */}
-        <div className="flex items-center gap-2.5 ps-2 border-s border-line">
-          <Avatar name="عبدالله الشرفي" size="w-9 h-9 text-xs" />
-          <div className="hidden sm:block leading-tight">
-            <p className="text-xs font-bold text-ink">د. عبدالله الشرفي</p>
-            <p className="text-[10px] text-soft">مدير العيادة</p>
-          </div>
-        </div>
+        <UserChip />
       </div>
     </header>
+  );
+}
+
+/* ============================ شريحة المستخدم ============================ */
+
+function UserChip() {
+  const { user, logout } = useAuth();
+  const { push } = useToast();
+  if (!user) return null;
+  const meta = ROLE_META[user.role];
+  return (
+    <div className="flex items-center gap-2.5 ps-2 border-s border-line">
+      <div className="relative">
+        <Avatar name={user.name} size="w-9 h-9 text-xs" />
+        <span className="absolute -bottom-0.5 -end-0.5 w-3 h-3 rounded-full border-2 border-mist" style={{ background: meta.color }} />
+      </div>
+      <div className="hidden sm:block leading-tight">
+        <p className="text-xs font-bold text-ink">{user.name}</p>
+        <span className={`chip mt-0.5 ${meta.cls} !text-[9px] !px-1.5 !py-0.5`}>{meta.label}</span>
+      </div>
+      <button
+        onClick={() => {
+          logout();
+          push("info", "تم تسجيل الخروج", "نراك قريباً.");
+        }}
+        className="icon-btn !text-soft hover:!bg-coral-soft hover:!text-coral"
+        title="تسجيل الخروج"
+        aria-label="تسجيل الخروج"
+      >
+        <IconLogout className="w-5 h-5" />
+      </button>
+    </div>
   );
 }
 
@@ -449,9 +500,11 @@ function Topbar({ tab, onMenu, onOpenPatient }: { tab: Tab; onMenu: () => void; 
 export default function App() {
   return (
     <StoreProvider>
-      <ToastProvider>
-        <Shell />
-      </ToastProvider>
+      <AuthProvider>
+        <ToastProvider>
+          <Shell />
+        </ToastProvider>
+      </AuthProvider>
     </StoreProvider>
   );
 }

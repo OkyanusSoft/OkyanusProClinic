@@ -1,4 +1,4 @@
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useReducer } from "react";
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useState } from "react";
 
 /* ============================== Types ============================== */
 
@@ -122,6 +122,66 @@ export interface ClinicalSession {
   invoiceId?: string;
   rxId?: string;
 }
+/* ============================== المستخدمون والصلاحيات ============================== */
+
+export type Role = "admin" | "doctor" | "secretary" | "assistant";
+export interface User {
+  id: string;
+  name: string;
+  username: string;
+  pin: string;
+  role: Role;
+  linkId?: string; // معرّف الطبيب أو الموظف المرتبط
+  active: boolean;
+  permissions: string[];
+  lastLogin?: string;
+}
+
+export const PERMISSIONS: { key: string; label: string; desc: string }[] = [
+  { key: "dashboard", label: "لوحة التحكم", desc: "الإحصائيات وجدول اليوم والنشاط" },
+  { key: "appointments", label: "المواعيد", desc: "الحجوزات وجدول الأيام" },
+  { key: "session", label: "محطة العمل", desc: "جلسات العلاج السريرية" },
+  { key: "patients", label: "ملفات المرضى", desc: "السجل وخريطة الأسنان والروشتات" },
+  { key: "invoices", label: "الفواتير", desc: "الإصدار والتحصيل والطباعة" },
+  { key: "expenses", label: "المصروفات", desc: "تسجيل مصاريف العيادة" },
+  { key: "reports", label: "التقارير", desc: "الإيرادات وأداء الأطباء" },
+  { key: "services", label: "قائمة الأسعار", desc: "الخدمات وأسعارها" },
+  { key: "team", label: "الفريق الطبي", desc: "الأطباء والموظفون" },
+  { key: "currencies", label: "العملات", desc: "العملات وأسعار الصرف" },
+  { key: "users", label: "المستخدمون والصلاحيات", desc: "إدارة الحسابات والأدوار" },
+];
+
+export const ROLE_META: Record<Role, { label: string; cls: string; color: string; desc: string; defaults: string[] }> = {
+  admin: {
+    label: "مدير النظام",
+    cls: "bg-pine text-white",
+    color: "#0b2f2b",
+    desc: "وصول كامل لكل الشاشات والإعدادات",
+    defaults: PERMISSIONS.map((p) => p.key),
+  },
+  doctor: {
+    label: "طبيب",
+    cls: "bg-jade-soft text-jade-deep",
+    color: "#0d8f83",
+    desc: "يرى مرضاه ومواعيده وجلسات علاجه فقط",
+    defaults: ["dashboard", "appointments", "session", "patients", "reports", "services"],
+  },
+  secretary: {
+    label: "سكرتارية",
+    cls: "bg-sky-soft text-sky",
+    color: "#3a86c4",
+    desc: "الاستقبال والحجوزات والفواتير حسب الممنوح",
+    defaults: ["dashboard", "appointments", "patients", "invoices", "services"],
+  },
+  assistant: {
+    label: "مساعد طبيب",
+    cls: "bg-amber-soft text-[#a06410]",
+    color: "#e2952b",
+    desc: "مساعدة الطبيب في الجلسات والملفات",
+    defaults: ["appointments", "session", "patients"],
+  },
+};
+
 export interface DB {
   expenses: Expense[];
   prescriptions: Prescription[];
@@ -135,6 +195,7 @@ export interface DB {
   invoices: Invoice[];
   activity: Activity[];
   sessions: ClinicalSession[];
+  users: User[];
   nextInv: number;
 }
 
@@ -428,7 +489,18 @@ function seed(): DB {
     ),
   ];
 
-  return { patients, doctors, staff, currencies, defaultCurrency: "YER", services, appointments, invoices, activity, expenses, prescriptions, sessions, nextInv: 1043 };
+  const U = (id: string, name: string, username: string, pin: string, role: Role, linkId: string | undefined, permissions: string[]): User =>
+    ({ id, name, username, pin, role, linkId, active: true, permissions });
+  const users: User[] = [
+    U("u-admin", "عبدالله الشرفي", "abdullah", "0000", "admin", undefined, ROLE_META.admin.defaults),
+    U("u-d1", "أحمد النجار", "najar", "1111", "doctor", "d1", ROLE_META.doctor.defaults),
+    U("u-d2", "سارة الحكيمي", "hakimi", "2222", "doctor", "d2", ROLE_META.doctor.defaults),
+    U("u-d3", "خالد باصهيب", "basuhaib", "3333", "doctor", "d3", ROLE_META.doctor.defaults),
+    U("u-s1", "أروى الشرعبي", "arwa", "4444", "secretary", "st1", ROLE_META.secretary.defaults),
+    U("u-a1", "ماهر الحداء", "maher", "5555", "assistant", "st2", ROLE_META.assistant.defaults),
+  ];
+
+  return { patients, doctors, staff, currencies, defaultCurrency: "YER", services, appointments, invoices, activity, expenses, prescriptions, sessions, users, nextInv: 1043 };
 }
 
 /* ============================== Store ============================== */
@@ -464,6 +536,9 @@ export type Action =
   | { type: "END_SESSION"; id: string; paid: number }
   | { type: "CANCEL_SESSION"; id: string }
   | { type: "IMPORT"; db: DB }
+  | { type: "ADD_USER"; u: User }
+  | { type: "UPDATE_USER"; u: User }
+  | { type: "DELETE_USER"; id: string }
   | { type: "RESET" };
 
 const nowIso = () => new Date().toISOString();
@@ -719,6 +794,12 @@ function reducer(db: DB, action: Action): DB {
 
     case "IMPORT":
       return action.db;
+    case "ADD_USER":
+      return { ...db, users: [...db.users, action.u] };
+    case "UPDATE_USER":
+      return { ...db, users: db.users.map((x) => (x.id === action.u.id ? action.u : x)) };
+    case "DELETE_USER":
+      return { ...db, users: db.users.filter((x) => x.id !== action.id) };
     case "RESET":
       return seed();
     default:
@@ -741,6 +822,7 @@ function load(): DB {
       sessions: db.sessions ?? [],
       staff: db.staff ?? [],
       activity: db.activity ?? [],
+      users: db.users?.length ? db.users : seed().users,
     };
   } catch {
     db = seed();
@@ -825,4 +907,109 @@ export function useMoney() {
     },
     [cur]
   );
+}
+
+/* ============================== المصادقة والصلاحيات ============================== */
+
+const AUTH_KEY = "dental-auth-v1";
+
+interface AuthCtx {
+  user: User | null;
+  isAdmin: boolean;
+  isDoctor: boolean;
+  login: (username: string, pin: string) => { ok: boolean; error?: string };
+  loginById: (id: string, pin: string) => { ok: boolean; error?: string };
+  logout: () => void;
+  can: (perm: string) => boolean;
+  patientScope: Set<string> | null; // null = يرى كل المرضى
+  doctorScopeId: string | null; // معرّف الطبيب المرتبط بحساب الطبيب
+}
+
+const AuthContext = createContext<AuthCtx | null>(null);
+
+export function AuthProvider({ children }: { children: React.ReactNode }) {
+  const { db, dispatch } = useStore();
+  const [userId, setUserId] = useState<string | null>(() => {
+    try {
+      return localStorage.getItem(AUTH_KEY);
+    } catch {
+      return null;
+    }
+  });
+
+  const user = useMemo(() => db.users.find((u) => u.id === userId && u.active) ?? null, [db.users, userId]);
+
+  const doLogin = useCallback(
+    (u: User, pin: string): { ok: boolean; error?: string } => {
+      if (!u.active) return { ok: false, error: "هذا الحساب موقوف — تواصل مع الإدارة." };
+      if (u.pin !== pin) return { ok: false, error: "رمز الدخول غير صحيح، حاول مجدداً." };
+      setUserId(u.id);
+      try {
+        localStorage.setItem(AUTH_KEY, u.id);
+      } catch {
+        /* تجاهل */
+      }
+      dispatch({ type: "UPDATE_USER", u: { ...u, lastLogin: new Date().toISOString() } });
+      return { ok: true };
+    },
+    [dispatch]
+  );
+
+  const value = useMemo<AuthCtx>(() => {
+    const isAdmin = user?.role === "admin";
+    const isDoctor = user?.role === "doctor";
+    const doctorScopeId = isDoctor ? user?.linkId ?? null : null;
+
+    // نطاق مرضى الطبيب: كل مريض لديه موعد أو جلسة عند هذا الطبيب
+    let patientScope: Set<string> | null = null;
+    if (isDoctor && doctorScopeId) {
+      const set = new Set<string>();
+      db.appointments.forEach((a) => {
+        if (a.doctorId === doctorScopeId) set.add(a.patientId);
+      });
+      db.sessions.forEach((s) => {
+        if (s.doctorId === doctorScopeId) set.add(s.patientId);
+      });
+      patientScope = set;
+    }
+
+    return {
+      user,
+      isAdmin,
+      isDoctor,
+      login: (username, pin) => {
+        const u = db.users.find((x) => x.username.toLowerCase() === username.trim().toLowerCase());
+        if (!u) return { ok: false, error: "اسم المستخدم غير موجود." };
+        return doLogin(u, pin);
+      },
+      loginById: (id, pin) => {
+        const u = db.users.find((x) => x.id === id);
+        if (!u) return { ok: false, error: "المستخدم غير موجود." };
+        return doLogin(u, pin);
+      },
+      logout: () => {
+        setUserId(null);
+        try {
+          localStorage.removeItem(AUTH_KEY);
+        } catch {
+          /* تجاهل */
+        }
+      },
+      can: (perm) => {
+        if (!user) return false;
+        if (isAdmin) return true;
+        return user.permissions.includes(perm);
+      },
+      patientScope,
+      doctorScopeId,
+    };
+  }, [user, db.appointments, db.sessions, db.users, doLogin]);
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+}
+
+export function useAuth() {
+  const ctx = useContext(AuthContext);
+  if (!ctx) throw new Error("useAuth outside provider");
+  return ctx;
 }
