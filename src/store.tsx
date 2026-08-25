@@ -119,8 +119,10 @@ export interface ClinicalSession {
   teethTreated: { tooth: number; status: ToothStatus }[];
   meds: RxItem[];
   medNotes: string;
+  summary: string; // تقرير العمل السريري للجلسة
   invoiceId?: string;
   rxId?: string;
+  fuId?: string; // العودة المرتبطة بالجلسة
 }
 
 /* ============================== العودات والمتابعة ============================== */
@@ -553,7 +555,8 @@ function seed(): DB {
     procedures: SessionProc[],
     teethTreated: { tooth: number; status: ToothStatus }[],
     meds: RxItem[],
-    medNotes = ""
+    medNotes = "",
+    summary = ""
   ): ClinicalSession => ({
     id: uid(),
     patientId,
@@ -568,6 +571,7 @@ function seed(): DB {
     teethTreated,
     meds,
     medNotes,
+    summary,
   });
 
   const sessions: ClinicalSession[] = [
@@ -578,7 +582,8 @@ function seed(): DB {
       [{ serviceId: "s2" }],
       [],
       [{ name: "غسول كلورهيكسيدين", dose: "10 مل", freq: "مرتين يومياً", duration: "أسبوع" }],
-      "استخدام فرشاة ناعمة ومحلول ماء وملح دافئ"
+      "استخدام فرشاة ناعمة ومحلول ماء وملح دافئ",
+      "نفّذ تنظيف وتلميع كامل للفكين مع إزالة الترسبات الجيرية، استجابت اللثة جيداً. أُعطي المريض تعليمات العناية المنزلية وموعد مراجعة روتيني."
     ),
     SES(
       "p9", "d1", today(-1), "11:00", "12:15",
@@ -590,7 +595,8 @@ function seed(): DB {
         { name: "أموكسيسيلين Amoxicillin", dose: "500 مجم", freq: "كل 8 ساعات", duration: "5 أيام" },
         { name: "إيبوبروفين Ibuprofen", dose: "400 مجم", freq: "عند الألم — بعد الأكل", duration: "3 أيام" },
       ],
-      "اكتمل علاج العصب للسن 46 — مراجعة الأسبوع القادم للحشوة والتاج"
+      "اكتمل علاج العصب للسن 46 — مراجعة الأسبوع القادم للحشوة والتاج",
+      "أُكمل علاج العصب للسن 46 بجلسة واحدة: فتح حجرة اللب، تحديد طول القنوات، تحضير وحشو ثلاث قنوات. زوال الألم بعد التخدير، يُستكمل التركيب في المراجعة القادمة."
     ),
   ];
 
@@ -674,7 +680,7 @@ export type Action =
   | { type: "DELETE_PRESCRIPTION"; id: string }
   | { type: "START_SESSION"; patientId: string; doctorId: string; apptId?: string }
   | { type: "PATCH_SESSION"; id: string; patch: Partial<ClinicalSession> }
-  | { type: "END_SESSION"; id: string; paid: number }
+  | { type: "END_SESSION"; id: string; paid: number; fuId?: string }
   | { type: "CANCEL_SESSION"; id: string }
   | { type: "IMPORT"; db: DB }
   | { type: "ADD_USER"; u: User }
@@ -844,6 +850,7 @@ function reducer(db: DB, action: Action): DB {
         teethTreated: [],
         meds: [],
         medNotes: "",
+        summary: "",
       };
       const appointments = action.apptId
         ? db.appointments.map((a) => (a.id === action.apptId ? { ...a, status: "inprogress" as ApptStatus } : a))
@@ -917,7 +924,7 @@ function reducer(db: DB, action: Action): DB {
         ? db.appointments.map((a) => (a.id === s.apptId ? { ...a, status: "done" as ApptStatus } : a))
         : db.appointments;
       const sessions = db.sessions.map((x) =>
-        x.id === s.id ? { ...x, status: "done" as const, endedAt: nowIso(), invoiceId, rxId } : x
+        x.id === s.id ? { ...x, status: "done" as const, endedAt: nowIso(), invoiceId, rxId, fuId: action.fuId } : x
       );
       const pName = db.patients.find((p) => p.id === s.patientId)?.name ?? "";
       return {
@@ -1008,7 +1015,7 @@ function load(): DB {
       ...db,
       expenses: db.expenses ?? [],
       prescriptions: db.prescriptions ?? [],
-      sessions: db.sessions ?? [],
+      sessions: (db.sessions ?? []).map((s) => ({ ...s, summary: s.summary ?? "" })),
       staff: db.staff ?? [],
       activity: db.activity ?? [],
       implants: db.implants ?? [],

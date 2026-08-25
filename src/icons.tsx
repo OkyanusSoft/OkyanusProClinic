@@ -253,6 +253,15 @@ export const IconLogout = (p: P) =>
     </>
   );
 
+export const IconCopy = (p: P) =>
+  base(
+    p,
+    <>
+      <rect x="8.5" y="8.5" width="11.5" height="11.5" rx="2" />
+      <path d="M15.5 8.5v-2a2 2 0 0 0-2-2h-7a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h2" />
+    </>
+  );
+
 /* شعار العيادة */
 export function Logo({ className = "w-10 h-10" }: P) {
   return (

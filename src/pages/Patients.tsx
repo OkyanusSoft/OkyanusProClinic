@@ -3,6 +3,7 @@ import {
   APPT_META,
   fmtDate,
   FU_META,
+  TOOTH_META,
   invoiceStatus,
   invoiceTotal,
   INV_META,
@@ -15,7 +16,7 @@ import {
   type FollowUp,
   type Patient,
 } from "../store";
-import { IconCalendar, IconCalendarPlus, IconClock, IconPhone, IconPlus, IconPrinter, IconSearch, IconSpark, IconUserPlus, IconUsers, IconAlert } from "../icons";
+import { IconCalendar, IconCalendarPlus, IconChevronDown, IconClock, IconPencil, IconPhone, IconPlus, IconPrinter, IconSearch, IconSpark, IconUserPlus, IconUsers, IconAlert } from "../icons";
 import { Avatar, Badge, EmptyState, Field, Modal, TArea, TInput, TSelect, TwoStepDelete, useToast } from "../components/ui";
 import DentalChart from "../components/DentalChart";
 import { PrintModal, RxPrint } from "../components/PrintSheet";
@@ -357,6 +358,45 @@ export function PatientDrawer({
   const fus = db.followUps
     .filter((f) => f.patientId === p.id)
     .sort((a, b) => (a.status === b.status ? a.dueDate.localeCompare(b.dueDate) : a.status === "pending" ? -1 : 1));
+
+  /* سجل الأعمال: جلسات العلاج المكتملة (غنية) + الزيارات بدون جلسة */
+  const workLog = useMemo(() => {
+    const sess = db.sessions.filter((s) => s.patientId === p.id && s.status === "done");
+    const sessAppts = new Set(sess.map((s) => s.apptId).filter(Boolean));
+    const plain = visits.filter((a) => a.status === "done" && !sessAppts.has(a.id));
+    return [
+      ...sess.map((s) => ({ kind: "session" as const, id: s.id, date: s.date, sort: s.endedAt ?? s.startedAt, s })),
+      ...plain.map((a) => ({ kind: "visit" as const, id: a.id, date: a.date, sort: a.date + "T" + a.time + ":00", a })),
+    ].sort((x, y) => y.sort.localeCompare(x.sort));
+  }, [db.sessions, visits, p.id]);
+
+  const fuChip = (fuId?: string) => {
+    const fu = fuId ? db.followUps.find((f) => f.id === fuId) : undefined;
+    if (!fu) return null;
+    const overdue = fu.status === "pending" && fu.dueDate < today(0);
+    const cls =
+      fu.status === "done"
+        ? "bg-mint-soft text-[#1d6b47]"
+        : fu.status === "booked"
+        ? "bg-sky-soft text-sky"
+        : overdue
+        ? "bg-coral-soft text-coral"
+        : "bg-amber-soft text-[#a06410]";
+    const label =
+      fu.status === "done"
+        ? "عودة مكتملة"
+        : fu.status === "booked"
+        ? `عودة محجوزة — ${fmtDate(fu.dueDate)}`
+        : overdue
+        ? `عودة متأخرة — ${fmtDate(fu.dueDate)}`
+        : `عودة مقررة — ${fmtDate(fu.dueDate)}`;
+    return (
+      <span className={`chip ${cls}`}>
+        <span className="w-1.5 h-1.5 rounded-full bg-current" />
+        {label}
+      </span>
+    );
+  };
   const nextFu = fus.find((f) => f.status === "pending");
   const bal = patientBalance(p.id);
   const hasAllergy = p.allergies && p.allergies !== "لا يوجد";
@@ -527,26 +567,72 @@ export function PatientDrawer({
           </section>
 
           <section className="card overflow-hidden">
-            <h3 className="font-display font-bold text-lg text-ink px-5 pt-4 pb-3 border-b border-line">سجل الزيارات</h3>
-            {visits.length === 0 ? (
-              <EmptyState icon={<IconCalendarPlus className="w-6 h-6" />} title="لا زيارات سابقة" />
+            <div className="flex items-center justify-between px-5 pt-4 pb-3 border-b border-line">
+              <h3 className="font-display font-bold text-lg text-ink">سجل الأعمال والمتابعة</h3>
+              <span className="chip bg-mist text-soft stat-num">{workLog.length}</span>
+            </div>
+            {workLog.length === 0 ? (
+              <EmptyState icon={<IconCalendarPlus className="w-6 h-6" />} title="لا أعمال سابقة" desc="جلسات العلاج والزيارات المكتملة تُدوَّن هنا مع عوداتها." />
             ) : (
-              <ul className="divide-y divide-line/60">
-                {visits.slice(0, 7).map((v) => {
-                  const meta = APPT_META[v.status];
-                  return (
-                    <li key={v.id} className="flex items-center gap-3 px-5 py-3">
-                      <span className="stat-num text-sm text-ink w-24 shrink-0">{fmtDate(v.date)}</span>
-                      <span className="stat-num text-xs text-soft w-12 shrink-0">{v.time}</span>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-bold text-ink truncate">{serviceById(v.serviceId)?.name}</p>
-                        <p className="text-[11px] text-soft">{doctorById(v.doctorId)?.name}</p>
-                      </div>
-                      <Badge cls={meta.cls}>{meta.label}</Badge>
-                    </li>
-                  );
-                })}
-              </ul>
+              <div className="px-5 py-5">
+                <ul className="relative ms-2 border-s-2 border-line space-y-4">
+                  {workLog.slice(0, 12).map((w) => {
+                    if (w.kind === "visit") {
+                      return (
+                        <li key={w.id} className="relative ps-4 anim-fade">
+                          <span className="absolute top-1.5 -start-[7px] w-3 h-3 rounded-full bg-line border-2 border-white" />
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="stat-num text-xs font-bold text-ink">{fmtDate(w.date)}</span>
+                            <span className="text-xs font-semibold text-soft">{serviceById(w.a.serviceId)?.name}</span>
+                            <span className="text-[10px] text-soft">· {doctorById(w.a.doctorId)?.name}</span>
+                            <span className="chip bg-mist text-soft ms-auto">زيارة</span>
+                          </div>
+                        </li>
+                      );
+                    }
+                    const s = w.s;
+                    const inv = s.invoiceId ? db.invoices.find((x) => x.id === s.invoiceId) : undefined;
+                    return (
+                      <li key={w.id} className="relative ps-4 anim-fade">
+                        <span className="absolute top-1.5 -start-[7px] w-3 h-3 rounded-full bg-jade border-2 border-white pulse-soft" />
+                        <div className="rounded-xl border border-line bg-gradient-to-b from-white to-mist/50 p-3.5 hover:border-jade/50 hover:shadow-md transition-all">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="stat-num text-xs font-bold text-ink">{fmtDate(s.date)}</span>
+                            <span className="text-[10px] font-bold text-soft">· {doctorById(s.doctorId)?.name}</span>
+                            <span className="chip bg-jade-soft text-jade-deep ms-auto"><IconSpark className="w-3 h-3" /> جلسة علاج</span>
+                          </div>
+                          <div className="flex flex-wrap gap-1.5 mt-2.5">
+                            {s.procedures.map((pr, j) => (
+                              <span key={j} className="chip bg-mist text-ink">
+                                {serviceById(pr.serviceId)?.name}
+                                {pr.tooth && <b className="stat-num text-[#a06410]">· سن {pr.tooth}</b>}
+                              </span>
+                            ))}
+                            {s.teethTreated.map((t, j) => (
+                              <span key={`t${j}`} className="chip" style={{ background: TOOTH_META[t.status].fill === "#ffffff" ? "#eef4f2" : TOOTH_META[t.status].fill, color: TOOTH_META[t.status].stroke }}>
+                                سن {t.tooth} — {TOOTH_META[t.status].label}
+                              </span>
+                            ))}
+                            {s.meds.length > 0 && <span className="chip bg-sky-soft text-sky">روشتة {s.meds.length}</span>}
+                            {inv && <span className="chip bg-mint-soft text-[#1d6b47]">{inv.number} · {money(invoiceTotal(inv))}</span>}
+                          </div>
+                          {s.summary.trim() && (
+                            <details className="group mt-2.5">
+                              <summary className="text-[11px] font-bold text-jade-deep cursor-pointer list-none inline-flex items-center gap-1.5 hover:underline">
+                                <IconPencil className="w-3 h-3" />
+                                تقرير العمل
+                                <span className="text-soft group-open:rotate-180 transition-transform inline-flex"><IconChevronDown className="w-3 h-3" /></span>
+                              </summary>
+                              <p className="text-[11.5px] leading-relaxed text-soft mt-2 whitespace-pre-line bg-mist/70 rounded-lg px-3 py-2.5 border border-line/70">{s.summary}</p>
+                            </details>
+                          )}
+                          <div className="mt-2.5">{fuChip(s.fuId)}</div>
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
             )}
           </section>
 

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   APPT_META,
   DRUG_WATCH,
@@ -13,6 +13,7 @@ import {
   PROSTHETIC_KINDS,
   suggestFollowUp,
   today,
+  TOOTH_META,
   uid,
   useAuth,
   useMoney,
@@ -29,6 +30,8 @@ import {
   IconAlert,
   IconBraces,
   IconCalendar,
+  IconCopy,
+  IconPencil,
   IconCheck,
   IconClock,
   IconCrown,
@@ -343,7 +346,7 @@ function Workstation({ session }: { session: ClinicalSession }) {
   const p = patientById(session.patientId);
   const [tab, setTab] = useState<WTab>("treatment");
   const [paid, setPaid] = useState("0");
-  const [fuEnabled, setFuEnabled] = useState(false);
+  const [fuEnabled, setFuEnabled] = useState(true);
   const [fuReason, setFuReason] = useState("");
   const [fuDate, setFuDate] = useState("");
   const [procService, setProcService] = useState("");
@@ -384,6 +387,8 @@ function Workstation({ session }: { session: ClinicalSession }) {
     setFuReason(suggestion.reason);
     setFuDate(today(suggestion.days));
   }, [suggestion]);
+
+
 
   const stages = [
     { label: "دخول المريض", done: true },
@@ -430,13 +435,13 @@ function Workstation({ session }: { session: ClinicalSession }) {
 
   const end = () => {
     const invNo = session.procedures.length > 0 ? `INV-${db.nextInv}` : null;
-    dispatch({ type: "END_SESSION", id: session.id, paid: paidNum });
     const withFu = fuEnabled && fuReason.trim() && fuDate;
+    const fuId = withFu ? uid() : undefined;
     if (withFu) {
       dispatch({
         type: "ADD_FOLLOWUP",
         f: {
-          id: uid(),
+          id: fuId!,
           patientId: session.patientId,
           doctorId: session.doctorId,
           reason: fuReason.trim(),
@@ -446,6 +451,7 @@ function Workstation({ session }: { session: ClinicalSession }) {
         },
       });
     }
+    dispatch({ type: "END_SESSION", id: session.id, paid: paidNum, fuId });
     push(
       "success",
       "انتهت الجلسة — خرج المريض",
@@ -556,6 +562,9 @@ function Workstation({ session }: { session: ClinicalSession }) {
               procTooth={procTooth}
               setProcTooth={setProcTooth}
               addProc={addProc}
+              fuEnabled={fuEnabled}
+              fuReason={fuReason}
+              fuDate={fuDate}
             />
           )}
           {tab === "accounts" && <AccountsTab patientId={p.id} invoices={invoices} />}
@@ -636,11 +645,65 @@ function TreatmentTab(props: {
   procTooth: string;
   setProcTooth: (v: string) => void;
   addProc: () => void;
+  fuEnabled: boolean;
+  fuReason: string;
+  fuDate: string;
 }) {
-  const { db, serviceById } = useStore();
+  const { db, dispatch, serviceById, patientById } = useStore();
   const money = useMoney();
   const { session, patch } = props;
+  const p = patientById(session.patientId);
   const total = session.procedures.reduce((s, pr) => s + (serviceById(pr.serviceId)?.price ?? 0), 0);
+
+  /* ---- توليد تقرير العمل حرفاً حرفاً من بيانات الجلسة ---- */
+  const [typing, setTyping] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const typeTimer = useRef<number | null>(null);
+  useEffect(() => () => { if (typeTimer.current) window.clearTimeout(typeTimer.current); }, []);
+
+  const generateReport = () => {
+    if (typing) return;
+    const procs = session.procedures
+      .map((pr) => {
+        const n = serviceById(pr.serviceId)?.name;
+        return pr.tooth && n ? `${n} — سن ${pr.tooth}` : n;
+      })
+      .filter(Boolean)
+      .join("، ");
+    const teeth = session.teethTreated.map((t) => `سن ${t.tooth}: ${TOOTH_META[t.status].label}`).join("، ");
+    const meds = session.meds.map((m) => m.name.split(" ")[0]).join("، ");
+    const lines = [
+      `حضر المريض ${p?.name ?? ""} (${p?.age ?? ""} سنة) جلسة علاج بتاريخ ${fmtDate(session.date)}.`,
+      session.complaint.trim() ? `الشكوى الرئيسية: ${session.complaint.trim()}.` : "",
+      session.diagnosis.trim() ? `التشخيص السريري: ${session.diagnosis.trim()}.` : "",
+      procs ? `الإجراءات المنفذة: ${procs}.` : "",
+      teeth ? `تحديثات خريطة الأسنان: ${teeth}.` : "",
+      meds ? `الأدوية الموصوفة: ${meds}.` : "",
+      props.fuEnabled && props.fuReason.trim()
+        ? `التوصية: ${props.fuReason.trim()}${props.fuDate ? ` — مراجعة ${fmtDate(props.fuDate)}` : ""}.`
+        : "",
+    ].filter(Boolean);
+    const text = lines.join("\n");
+    setTyping(true);
+    let i = 0;
+    const tick = () => {
+      i = Math.min(text.length, i + 3);
+      dispatch({ type: "PATCH_SESSION", id: session.id, patch: { summary: text.slice(0, i) } });
+      if (i < text.length) typeTimer.current = window.setTimeout(tick, 20);
+      else setTyping(false);
+    };
+    tick();
+  };
+
+  const copyReport = async () => {
+    try {
+      await navigator.clipboard.writeText(session.summary);
+    } catch {
+      /* بيئات لا تدعم الحافظة */
+    }
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1600);
+  };
 
   return (
     <div className="space-y-5">
@@ -712,6 +775,54 @@ function TreatmentTab(props: {
           )}
         </section>
       </div>
+
+      {/* تقرير العمل — يرتبط تلقائياً بالعودات والمتابعة */}
+      <section className="card p-5 anim-fade relative overflow-hidden">
+        <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-l from-jade via-[#3fd0c0] to-transparent" />
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-3.5">
+          <h3 className="font-display font-bold text-lg text-ink flex items-center gap-2">
+            <span className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-pine text-[#7fe0d4]"><IconPencil className="w-4.5 h-4.5" /></span>
+            تقرير العمل السريري
+            <span className="chip bg-mist text-soft !text-[9px]">يُحفَظ لحظياً · يُرفق بملف المريض والعودات</span>
+          </h3>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={copyReport}
+              disabled={!session.summary.trim()}
+              className={`btn-ghost !h-9 !px-3 !text-[11px] ${copied ? "!bg-mint-soft !text-[#1d6b47] !border-mint" : ""} disabled:opacity-40 disabled:cursor-not-allowed`}
+            >
+              {copied ? <IconCheck className="w-3.5 h-3.5" /> : <IconCopy className="w-3.5 h-3.5" />}
+              {copied ? "نُسخ" : "نسخ التقرير"}
+            </button>
+            <button
+              onClick={generateReport}
+              disabled={typing || session.procedures.length === 0}
+              className="btn-primary !h-9 !px-3.5 !text-[11px] disabled:opacity-40 disabled:cursor-not-allowed"
+              title={session.procedures.length === 0 ? "أضف إجراءً واحداً على الأقل ليُبنى التقرير من بيانات الجلسة" : "يكتب التقرير من بيانات الجلسة حرفاً حرفاً"}
+            >
+              <IconSpark className={`w-3.5 h-3.5 ${typing ? "pulse-soft" : ""}`} />
+              {typing ? "جارٍ التوليد…" : "توليد تلقائي"}
+            </button>
+          </div>
+        </div>
+        <div className="relative">
+          <TArea
+            value={session.summary}
+            onChange={(e) => patch({ summary: e.target.value })}
+            placeholder="اكتب تقرير العمل السريري… أو اضغط «توليد تلقائي» ليُكتب من الشكوى والتشخيص والإجراءات والأسنان والأدوية والتوصية."
+            className="!min-h-28 leading-relaxed font-medium"
+          />
+          {typing && (
+            <span className="absolute top-2.5 end-2.5 chip bg-pine text-[#7fe0d4] !py-1 anim-pop">
+              <span className="w-1.5 h-1.5 rounded-full bg-[#3fd0c0] pulse-dot" />
+              يكتب الآن<span className="pulse-soft">▌</span>
+            </span>
+          )}
+        </div>
+        {session.summary.trim().length > 0 && !typing && (
+          <p className="text-[10px] font-bold text-soft mt-2 stat-num" dir="ltr">{session.summary.length} حرفاً — يظهر في «الجلسات المكتملة» وملف المريض</p>
+        )}
+      </section>
 
       {/* خريطة الأسنان — قسم موسّع بعرض كامل */}
       <section className="card p-5 anim-fade">
