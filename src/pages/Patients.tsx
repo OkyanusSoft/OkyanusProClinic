@@ -16,10 +16,10 @@ import {
   type FollowUp,
   type Patient,
 } from "../store";
-import { IconCalendar, IconCalendarPlus, IconChevronDown, IconClock, IconPencil, IconPhone, IconPlus, IconPrinter, IconSearch, IconSpark, IconUserPlus, IconUsers, IconAlert } from "../icons";
+import { IconCalendar, IconCalendarPlus, IconChevronDown, IconClock, IconIdCard, IconPencil, IconPhone, IconPlus, IconPrinter, IconSearch, IconSpark, IconUserPlus, IconUsers, IconAlert } from "../icons";
 import { Avatar, Badge, EmptyState, Field, Modal, TArea, TInput, TSelect, TwoStepDelete, useToast } from "../components/ui";
 import DentalChart from "../components/DentalChart";
-import { PatientPrint, PrintModal, RxPrint } from "../components/PrintSheet";
+import { CardPrintModal, PatientCardSheet, PatientPrint, PrintModal, RxPrint } from "../components/PrintSheet";
 import { FollowUpModal } from "./Appointments";
 import type { Prescription, RxItem } from "../store";
 
@@ -51,6 +51,7 @@ export default function PatientsPage({ addSignal, onOpenPatient, onBook }: PageP
   const [filter, setFilter] = useState("all");
   const [showAdd, setShowAdd] = useState(false);
   const [printId, setPrintId] = useState<string | null>(null);
+  const [cardId, setCardId] = useState<string | null>(null);
 
   useEffect(() => {
     if (addSignal > 0) setShowAdd(true);
@@ -177,10 +178,18 @@ export default function PatientsPage({ addSignal, onOpenPatient, onBook }: PageP
                       <td className="td" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center gap-1">
                           <button
+                            onClick={() => setCardId(p.id)}
+                            className="icon-btn !w-8 !h-8 hover:!bg-jade-soft"
+                            aria-label="طباعة كرت المريض"
+                            title="كرت المريض (بطاقة تعريف)"
+                          >
+                            <IconIdCard className="w-4 h-4" />
+                          </button>
+                          <button
                             onClick={() => setPrintId(p.id)}
                             className="icon-btn !w-8 !h-8"
                             aria-label="طباعة ملف المريض"
-                            title="طباعة الملف الطبي"
+                            title="طباعة الملف الطبي (A4)"
                           >
                             <IconPrinter className="w-4 h-4" />
                           </button>
@@ -217,6 +226,12 @@ export default function PatientsPage({ addSignal, onOpenPatient, onBook }: PageP
           <PatientPrint patientId={printId} />
         </PrintModal>
       )}
+      {cardId && (() => {
+        const cp = db.patients.find((x) => x.id === cardId);
+        return cp ? (
+          <CardPrintModal open onClose={() => setCardId(null)} title={`كرت المريض — ${cp.name}`} render={(count) => <PatientCardSheet p={cp} count={count} />} />
+        ) : null;
+      })()}
     </div>
   );
 }
@@ -356,6 +371,7 @@ export function PatientDrawer({
   const [showRx, setShowRx] = useState(false);
   const [showFu, setShowFu] = useState(false);
   const [showPrint, setShowPrint] = useState(false);
+  const [showCard, setShowCard] = useState(false);
   const [printRx, setPrintRx] = useState<Prescription | null>(null);
 
   useEffect(() => {
@@ -692,6 +708,10 @@ export function PatientDrawer({
             <IconPrinter className="w-4.5 h-4.5" />
             طباعة الملف
           </button>
+          <button className="btn-ghost !px-3" onClick={() => setShowCard(true)} title="طباعة بطاقة تعريف للمريض">
+            <IconIdCard className="w-4.5 h-4.5" />
+            الكرت
+          </button>
           <button className="btn-ghost" onClick={onClose}>إغلاق</button>
         </div>
       </aside>
@@ -702,6 +722,9 @@ export function PatientDrawer({
         <PrintModal open onClose={() => setShowPrint(false)} title={`طباعة الملف الطبي — ${p.name}`}>
           <PatientPrint patientId={p.id} />
         </PrintModal>
+      )}
+      {showCard && (
+        <CardPrintModal open onClose={() => setShowCard(false)} title={`كرت المريض — ${p.name}`} render={(count) => <PatientCardSheet p={p} count={count} />} />
       )}
       {printRx && (
         <PrintModal open onClose={() => setPrintRx(null)} title="طباعة الروشتة">
