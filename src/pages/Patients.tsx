@@ -238,7 +238,7 @@ function AddPatientModal({
 
   const save = () => {
     if (name.trim().length < 3) return setErr("أدخل الاسم الثلاثي على الأقل.");
-    if (!/^05\d{8}$/.test(phone.trim())) return setErr("رقم الجوال يجب أن يكون بصيغة 05xxxxxxxx.");
+    if (!/^7\d{8}$/.test(phone.trim())) return setErr("رقم الجوال يجب أن يكون 9 أرقام يبدأ بـ 7 (مثل 77xxxxxxx).");
     const p: Patient = {
       id: uid(),
       name: name.trim(),
@@ -272,11 +272,11 @@ function AddPatientModal({
       <div className="grid grid-cols-2 gap-4">
         <div className="col-span-2">
           <Field label="الاسم الكامل *">
-            <TInput value={name} onChange={(e) => setName(e.target.value)} placeholder="مثال: سلمان عبدالعزيز الراشد" />
+            <TInput value={name} onChange={(e) => setName(e.target.value)} placeholder="مثال: وائل عبدالله الشرفي" />
           </Field>
         </div>
         <Field label="رقم الجوال *">
-          <TInput value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="05xxxxxxxx" dir="ltr" className="!text-start" />
+          <TInput value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="77xxxxxxx" dir="ltr" className="!text-start" />
         </Field>
         <Field label="العمر">
           <TInput type="number" value={age} onChange={(e) => setAge(e.target.value)} placeholder="30" />
