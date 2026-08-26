@@ -1,4 +1,5 @@
-import React from "react";
+import React, { useState } from "react";
+import { createPortal } from "react-dom";
 import {
   APPT_META,
   clinicOf,
@@ -12,66 +13,106 @@ import {
   useAuth,
   useMoney,
   useStore,
+  type Appointment,
+  type FollowUp,
   type Invoice,
+  type Patient,
   type Prescription,
   type ToothStatus,
 } from "../store";
-import { IconPrinter, IconX, Logo } from "../icons";
+import { IconCalendar, IconIdCard, IconPrinter, IconStetho, IconTooth, IconX, Logo } from "../icons";
 import { Modal } from "./ui";
 
 /** إطار الطباعة — يعرض معاينة A4 ويطبع عبر نافذة المتصفح */
-export function PrintModal({ open, onClose, title, children }: { open: boolean; onClose: () => void; title: string; children: React.ReactNode }) {
+/**
+ * ترويسة المستندات — تتكرر في المعاينة وبوابة الطباعة
+ */
+function DocHeader() {
   const { db } = useStore();
   const clinic = clinicOf(db);
   return (
-    <Modal
-      open={open}
-      onClose={onClose}
-      title={title}
-      subtitle="معاينة قبل الطباعة — ستُطبع الورقة فقط دون واجهة النظام"
-      width="max-w-2xl"
-      footer={
-        <>
-          <button className="btn-ghost" onClick={onClose}>إغلاق</button>
-          <button className="btn-primary" onClick={() => window.print()}>
-            <IconPrinter className="w-4.5 h-4.5" />
-            طباعة الآن
-          </button>
-        </>
-      }
-    >
-      <div className="print-sheet bg-white rounded-xl border border-line shadow-sm p-8" dir="rtl">
-        {/* ترويسة العيادة — من الإعدادات العامة */}
-        <div className="flex items-center justify-between pb-4 border-b-2 border-pine">
-          <div className="flex items-center gap-3">
-            <Logo className="w-12 h-12" />
-            <div>
-              <p className="font-display font-bold text-lg leading-tight">{clinic.clinicName}</p>
-              <p className="text-[10px] text-soft tracking-wider" dir="ltr">{clinic.clinicLatin}</p>
-            </div>
-          </div>
-          <div className="text-end text-[10px] text-soft leading-relaxed">
-            <p>{clinic.address}</p>
-            <p dir="ltr">{clinic.phone}</p>
-          </div>
+    <div className="flex items-center justify-between pb-4 border-b-2 border-pine">
+      <div className="flex items-center gap-3">
+        <Logo className="w-12 h-12" />
+        <div>
+          <p className="font-display font-bold text-lg leading-tight">{clinic.clinicName}</p>
+          <p className="text-[10px] text-soft tracking-wider" dir="ltr">{clinic.clinicLatin}</p>
         </div>
-        {children}
-        {/* التذييل */}
-        <div className="mt-8 pt-4 border-t border-line flex items-end justify-between">
-          <div className="text-center">
-            <div className="w-36 border-b border-ink/40 mb-1 h-10" />
-            <p className="text-[10px] text-soft font-semibold">توقيع الطبيب</p>
-          </div>
-          <div className="text-center">
-            <div className="w-36 border-b border-ink/40 mb-1 h-10" />
-            <p className="text-[10px] text-soft font-semibold">ختم العيادة</p>
-          </div>
-        </div>
-        <p className="text-center text-[9px] text-soft mt-4">
-          أُصدرت هذه الوثيقة إلكترونياً من نظام {clinic.clinicName} — {fmtDate(new Date().toISOString().slice(0, 10))}
-        </p>
       </div>
-    </Modal>
+      <div className="text-end text-[10px] text-soft leading-relaxed">
+        <p>{clinic.address}</p>
+        <p dir="ltr">{clinic.phone}</p>
+      </div>
+    </div>
+  );
+}
+
+function DocFooter() {
+  const { db } = useStore();
+  const clinic = clinicOf(db);
+  return (
+    <>
+      <div className="mt-8 pt-4 border-t border-line flex items-end justify-between">
+        <div className="text-center">
+          <div className="w-36 border-b border-ink/40 mb-1 h-10" />
+          <p className="text-[10px] text-soft font-semibold">توقيع الطبيب</p>
+        </div>
+        <div className="text-center">
+          <div className="w-36 border-b border-ink/40 mb-1 h-10" />
+          <p className="text-[10px] text-soft font-semibold">ختم العيادة</p>
+        </div>
+      </div>
+      <p className="text-center text-[9px] text-soft mt-4">
+        أُصدرت هذه الوثيقة إلكترونياً من نظام {clinic.clinicName} — {fmtDate(new Date().toISOString().slice(0, 10))}
+      </p>
+    </>
+  );
+}
+
+export function PrintModal({ open, onClose, title, children }: { open: boolean; onClose: () => void; title: string; children: React.ReactNode }) {
+  return (
+    <>
+      <Modal
+        open={open}
+        onClose={onClose}
+        title={title}
+        subtitle="معاينة A4 قبل الطباعة — ستُطبع الورقة فقط دون واجهة النظام"
+        width="max-w-3xl"
+        footer={
+          <>
+            <span className="me-auto chip bg-mist text-soft !py-2">
+              <span className="w-1.5 h-1.5 rounded-full bg-mint pulse-dot" />
+              مقاس A4 · 210×297 مم
+            </span>
+            <button className="btn-ghost" onClick={onClose}>إغلاق</button>
+            <button className="btn-primary" onClick={() => window.print()}>
+              <IconPrinter className="w-4.5 h-4.5" />
+              طباعة الآن
+            </button>
+          </>
+        }
+      >
+        <div className="overflow-x-auto pb-1">
+          <div className="print-sheet bg-white rounded-xl border border-line shadow-sm p-10" dir="rtl">
+            <DocHeader />
+            {children}
+            <DocFooter />
+          </div>
+        </div>
+      </Modal>
+      {/* بوابة الطباعة — الورقة الحقيقية على A4، خارج جذر التطبيق */}
+      {open &&
+        createPortal(
+          <div className="print-only">
+            <div className="print-a4" dir="rtl">
+              <DocHeader />
+              {children}
+              <DocFooter />
+            </div>
+          </div>,
+          document.body
+        )}
+    </>
   );
 }
 
@@ -560,6 +601,284 @@ export function AppointmentsDayPrint({ date }: { date: string }) {
 
       <p className="text-[9px] text-soft mt-5 leading-relaxed">
         كشف داخلي للاستقبال — يُحدَّث من النظام مباشرة. مواعيد الأطباء حسب نطاق الصلاحيات المستخدم عند الطباعة.
+      </p>
+    </div>
+  );
+}
+
+/* ============================ منظومة بطاقات العيادة ============================ */
+
+/** باركود زخرفي حتمي مشتق من معرّف البطاقة */
+function CardCode({ seed }: { seed: string }) {
+  const bars = React.useMemo(() => {
+    const arr: number[] = [];
+    for (let i = 0; i < 30; i++) arr.push(((seed.charCodeAt(i % seed.length) * (i + 7)) % 4) + 1);
+    return arr;
+  }, [seed]);
+  let x = 0;
+  return (
+    <svg width="118" height="22" aria-hidden="true">
+      {bars.map((w, i) => {
+        const r = <rect key={i} x={x} y={0} width={w * 1.05} height={22} fill="rgba(255,255,255,0.88)" />;
+        x += w * 1.05 + 1.3;
+        return r;
+      })}
+    </svg>
+  );
+}
+
+const cardNo = (id: string) => {
+  const h = [...id].reduce((s, c) => s + c.charCodeAt(0) * 31, 7) % 9000;
+  return `SC-${1000 + h}`;
+};
+
+/** نافذة طباعة البطاقات على A4 — مع عدد النسخ في الورقة */
+export function CardPrintModal({
+  open,
+  onClose,
+  title,
+  render,
+}: {
+  open: boolean;
+  onClose: () => void;
+  title: string;
+  render: (count: number) => React.ReactNode;
+}) {
+  const [count, setCount] = useState(2);
+  return (
+    <>
+      <Modal
+        open={open}
+        onClose={onClose}
+        title={title}
+        subtitle="بطاقة بحجم قياسي 85.6×54 مم على ورقة A4 — قصّ على الخط المتقطع"
+        width="max-w-3xl"
+        footer={
+          <>
+            <div className="me-auto flex items-center gap-2">
+              <span className="text-[11px] font-bold text-soft">نسخ في الورقة:</span>
+              <div className="flex items-center gap-1 bg-mist rounded-lg p-1">
+                {[1, 2, 4].map((n) => (
+                  <button
+                    key={n}
+                    onClick={() => setCount(n)}
+                    className={`w-8 h-8 rounded-md text-xs font-bold cursor-pointer transition-all stat-num ${
+                      count === n ? "bg-pine text-white shadow-sm" : "bg-white border border-line text-soft hover:border-jade"
+                    }`}
+                  >
+                    {n}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <button className="btn-ghost" onClick={onClose}>إغلاق</button>
+            <button className="btn-primary" onClick={() => window.print()}>
+              <IconPrinter className="w-4.5 h-4.5" />
+              طباعة الآن
+            </button>
+          </>
+        }
+      >
+        <div className="overflow-x-auto pb-1">
+          <div className="print-sheet bg-white rounded-xl border border-line shadow-sm py-8" dir="rtl">
+            {render(count)}
+          </div>
+        </div>
+      </Modal>
+      {open &&
+        createPortal(
+          <div className="print-only">
+            <div className="print-a4" dir="rtl" style={{ minHeight: "auto", padding: "4mm 0" }}>
+              {render(count)}
+            </div>
+          </div>,
+          document.body
+        )}
+    </>
+  );
+}
+
+/** شبكة بطاقات على الورقة مع خطوط القص */
+export function CardSheet({ units, cols = 2, caption }: { units: React.ReactNode[]; cols?: 1 | 2; caption?: string }) {
+  return (
+    <div>
+      <div className="flex items-center justify-center gap-3 mb-5">
+        <span className="h-px flex-1 max-w-24 bg-line" />
+        <p className="text-[10px] font-bold text-soft tracking-widest">{caption}</p>
+        <span className="h-px flex-1 max-w-24 bg-line" />
+      </div>
+      <div className={`grid gap-7 justify-items-center ${cols === 2 ? "grid-cols-2" : "grid-cols-1"}`}>
+        {units.map((u, i) => (
+          <div key={i} className="cut-box">
+            {u}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ---------- كرت المريض (وجه) ---------- */
+export function PatientCardFront({ p }: { p: Patient }) {
+  const { db } = useStore();
+  const clinic = clinicOf(db);
+  return (
+    <div className="dental-card text-white p-[5mm] flex flex-col" style={{ background: "linear-gradient(135deg,#0b2f2b 0%,#10403a 55%,#0a6158 100%)" }}>
+      {/* زخارف */}
+      <IconTooth className="absolute -bottom-6 -start-5 w-32 h-32 text-white/[0.06] rotate-12" />
+      <span className="absolute top-0 start-0 w-20 h-20 rounded-full bg-[#3fd0c0]/10 -translate-y-8 -translate-x-6" />
+
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Logo className="w-8 h-8 rounded-lg" />
+          <div className="leading-none">
+            <p className="font-display font-bold text-[11px]">{clinic.clinicName}</p>
+            <p className="text-[6.5px] text-white/50 font-semibold tracking-[0.15em] mt-1" dir="ltr">{clinic.clinicLatin}</p>
+          </div>
+        </div>
+        <span className="text-[8px] font-bold bg-white/12 border border-white/20 rounded-full px-2 py-1">كرت المريض</span>
+      </div>
+
+      <div className="flex items-center gap-2.5 mt-[4mm]">
+        <span className="inline-flex items-center justify-center w-11 h-11 rounded-full bg-white/12 border-2 border-[#3fd0c0]/60 font-display font-bold text-base shrink-0">
+          {p.name.replace("د. ", "").split(" ").slice(0, 2).map((w) => w[0]).join("")}
+        </span>
+        <div className="min-w-0">
+          <p className="font-display font-bold text-[13px] leading-tight truncate">{p.name}</p>
+          <p className="text-[8px] text-white/65 font-semibold mt-0.5">
+            {p.age} سنة · {p.gender === "m" ? "ذكر" : "أنثى"} · دم <span dir="ltr">{p.blood}</span>
+          </p>
+        </div>
+      </div>
+
+      <div className="mt-auto flex items-end justify-between gap-2">
+        <div>
+          <p className="text-[6.5px] text-white/50 font-bold tracking-widest">رقم البطاقة</p>
+          <p className="stat-num text-[11px] font-bold text-[#7fe0d4] mt-0.5" dir="ltr">{cardNo(p.id)}</p>
+          <p className="stat-num text-[7.5px] text-white/55 mt-1" dir="ltr">{p.phone}</p>
+        </div>
+        <CardCode seed={p.id + p.phone} />
+      </div>
+    </div>
+  );
+}
+
+/* ---------- كرت المريض (ظهر) ---------- */
+export function PatientCardBack({ p }: { p: Patient }) {
+  const { db } = useStore();
+  const clinic = clinicOf(db);
+  const hasAllergy = p.allergies && p.allergies !== "لا يوجد";
+  return (
+    <div className="dental-card bg-white p-[5mm] flex flex-col border border-line">
+      <div className="flex items-center justify-between pb-[2.5mm] border-b-2 border-pine">
+        <p className="font-display font-bold text-[10.5px] text-ink">{clinic.clinicName}</p>
+        <span className="stat-num text-[7px] text-soft" dir="ltr">{cardNo(p.id)}</span>
+      </div>
+      {hasAllergy && (
+        <p className="mt-[2mm] bg-coral-soft text-coral text-[7.5px] font-bold rounded-md px-2 py-1 leading-snug border border-coral/30">
+          تحذير طبي: حساسية من — {p.allergies}
+        </p>
+      )}
+      <div className="mt-[2.5mm] space-y-[1.6mm] text-[8px] leading-snug">
+        <p className="text-ink/85"><b className="text-ink">العنوان:</b> {clinic.address}</p>
+        <p className="text-ink/85"><b className="text-ink">هاتف الحجز:</b> <span dir="ltr">{clinic.phone}</span></p>
+        <p className="text-ink/85"><b className="text-ink">الدوام:</b> السبت–الخميس · <span className="stat-num" dir="ltr">{clinic.workStart}–{clinic.workEnd}</span></p>
+        {clinic.email && <p className="text-ink/85"><b className="text-ink">البريد:</b> <span dir="ltr">{clinic.email}</span></p>}
+      </div>
+      <p className="mt-auto text-[6.5px] text-soft leading-relaxed border-t border-dashed border-line pt-[1.5mm]">
+        يُرجى إبراز هذه البطاقة عند كل زيارة. لإلغاء موعد أو تغييره يُرجى الاتصال قبل 24 ساعة.
+      </p>
+    </div>
+  );
+}
+
+/** ورقة بطاقات المريض: أوجه ثم ظهرو */
+export function PatientCardSheet({ p, count }: { p: Patient; count: number }) {
+  const fronts = Array.from({ length: count }, (_, i) => <PatientCardFront key={`f${i}`} p={p} />);
+  const backs = Array.from({ length: count }, (_, i) => <PatientCardBack key={`b${i}`} p={p} />);
+  return (
+    <div className="space-y-9">
+      <CardSheet units={fronts} cols={count === 1 ? 1 : 2} caption={`الوجه — ${p.name}`} />
+      <CardSheet units={backs} cols={count === 1 ? 1 : 2} caption="الظهر — بيانات العيادة" />
+    </div>
+  );
+}
+
+/* ---------- كرت موعد ---------- */
+export function AppointmentCardPrint({ a }: { a: Appointment }) {
+  const { db, patientById, serviceById, doctorById } = useStore();
+  const clinic = clinicOf(db);
+  const p = patientById(a.patientId);
+  const s = serviceById(a.serviceId);
+  const d = doctorById(a.doctorId);
+  const dow = new Intl.DateTimeFormat("ar-EG-u-nu-latn", { weekday: "long" }).format(new Date(a.date + "T12:00:00"));
+  return (
+    <div className="dental-card bg-white p-[5mm] flex flex-col border border-line">
+      <span className="absolute inset-y-0 start-0 w-[2.5mm] bg-jade" />
+      <IconTooth className="absolute -top-5 -end-5 w-24 h-24 text-jade-soft rotate-12" />
+
+      <div className="flex items-center justify-between">
+        <p className="font-display font-bold text-[11px] text-ink">كرت موعد</p>
+        <p className="text-[7px] font-bold text-soft tracking-wider">{clinic.clinicName}</p>
+      </div>
+
+      <div className="mt-[2.5mm] flex items-center gap-3">
+        <div className="rounded-lg bg-jade-soft px-[3mm] py-[2mm] text-center shrink-0">
+          <p className="stat-num text-[19px] font-bold text-jade-deep leading-none" dir="ltr">{a.time}</p>
+          <p className="text-[7px] font-bold text-jade-deep/70 mt-1">{dow}</p>
+        </div>
+        <div className="min-w-0">
+          <p className="font-display font-bold text-[12.5px] text-ink leading-tight">{fmtDate(a.date)}</p>
+          <p className="text-[8.5px] font-semibold text-soft mt-1 truncate">
+            {p?.name} · {s?.name}
+          </p>
+          <p className="text-[8px] text-soft mt-0.5 flex items-center gap-1">
+            <IconStetho className="w-2.5 h-2.5" /> {d?.name}
+          </p>
+        </div>
+      </div>
+
+      <p className="mt-auto text-[6.8px] text-soft leading-relaxed border-t border-dashed border-line pt-[1.5mm] flex items-center justify-between">
+        <span>يُرجى الحضور قبل الموعد بـ 10 دقائق</span>
+        <span dir="ltr" className="stat-num font-bold text-ink">{clinic.phone}</span>
+      </p>
+    </div>
+  );
+}
+
+/* ---------- كرت رجوع / متابعة ---------- */
+export function FollowUpCardPrint({ f }: { f: FollowUp }) {
+  const { db, patientById, doctorById } = useStore();
+  const clinic = clinicOf(db);
+  const p = patientById(f.patientId);
+  const d = doctorById(f.doctorId);
+  const diff = Math.round((new Date(f.dueDate + "T12:00:00").getTime() - new Date(today(0) + "T12:00:00").getTime()) / 86400000);
+  const rel = diff < 0 ? "مستحقة الآن" : diff === 0 ? "اليوم" : `بعد ${diff} ${diff <= 10 ? "أيام" : "يوماً"}`;
+  return (
+    <div className="dental-card bg-white p-[5mm] flex flex-col border border-line">
+      <span className="absolute inset-y-0 start-0 w-[2.5mm] bg-amber" />
+      <IconCalendar className="absolute -top-4 -end-4 w-20 h-20 text-amber-soft rotate-6" />
+
+      <div className="flex items-center justify-between">
+        <p className="font-display font-bold text-[11px] text-ink">كرت الرجوع</p>
+        <span className="text-[7px] font-bold bg-amber-soft text-[#a06410] rounded-full px-2 py-0.5">{rel}</span>
+      </div>
+
+      <div className="mt-[2.5mm] flex items-center gap-3">
+        <div className="rounded-lg bg-amber-soft px-[3mm] py-[2mm] text-center shrink-0">
+          <p className="stat-num text-[14px] font-bold text-[#a06410] leading-none">{fmtDate(f.dueDate)}</p>
+          <p className="text-[7px] font-bold text-[#a06410]/70 mt-1">موعد المراجعة</p>
+        </div>
+        <div className="min-w-0">
+          <p className="font-display font-bold text-[11.5px] text-ink leading-tight truncate">{p?.name}</p>
+          <p className="text-[8.5px] font-semibold text-soft mt-1 leading-snug">{f.reason || "متابعة دورية"}</p>
+          {d && <p className="text-[8px] text-soft mt-0.5">الطبيب: {d.name}</p>}
+        </div>
+      </div>
+
+      <p className="mt-auto text-[6.8px] text-soft leading-relaxed border-t border-dashed border-line pt-[1.5mm] flex items-center justify-between">
+        <span>أحضر هذا الكرت معك يوم المراجعة</span>
+        <span dir="ltr" className="stat-num font-bold text-ink">{clinic.phone}</span>
       </p>
     </div>
   );

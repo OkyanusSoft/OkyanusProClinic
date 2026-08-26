@@ -220,25 +220,63 @@ body {
   }
 }
 
-/* ---------- الطباعة ---------- */
+/* ---------- الطباعة — A4 موحّدة لكل النظام ---------- */
+@page {
+  size: A4 portrait;
+  margin: 10mm;
+}
+.print-only {
+  display: none;
+}
 @media print {
-  body * {
-    visibility: hidden;
+  html,
+  body {
+    background: #fff !important;
   }
-  .print-sheet,
-  .print-sheet * {
-    visibility: visible;
+  #root {
+    display: none !important;
   }
-  .print-sheet {
-    position: fixed;
-    inset: 0;
-    width: 100%;
-    max-height: none;
-    overflow: visible;
-    border: none !important;
-    box-shadow: none !important;
-    border-radius: 0 !important;
-    z-index: 9999;
+  .print-only {
+    display: block !important;
+  }
+  .print-a4 {
+    width: 190mm;
+    min-height: 276mm;
+    margin: 0 auto;
+    background: #fff;
+    color: #12251f;
+    font-family: "Readex Pro", "Changa", sans-serif;
+  }
+}
+
+/* ورقة A4 في المعاينة — بنفس أبعاد الطباعة تماماً */
+.print-sheet {
+  width: 190mm;
+  min-height: 276mm;
+  margin: 0 auto;
+}
+
+/* ---------- بطاقات العيادة (86×54 مم) ---------- */
+.dental-card {
+  width: 85.6mm;
+  height: 54mm;
+  border-radius: 4mm;
+  position: relative;
+  overflow: hidden;
+  direction: rtl;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+.cut-box {
+  border: 0.4mm dashed #b9cdc7;
+  border-radius: 5mm;
+  padding: 2.5mm;
+  display: inline-block;
+  line-height: 0;
+}
+@media print {
+  .cut-box {
+    border-color: #c6d4cf;
   }
 }
 

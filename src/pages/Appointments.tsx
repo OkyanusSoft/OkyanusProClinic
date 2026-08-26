@@ -27,6 +27,7 @@ import {
   IconCheck,
   IconCopy,
   IconChevronDown,
+  IconIdCard,
   IconClock,
   IconPlus,
   IconPrinter,
@@ -37,7 +38,7 @@ import {
   IconX,
 } from "../icons";
 import { Avatar, Badge, Drop, DropItem, EmptyState, Field, Modal, TArea, TInput, TSelect, TwoStepDelete, useToast } from "../components/ui";
-import { AppointmentsDayPrint, PrintModal } from "../components/PrintSheet";
+import { AppointmentCardPrint, AppointmentsDayPrint, CardPrintModal, CardSheet, FollowUpCardPrint, PrintModal } from "../components/PrintSheet";
 
 /* ساعات الحجز — تُشتق من إعدادات الدوام العامة */
 const hoursBetween = (start: string, end: string) => {
@@ -186,6 +187,7 @@ function ScheduleView({
   const HOURS = useMemo(() => hoursBetween(clinicOf(db).workStart, clinicOf(db).workEnd), [db]);
   const [remindFor, setRemindFor] = useState<Appointment | null>(null);
   const [printDay, setPrintDay] = useState<string | null>(null);
+  const [cardAppt, setCardAppt] = useState<Appointment | null>(null);
 
   const days = useMemo(() => Array.from({ length: 7 }, (_, i) => today(i)), []);
   const visible = useMemo(
@@ -326,6 +328,9 @@ function ScheduleView({
                               <span className="truncate">{d?.name}</span>
                             </span>
                             <div className="flex items-center gap-1.5">
+                              <button onClick={() => setCardAppt(a)} className="icon-btn !w-7 !h-7 hover:!bg-jade-soft hover:!text-jade-deep" aria-label="كرت الموعد" title="طباعة كرت الموعد">
+                                <IconIdCard className="w-3.5 h-3.5" />
+                              </button>
                               <button onClick={() => setRemindFor(a)} className="icon-btn !w-7 !h-7 hover:!bg-sky-soft hover:!text-sky" aria-label="رسالة تذكير" title="رسالة تذكير للمريض">
                                 <IconChat className="w-3.5 h-3.5" />
                               </button>
@@ -362,6 +367,16 @@ function ScheduleView({
         <PrintModal open onClose={() => setPrintDay(null)} title={`طباعة كشف مواعيد ${fmtDate(printDay)}`}>
           <AppointmentsDayPrint date={printDay} />
         </PrintModal>
+      )}
+      {cardAppt && (
+        <CardPrintModal
+          open
+          onClose={() => setCardAppt(null)}
+          title={`كرت الموعد — ${patientById(cardAppt.patientId)?.name ?? ""}`}
+          render={(count) => (
+            <CardSheet units={Array.from({ length: count }, (_, i) => <AppointmentCardPrint key={i} a={cardAppt} />)} cols={count === 1 ? 1 : 2} caption={`موعد ${fmtDate(cardAppt.date)} · ${cardAppt.time}`} />
+          )}
+        />
       )}
     </>
   );
@@ -454,6 +469,7 @@ function FollowUpsView({ fus, onOpenPatient }: { fus: FollowUp[]; onOpenPatient:
   const { db, dispatch, patientById } = useStore();
   const { push } = useToast();
   const [filter, setFilter] = useState<"all" | "pending" | "overdue" | "booked" | "done">("all");
+  const [cardFu, setCardFu] = useState<FollowUp | null>(null);
 
   const pending = fus.filter((f) => f.status === "pending");
   const overdue = pending.filter((f) => dayDiff(f.dueDate) < 0).length;
@@ -630,6 +646,16 @@ function FollowUpsView({ fus, onOpenPatient }: { fus: FollowUp[]; onOpenPatient:
                         وصل
                       </button>
                     )}
+                    {(f.status === "pending" || f.status === "booked") && (
+                      <button
+                        onClick={() => setCardFu(f)}
+                        className="icon-btn !w-8 !h-8 hover:!bg-jade-soft hover:!text-jade-deep"
+                        title="طباعة كرت الرجوع"
+                        aria-label="كرت الرجوع"
+                      >
+                        <IconIdCard className="w-4 h-4" />
+                      </button>
+                    )}
                     <TwoStepDelete
                       onConfirm={() => {
                         dispatch({ type: "DELETE_FOLLOWUP", id: f.id });
@@ -643,6 +669,16 @@ function FollowUpsView({ fus, onOpenPatient }: { fus: FollowUp[]; onOpenPatient:
           </ul>
         )}
       </div>
+      {cardFu && (
+        <CardPrintModal
+          open
+          onClose={() => setCardFu(null)}
+          title={`كرت الرجوع — ${patientById(cardFu.patientId)?.name ?? ""}`}
+          render={(count) => (
+            <CardSheet units={Array.from({ length: count }, (_, i) => <FollowUpCardPrint key={i} f={cardFu} />)} cols={count === 1 ? 1 : 2} caption={`موعد المراجعة: ${fmtDate(cardFu.dueDate)}`} />
+          )}
+        />
+      )}
     </div>
   );
 }
