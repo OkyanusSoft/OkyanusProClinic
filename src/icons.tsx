@@ -262,6 +262,24 @@ export const IconSettings = (p: P) =>
     </>
   );
 
+export const IconBook = (p: P) =>
+  base(
+    p,
+    <>
+      <path d="M12 6.5C10.5 5 8.4 4.3 6 4.3c-1 0-1.9.1-2.5.3v13.2c.6-.2 1.5-.3 2.5-.3 2.4 0 4.5.7 6 2.2 1.5-1.5 3.6-2.2 6-2.2 1 0 1.9.1 2.5.3V4.6c-.6-.2-1.5-.3-2.5-.3-2.4 0-4.5.7-6 2.2Z" />
+      <path d="M12 6.5v13.2" />
+    </>
+  );
+
+export const IconKey = (p: P) =>
+  base(
+    p,
+    <>
+      <circle cx="8" cy="9" r="4.2" />
+      <path d="m11 12 8.5 8.5M16.5 17.5l2.5-2.5M14 15l2-2" />
+    </>
+  );
+
 export const IconChat = (p: P) =>
   base(
     p,

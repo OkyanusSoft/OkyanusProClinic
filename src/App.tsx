@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { APPT_META, AuthProvider, clinicOf, invoiceTotal, ROLE_META, StoreProvider, today, useAuth, useStore } from "./store";
 import {
   IconBell,
+  IconBook,
   IconBox,
   IconCalendar,
   IconCoins,
@@ -35,9 +36,10 @@ import SessionPage from "./pages/Session";
 import UsersPage from "./pages/Users";
 import SettingsPage from "./pages/Settings";
 import InventoryPage from "./pages/Inventory";
+import GuidePage from "./pages/Guide";
 import Login from "./pages/Login";
 
-type Tab = "dashboard" | "appointments" | "session" | "patients" | "invoices" | "inventory" | "expenses" | "reports" | "services" | "team" | "currencies" | "users" | "settings";
+type Tab = "dashboard" | "appointments" | "session" | "patients" | "invoices" | "inventory" | "expenses" | "reports" | "services" | "team" | "currencies" | "users" | "settings" | "guide";
 
 const NAV: { key: Tab; label: string; icon: (c: string) => React.ReactNode }[] = [
   { key: "dashboard", label: "لوحة التحكم", icon: (c) => <IconGrid className={c} /> },
@@ -53,6 +55,7 @@ const NAV: { key: Tab; label: string; icon: (c: string) => React.ReactNode }[] =
   { key: "currencies", label: "العملات", icon: (c) => <IconCoins className={c} /> },
   { key: "users", label: "المستخدمون والصلاحيات", icon: (c) => <IconShield className={c} /> },
   { key: "settings", label: "الإعدادات العامة", icon: (c) => <IconSettings className={c} /> },
+  { key: "guide", label: "دليل المستخدم", icon: (c) => <IconBook className={c} /> },
 ];
 
 const TITLES: Record<Tab, string> = {
@@ -69,6 +72,7 @@ const TITLES: Record<Tab, string> = {
   currencies: "العملات",
   users: "المستخدمون والصلاحيات",
   settings: "الإعدادات العامة",
+  guide: "دليل المستخدم",
 };
 
 function Shell() {
@@ -80,9 +84,10 @@ function Shell() {
   const [addPatientSignal, setAddPatientSignal] = useState(0);
   const [mobileNav, setMobileNav] = useState(false);
   const [book, setBook] = useState<{ open: boolean; patientId?: string; time?: string; date?: string }>({ open: false });
+  const [guideFocus, setGuideFocus] = useState<string | null>(null);
 
-  // تصفية القائمة حسب الصلاحيات
-  const allowedNav = NAV.filter((n) => can(n.key));
+  // تصفية القائمة حسب الصلاحيات — دليل المستخدم متاح لكل الأدوار
+  const allowedNav = NAV.filter((n) => n.key === "guide" || can(n.key));
 
   // عند تغيّر المستخدم أو صلاحياته: اضمن أن التبويب الحالي مسموح
   useEffect(() => {
@@ -166,6 +171,10 @@ function Shell() {
           tab={tab}
           onMenu={() => setMobileNav(true)}
           onOpenPatient={setDrawerId}
+          onHelp={() => {
+            setGuideFocus(tab === "guide" ? null : tab);
+            setTab("guide");
+          }}
         />
         <main className="flex-1 px-4 sm:px-6 lg:px-8 py-6 w-full max-w-[1440px] mx-auto">
           {tab === "dashboard" && (
@@ -188,6 +197,7 @@ function Shell() {
           {tab === "currencies" && <CurrenciesPage />}
           {tab === "users" && <UsersPage />}
           {tab === "settings" && <SettingsPage />}
+          {tab === "guide" && <GuidePage focus={guideFocus} />}
 
           <footer className="mt-10 pb-4 flex flex-wrap items-center justify-between gap-2 text-[11px] text-soft/80 font-medium">
             <span>نظام {clinicOf(db).clinicName} · إصدار 2.6</span>
@@ -286,7 +296,7 @@ function SidebarContent({
 
 /* ============================ الشريط العلوي ============================ */
 
-function Topbar({ tab, onMenu, onOpenPatient }: { tab: Tab; onMenu: () => void; onOpenPatient: (id: string) => void }) {
+function Topbar({ tab, onMenu, onOpenPatient, onHelp }: { tab: Tab; onMenu: () => void; onOpenPatient: (id: string) => void; onHelp: () => void }) {
   const { db, dispatch, conn, syncing } = useStore();
   const { patientScope, apptScope } = useAuth();
   const { push } = useToast();
@@ -429,6 +439,17 @@ function Topbar({ tab, onMenu, onOpenPatient }: { tab: Tab; onMenu: () => void; 
             <span className="font-bold text-soft">تخزين محلي</span>
           )}
         </span>
+
+        {/* دليل المستخدم — مساعدة سياقية للشاشة الحالية */}
+        <button
+          onClick={onHelp}
+          className="icon-btn relative !w-10 !h-10 bg-white border border-line"
+          title="دليل هذه الشاشة"
+          aria-label="دليل المستخدم"
+        >
+          <IconBook className="w-5 h-5" />
+          <span className="absolute -top-1 -end-1 w-3.5 h-3.5 rounded-full bg-jade text-white text-[8px] font-bold flex items-center justify-center">؟</span>
+        </button>
 
         {/* التنبيهات */}
         <Drop
