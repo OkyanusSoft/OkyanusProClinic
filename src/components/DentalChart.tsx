@@ -8,12 +8,16 @@ const LOWER_R = [48, 47, 46, 45, 44, 43, 42, 41];
 const LOWER_L = [31, 32, 33, 34, 35, 36, 37, 38];
 const ALL = [...UPPER_R, ...UPPER_L, ...LOWER_R, ...LOWER_L];
 
-const CELL = 62;
-const TOOTH = 54;
-const X0 = 28;
-const UPPER_Y = 62;
-const LOWER_Y = 214;
-const MID_X = X0 + 8 * CELL - (CELL - TOOTH) / 2;
+/* هندسة المخطط */
+const CELL_W = 60;
+const X0 = 30;
+const CH = 34; // ارتفاع التاج
+const RH = 26; // ارتفاع الجذر
+const TH = CH + RH;
+const UPPER_TOP = 30;
+const LOWER_TOP = 118;
+const BITE_Y = (UPPER_TOP + TH + LOWER_TOP) / 2; // خط الإطباق
+const MID_X = X0 + 8 * CELL_W;
 
 export function toothName(n: number) {
   const q = Math.floor(n / 10);
@@ -30,29 +34,91 @@ const colOf = (n: number) => {
   return q === 1 || q === 4 ? 8 - p : p - 1;
 };
 
-/* رمز مصغّر لكل حالة سريرية */
-function Glyph({ s, size = "w-4 h-4" }: { s: ToothStatus; size?: string }) {
-  const m = TOOTH_META[s];
-  return (
-    <svg viewBox="0 0 20 20" className={`${size} shrink-0`} aria-hidden="true">
-      <rect x="2" y="2" width="16" height="16" rx="4.5" fill={s === "missing" ? "#f4f7f6" : m.fill} stroke={m.stroke} strokeWidth="1.6" strokeDasharray={m.dash ? "3 2.4" : undefined} />
-      {s === "caries" && <circle cx="10" cy="10" r="3.6" fill={m.stroke} />}
-      {s === "root" && (
-        <>
-          <rect x="7.6" y="4.4" width="4.8" height="4.8" rx="1.2" fill={m.stroke} />
-          <path d="M10 9v6.5" stroke={m.stroke} strokeWidth="2" strokeLinecap="round" />
-        </>
-      )}
-      {s === "crown" && <rect x="6" y="6" width="8" height="8" rx="2" fill="none" stroke={m.stroke} strokeWidth="1.9" />}
-      {s === "missing" && <path d="m6.4 6.4 7.2 7.2m0-7.2-7.2 7.2" stroke={m.stroke} strokeWidth="2" strokeLinecap="round" />}
-      {s === "filled" && <rect x="6.4" y="6.4" width="7.2" height="7.2" rx="1.6" fill={m.stroke} fillOpacity="0.4" />}
-      {s === "healthy" && <path d="M6 10h8M10 6v8" stroke={m.stroke} strokeOpacity="0.55" strokeWidth="1.3" />}
-    </svg>
-  );
+/* نوع السن حسب موقعه (يحدد العرض وعدد الشرفات والجذور) */
+const toothKind = (n: number) => {
+  const p = n % 10;
+  if (p <= 2) return "incisor" as const;
+  if (p === 3) return "canine" as const;
+  if (p <= 5) return "premolar" as const;
+  return "molar" as const;
+};
+
+const SHAPE: Record<ReturnType<typeof toothKind>, { w: number; cusps: number; roots: number }> = {
+  incisor: { w: 30, cusps: 1, roots: 1 },
+  canine: { w: 32, cusps: 1, roots: 1 },
+  premolar: { w: 38, cusps: 2, roots: 1 },
+  molar: { w: 46, cusps: 3, roots: 2 },
+};
+
+/* ألوان أوضح من TOOTH_META الافتراضية — تاج ملوّن واضح لكل حالة */
+const STYLE: Record<ToothStatus, { fill: string; stroke: string; rootFill: string; num: string }> = {
+  healthy: { fill: "#ffffff", stroke: "#9fb4ad", rootFill: "#fbf8f0", num: "#5c716b" },
+  caries: { fill: "#f4ac9d", stroke: "#d9503a", rootFill: "#fdf1ed", num: "#c0392b" },
+  filled: { fill: "#97d9cd", stroke: "#0d8f83", rootFill: "#eefaf7", num: "#0a6158" },
+  root: { fill: "#f6c988", stroke: "#e2952b", rootFill: "#fdf4e2", num: "#a06410" },
+  crown: { fill: "#a8cdef", stroke: "#3a86c4", rootFill: "#f2f8fd", num: "#2b6cb0" },
+  missing: { fill: "none", stroke: "#b3c1bc", rootFill: "none", num: "#93a5a0" },
+};
+
+/* ====== مولدات الأشكال (تُرسم باتجاه "سفلي": التاج للأعلى والجذر للأسفل) ====== */
+
+function crownD(w: number, cusps: number): string {
+  const ch = CH;
+  const amp = ch * 0.13;
+  const topY = ch * 0.2;
+  const shoulderY = ch * 0.32;
+  const neckY = ch * 0.97;
+  const lx = w * 0.05,
+    rx = w * 0.95;
+  const nlx = w * 0.21,
+    nrx = w * 0.79;
+  const sl = w * 0.15,
+    sr = w * 0.85;
+
+  let d = `M ${nlx} ${neckY}`;
+  d += ` C ${lx + w * 0.03} ${ch * 0.85}, ${lx} ${ch * 0.55}, ${lx + w * 0.05} ${shoulderY}`;
+  d += ` Q ${lx + w * 0.06} ${topY + amp * 0.5} ${sl} ${topY}`;
+  const seg = (sr - sl) / cusps;
+  for (let i = 0; i < cusps; i++) {
+    const x1 = sl + seg * (i + 1);
+    d += ` Q ${sl + seg * i + seg / 2} ${topY - amp} ${x1} ${topY}`;
+  }
+  d += ` Q ${rx - w * 0.06} ${topY + amp * 0.5} ${rx - w * 0.05} ${shoulderY}`;
+  d += ` C ${rx} ${ch * 0.55}, ${rx - w * 0.03} ${ch * 0.85}, ${nrx} ${neckY}`;
+  d += ` Q ${w / 2} ${ch * 1.07} ${nlx} ${neckY} Z`;
+  return d;
 }
 
-/* خلية سن واحدة */
-function ToothCell({
+function rootD(w: number, count: number): string[] {
+  const ch = CH;
+  const rh = RH;
+  const topY = ch;
+  const tipY = ch + rh * 0.97;
+  if (count === 1) {
+    return [
+      `M ${w * 0.25} ${topY}` +
+        ` C ${w * 0.27} ${ch + rh * 0.42}, ${w * 0.42} ${ch + rh * 0.72}, ${w * 0.47} ${tipY}` +
+        ` Q ${w * 0.5} ${tipY + rh * 0.05} ${w * 0.53} ${tipY}` +
+        ` C ${w * 0.58} ${ch + rh * 0.72}, ${w * 0.73} ${ch + rh * 0.42}, ${w * 0.75} ${topY}` +
+        ` Q ${w * 0.5} ${ch + rh * 0.13} ${w * 0.25} ${topY} Z`,
+    ];
+  }
+  return [
+    `M ${w * 0.18} ${topY}` +
+      ` C ${w * 0.18} ${ch + rh * 0.4}, ${w * 0.27} ${ch + rh * 0.68}, ${w * 0.32} ${tipY}` +
+      ` Q ${w * 0.345} ${tipY + rh * 0.05} ${w * 0.37} ${tipY}` +
+      ` C ${w * 0.42} ${ch + rh * 0.6}, ${w * 0.44} ${ch + rh * 0.3}, ${w * 0.46} ${topY}` +
+      ` Q ${w * 0.32} ${ch + rh * 0.09} ${w * 0.18} ${topY} Z`,
+    `M ${w * 0.54} ${topY}` +
+      ` C ${w * 0.56} ${ch + rh * 0.3}, ${w * 0.58} ${ch + rh * 0.6}, ${w * 0.63} ${tipY}` +
+      ` Q ${w * 0.655} ${tipY + rh * 0.05} ${w * 0.68} ${tipY}` +
+      ` C ${w * 0.73} ${ch + rh * 0.68}, ${w * 0.82} ${ch + rh * 0.4}, ${w * 0.82} ${topY}` +
+      ` Q ${w * 0.68} ${ch + rh * 0.09} ${w * 0.54} ${topY} Z`,
+  ];
+}
+
+/* ====== سن واحدة ====== */
+function Tooth({
   n,
   st,
   selected,
@@ -67,61 +133,164 @@ function ToothCell({
   onSelect: () => void;
   onHover: (n: number | null) => void;
 }) {
-  const x = X0 + colOf(n) * CELL;
   const upper = Math.floor(n / 10) <= 2;
-  const y = upper ? UPPER_Y : LOWER_Y;
-  const meta = TOOTH_META[st];
-  const cx = x + TOOTH / 2;
-  const cy = y + TOOTH / 2;
-  const numY = upper ? y - 13 : y + TOOTH + 24;
+  const kind = toothKind(n);
+  const { w, cusps, roots } = SHAPE[kind];
+  const col = colOf(n);
+  const cx = X0 + col * CELL_W + CELL_W / 2;
+  const topY = upper ? UPPER_TOP : LOWER_TOP;
+  const s = STYLE[st];
+  const missing = st === "missing";
+
+  const crown = useMemo(() => crownD(w, cusps), [w, cusps]);
+  const rootPaths = useMemo(() => rootD(w, roots), [w, roots]);
+
+  const numY = upper ? UPPER_TOP - 10 : LOWER_TOP + TH + 20;
+  const sw = selected ? 2.4 : hovered ? 2 : 1.4;
+
   return (
-    <g className="tooth-btn" onClick={onSelect} onMouseEnter={() => onHover(n)} onMouseLeave={() => onHover(null)}>
-      {hovered && !selected && (
-        <rect x={x - 4} y={y - 4} width={TOOTH + 8} height={TOOTH + 8} rx={12} fill="none" stroke="#0d8f83" strokeOpacity="0.4" strokeWidth="2" strokeDasharray="4 3" />
-      )}
-      {selected && (
-        <>
-          <rect x={x - 8} y={y - 8} width={TOOTH + 16} height={TOOTH + 16} rx={15} fill="none" stroke="#0d8f83" strokeOpacity="0.18" strokeWidth="6" />
-          <rect x={x - 4} y={y - 4} width={TOOTH + 8} height={TOOTH + 8} rx={12} fill="none" stroke="#0d8f83" strokeWidth="2.4" />
-        </>
-      )}
-      <rect
-        x={x}
-        y={y}
-        width={TOOTH}
-        height={TOOTH}
-        rx={9}
-        fill={st === "missing" ? "#f4f7f6" : meta.fill}
-        stroke={meta.stroke}
-        strokeWidth={selected ? 2.6 : 1.8}
-        strokeDasharray={meta.dash ? "5 4" : undefined}
-      />
-      {st !== "missing" && (
-        <path d={`M ${x + 13} ${cy} H ${x + TOOTH - 13} M ${cx} ${y + 13} V ${y + TOOTH - 13}`} stroke={meta.stroke} strokeOpacity="0.42" strokeWidth="1.3" />
-      )}
-      {st === "caries" && <circle cx={cx} cy={cy} r={8.5} fill={meta.stroke} />}
-      {st === "root" && (
-        <>
-          <rect x={cx - 4.5} y={y + 10} width={9} height={9} rx={2} fill={meta.stroke} />
-          <path d={`M ${cx} ${y + 19} V ${y + TOOTH - 11}`} stroke={meta.stroke} strokeWidth="3.2" strokeLinecap="round" />
-        </>
-      )}
-      {st === "crown" && <rect x={x + 10} y={y + 10} width={TOOTH - 20} height={TOOTH - 20} rx={7} fill="none" stroke={meta.stroke} strokeWidth="2.6" />}
-      {st === "missing" && (
-        <path
-          d={`M ${x + 15} ${y + 15} L ${x + TOOTH - 15} ${y + TOOTH - 15} M ${x + TOOTH - 15} ${y + 15} L ${x + 15} ${y + TOOTH - 15}`}
-          stroke={meta.stroke}
-          strokeWidth="3.4"
-          strokeLinecap="round"
+    <g
+      className="tooth-btn"
+      onClick={onSelect}
+      onMouseEnter={() => onHover(n)}
+      onMouseLeave={() => onHover(null)}
+      style={{ cursor: "pointer" }}
+    >
+      {/* هالة التحديد / التحويم */}
+      {(selected || hovered) && (
+        <circle
+          cx={cx}
+          cy={topY + TH / 2}
+          r={w / 2 + 9}
+          fill={selected ? "rgba(13,143,131,0.10)" : "rgba(13,143,131,0.05)"}
+          stroke={selected ? "#0d8f83" : "#0d8f83"}
+          strokeOpacity={selected ? 0.85 : 0.35}
+          strokeWidth={selected ? 2 : 1.4}
+          strokeDasharray={selected ? undefined : "4 3"}
         />
       )}
-      <text x={cx} y={numY} textAnchor="middle" fontSize="15" fontWeight={selected ? 800 : 700} fill={selected ? "#0a6158" : "#627a75"} fontFamily="Changa, sans-serif">
+
+      <g transform={`translate(${cx - w / 2} ${topY})${upper ? ` rotate(180 ${w / 2} ${TH / 2})` : ""}`} opacity={missing ? 0.55 : 1}>
+        {/* الجذور */}
+        {rootPaths.map((d, i) => (
+          <path
+            key={i}
+            d={d}
+            fill={missing ? "none" : s.rootFill}
+            stroke={s.stroke}
+            strokeWidth={sw * 0.85}
+            strokeDasharray={missing ? "4 3" : undefined}
+            strokeLinejoin="round"
+          />
+        ))}
+        {/* قناة الجذر عند علاج العصب */}
+        {st === "root" && (
+          <path
+            d={`M ${w / 2} ${CH * 0.5} L ${w / 2} ${CH + RH * 0.8}`}
+            stroke="#b9791f"
+            strokeWidth={3}
+            strokeLinecap="round"
+            fill="none"
+          />
+        )}
+        {/* التاج */}
+        <path
+          d={crown}
+          fill={missing ? "none" : s.fill}
+          stroke={s.stroke}
+          strokeWidth={sw}
+          strokeDasharray={missing ? "4 3" : undefined}
+          strokeLinejoin="round"
+        />
+
+        {/* تفاصيل الحالة على التاج */}
+        {!missing && st === "caries" && <circle cx={w / 2} cy={CH * 0.5} r={w * 0.14} fill="#c0392b" opacity={0.85} />}
+        {!missing && st === "filled" && (
+          <rect x={w * 0.36} y={CH * 0.36} width={w * 0.28} height={w * 0.28} rx={2.5} fill="#0a6158" opacity={0.8} transform={`rotate(45 ${w / 2} ${CH * 0.5})`} />
+        )}
+        {!missing && st === "crown" && (
+          <path
+            d={crown}
+            fill="none"
+            stroke="#2b6cb0"
+            strokeWidth={1.4}
+            strokeOpacity={0.55}
+            transform={`translate(${w / 2} ${CH / 2}) scale(0.84) translate(${-w / 2} ${-CH / 2})`}
+          />
+        )}
+        {/* خط الإطباق (شرفات خفيفة) للأسنان الخلفية */}
+        {!missing && (kind === "premolar" || kind === "molar") && st !== "crown" && (
+          <path
+            d={`M ${w * 0.3} ${CH * 0.34} Q ${w * 0.5} ${CH * 0.5} ${w * 0.7} ${CH * 0.34}`}
+            fill="none"
+            stroke={s.stroke}
+            strokeOpacity={0.4}
+            strokeWidth={1.1}
+          />
+        )}
+        {/* علامة المفقود */}
+        {missing && (
+          <path
+            d={`M ${w * 0.28} ${CH * 0.28} L ${w * 0.72} ${CH * 0.75} M ${w * 0.72} ${CH * 0.28} L ${w * 0.28} ${CH * 0.75}`}
+            stroke="#8fa09a"
+            strokeWidth={2.4}
+            strokeLinecap="round"
+          />
+        )}
+      </g>
+
+      {/* رقم FDI — كبير وواضح مع هالة بيضاء */}
+      <text
+        x={cx}
+        y={numY}
+        textAnchor="middle"
+        fontSize={15}
+        fontWeight={selected ? 800 : 700}
+        fontFamily="Changa, sans-serif"
+        fill={selected ? "#0a6158" : s.num}
+        stroke="#ffffff"
+        strokeWidth={4}
+        paintOrder="stroke"
+        strokeLinejoin="round"
+      >
         {n}
       </text>
     </g>
   );
 }
 
+/* ====== رمز مصغر للمفتاح (سن صغيرة بنفس الأسلوب) ====== */
+function Glyph({ s, size = "w-5 h-5" }: { s: ToothStatus; size?: string }) {
+  const st = STYLE[s];
+  const missing = s === "missing";
+  return (
+    <svg viewBox="0 0 24 24" className={`${size} shrink-0`} aria-hidden="true">
+      <path
+        d="M9 12.5 C8 16.5 8.6 19.5 9.6 20.6 Q10 21 10.3 20.5 C10.8 19.6 11 17.5 11 15.8 Q12 15 13 15.8 C13 17.5 13.2 19.6 13.7 20.5 Q14 21 14.4 20.6 C15.4 19.5 16 16.5 15 12.5 Z"
+        fill={missing ? "none" : st.rootFill}
+        stroke={st.stroke}
+        strokeWidth={1.3}
+        strokeDasharray={missing ? "2.5 2" : undefined}
+        opacity={missing ? 0.55 : 1}
+      />
+      <path
+        d="M8 12.5 Q7.5 8 9 5.5 Q10 3.8 12 4.6 Q14 3.8 15 5.5 Q16.5 8 16 12.5 Q12 14.5 8 12.5 Z"
+        fill={missing ? "none" : st.fill}
+        stroke={st.stroke}
+        strokeWidth={1.5}
+        strokeDasharray={missing ? "2.5 2" : undefined}
+        opacity={missing ? 0.55 : 1}
+      />
+      {!missing && s === "caries" && <circle cx={12} cy={9} r={2} fill="#c0392b" opacity={0.85} />}
+      {!missing && s === "filled" && <rect x={10.6} y={7.6} width={2.8} height={2.8} rx={0.7} fill="#0a6158" opacity={0.8} transform="rotate(45 12 9)" />}
+      {!missing && s === "root" && <path d="M12 7 L12 18" stroke="#b9791f" strokeWidth={1.8} strokeLinecap="round" />}
+      {!missing && s === "crown" && <path d="M9.2 11.8 Q8.9 8.4 10 6.4 Q10.8 5 12 5.6 Q13.2 5 14 6.4 Q15.1 8.4 14.8 11.8 Q12 13.4 9.2 11.8 Z" fill="none" stroke="#2b6cb0" strokeWidth={1.2} strokeOpacity={0.6} />}
+      {missing && <path d="M9.5 7 L14.5 11.5 M14.5 7 L9.5 11.5" stroke="#8fa09a" strokeWidth={1.8} strokeLinecap="round" />}
+    </svg>
+  );
+}
+
+/* ====== المكوّن الرئيسي ====== */
 interface Props {
   teeth: Partial<Record<number, ToothStatus>>;
   onSet?: (tooth: number, status: ToothStatus) => void;
@@ -150,7 +319,6 @@ export default function DentalChart({ teeth, onSet, editorNote = "يُحفَظ �
     <div className="grid xl:grid-cols-[1fr_290px] gap-5 items-start">
       {/* ====== المخطط ====== */}
       <div className="rounded-xl border border-line bg-gradient-to-b from-white to-mist/60 overflow-hidden min-w-0 shadow-[0_1px_2px_rgba(18,37,31,0.05)]">
-        {/* ترويسة المخطط وأدوات التكبير */}
         <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-b border-line bg-white/70">
           <div>
             <p className="font-display font-bold text-base text-ink leading-tight">مخطط الأسنان السريري</p>
@@ -175,38 +343,29 @@ export default function DentalChart({ teeth, onSet, editorNote = "يُحفَظ �
           </div>
         </div>
 
-        {/* منطقة الرسم — تمرير أفقي على الشاشات الضيقة مع حد أدنى يضمن الوضوح */}
         <div className="overflow-x-auto">
-          <div style={{ width: `${zoom * 100}%`, minWidth: 640 }} className="transition-[width] duration-300 ease-out">
-            <svg viewBox="0 0 1040 308" className="w-full h-auto block select-none" role="img" aria-label="مخطط الأسنان الرباعي">
-              {/* شريط الاتجاهين */}
-              <text x={X0 + 3.5 * CELL + TOOTH / 2} y={26} textAnchor="middle" fontSize="12.5" fontWeight="800" fill="#8fa6a0" fontFamily="Changa, sans-serif">
+          <div style={{ width: `${zoom * 100}%`, minWidth: 760 }} className="transition-[width] duration-300 ease-out mx-auto">
+            <svg viewBox="0 0 1020 212" className="w-full h-auto block select-none" role="img" aria-label="مخطط الأسنان الرباعي">
+              {/* اتجاهات المريض */}
+              <text x={X0 + 4 * CELL_W} y={16} textAnchor="middle" fontSize="12.5" fontWeight="800" fill="#8fa6a0" fontFamily="Changa, sans-serif">
                 يمين المريض
               </text>
-              <text x={X0 + 11.5 * CELL + TOOTH / 2} y={26} textAnchor="middle" fontSize="12.5" fontWeight="800" fill="#8fa6a0" fontFamily="Changa, sans-serif">
+              <text x={X0 + 12 * CELL_W} y={16} textAnchor="middle" fontSize="12.5" fontWeight="800" fill="#8fa6a0" fontFamily="Changa, sans-serif">
                 أيسر المريض
               </text>
 
-              {/* خط المنتصف */}
-              <line x1={MID_X} y1={38} x2={MID_X} y2={284} stroke="#c9dbd6" strokeWidth="1.4" strokeDasharray="3 7" strokeLinecap="round" />
+              {/* خط المنتصف بين الربعين */}
+              <line x1={MID_X} y1={26} x2={MID_X} y2={200} stroke="#c9dbd6" strokeWidth="1.4" strokeDasharray="3 7" strokeLinecap="round" />
 
-              {/* فاصل الفكين */}
-              <line x1={60} y1={147} x2={452} y2={147} stroke="#d8e6e1" strokeWidth="1.4" strokeDasharray="5 5" />
-              <line x1={588} y1={147} x2={980} y2={147} stroke="#d8e6e1" strokeWidth="1.4" strokeDasharray="5 5" />
-              <rect x={462} y={133} width={116} height={25} rx={12.5} fill="#eaf3f0" stroke="#d0e2dc" />
-              <text x={520} y={150} textAnchor="middle" fontSize="12.5" fontWeight="800" fill="#4d6a63" fontFamily="Changa, sans-serif">
-                الفك العلوي
+              {/* خط الإطباق */}
+              <line x1={X0} y1={BITE_Y} x2={X0 + 16 * CELL_W} y2={BITE_Y} stroke="#dbe7e3" strokeWidth="1.2" strokeDasharray="6 6" />
+              <rect x={MID_X - 52} y={BITE_Y - 11} width={104} height={22} rx={11} fill="#eaf3f0" stroke="#d0e2dc" />
+              <text x={MID_X} y={BITE_Y + 4} textAnchor="middle" fontSize="11.5" fontWeight="800" fill="#4d6a63" fontFamily="Changa, sans-serif">
+                خط الإطباق
               </text>
 
-              <line x1={60} y1={189} x2={452} y2={189} stroke="#d8e6e1" strokeWidth="1.4" strokeDasharray="5 5" />
-              <line x1={588} y1={189} x2={980} y2={189} stroke="#d8e6e1" strokeWidth="1.4" strokeDasharray="5 5" />
-              <rect x={462} y={175} width={116} height={25} rx={12.5} fill="#eaf3f0" stroke="#d0e2dc" />
-              <text x={520} y={192} textAnchor="middle" fontSize="12.5" fontWeight="800" fill="#4d6a63" fontFamily="Changa, sans-serif">
-                الفك السفلي
-              </text>
-
-              {ALL.map((n) => (
-                <ToothCell
+              {ALL.map((n, i) => (
+                <Tooth
                   key={n}
                   n={n}
                   st={teeth[n] ?? "healthy"}
@@ -216,13 +375,21 @@ export default function DentalChart({ teeth, onSet, editorNote = "يُحفَظ �
                   onHover={setHovered}
                 />
               ))}
+
+              {/* علامتا الفكين */}
+              <text x={12} y={UPPER_TOP + TH / 2 + 4} fontSize="11" fontWeight="800" fill="#a7bab4" fontFamily="Changa, sans-serif">
+                علوي
+              </text>
+              <text x={12} y={LOWER_TOP + TH / 2 + 4} fontSize="11" fontWeight="800" fill="#a7bab4" fontFamily="Changa, sans-serif">
+                سفلي
+              </text>
             </svg>
           </div>
         </div>
 
         {/* شريط المعاينة الحي */}
         <div className="px-4 py-2 border-t border-line/70 bg-white/60 flex items-center gap-2.5">
-          <span className="w-2.5 h-2.5 rounded-full shrink-0 transition-colors" style={{ background: focus ? TOOTH_META[focusStatus].stroke : "#c9d8d3" }} />
+          <span className="w-2.5 h-2.5 rounded-full shrink-0 transition-colors" style={{ background: focus ? STYLE[focusStatus].stroke : "#c9d8d3" }} />
           <p className="text-[11px] font-bold text-soft truncate">
             {focus ? (
               <>
@@ -248,7 +415,6 @@ export default function DentalChart({ teeth, onSet, editorNote = "يُحفَظ �
 
       {/* ====== اللوحة الجانبية ====== */}
       <div className="space-y-4 min-w-0">
-        {/* محرر الحالة */}
         <div className="rounded-xl border border-line bg-white overflow-hidden">
           <div className="flex items-center justify-between px-4 py-3 border-b border-line bg-mist/50">
             <p className="font-display font-bold text-sm text-ink">حالة السن</p>
@@ -256,11 +422,11 @@ export default function DentalChart({ teeth, onSet, editorNote = "يُحفَظ �
               <span
                 className="chip"
                 style={{
-                  background: TOOTH_META[selStatus].fill === "#ffffff" ? "#eef4f2" : TOOTH_META[selStatus].fill,
-                  color: TOOTH_META[selStatus].stroke,
+                  background: STYLE[selStatus].fill === "none" ? "#eef4f2" : STYLE[selStatus].fill,
+                  color: STYLE[selStatus].stroke,
                 }}
               >
-                <span className="w-2 h-2 rounded-full" style={{ background: TOOTH_META[selStatus].stroke }} />
+                <span className="w-2 h-2 rounded-full" style={{ background: STYLE[selStatus].stroke }} />
                 {TOOTH_META[selStatus].label}
               </span>
             )}
@@ -300,7 +466,6 @@ export default function DentalChart({ teeth, onSet, editorNote = "يُحفَظ �
           </div>
         </div>
 
-        {/* مؤشر صحة الفم */}
         <div className="rounded-xl border border-line bg-white p-4">
           <div className="flex items-center justify-between">
             <p className="font-display font-bold text-sm text-ink">مؤشر صحة الفم</p>
