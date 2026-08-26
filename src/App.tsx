@@ -72,7 +72,7 @@ const TITLES: Record<Tab, string> = {
 };
 
 function Shell() {
-  const { db, dispatch, patientById, serviceById } = useStore();
+  const { db, dispatch, patientById, serviceById, conn } = useStore();
   const { user, can, apptScope } = useAuth();
   const { push } = useToast();
   const [tab, setTab] = useState<Tab>("dashboard");
@@ -265,7 +265,7 @@ function SidebarContent({
 /* ============================ الشريط العلوي ============================ */
 
 function Topbar({ tab, onMenu, onOpenPatient }: { tab: Tab; onMenu: () => void; onOpenPatient: (id: string) => void }) {
-  const { db, dispatch } = useStore();
+  const { db, dispatch, conn, syncing } = useStore();
   const { patientScope, apptScope } = useAuth();
   const { push } = useToast();
   const fileRef = useRef<HTMLInputElement>(null);
@@ -381,6 +381,31 @@ function Topbar({ tab, onMenu, onOpenPatient }: { tab: Tab; onMenu: () => void; 
         <span className="hidden md:inline-flex items-center gap-2 chip bg-white border border-line !py-2 text-soft">
           <span className="w-1.5 h-1.5 rounded-full bg-mint pulse-dot" />
           <span className="stat-num text-xs" dir="ltr">{clock}</span>
+        </span>
+
+        {/* حالة قاعدة البيانات المركزية */}
+        <span
+          className="hidden sm:inline-flex items-center gap-2 chip bg-white border border-line !py-2 cursor-default"
+          title={
+            conn === "online"
+              ? "متصل بقاعدة MySQL المركزية — كل التغييرات تُزامَن فوراً"
+              : conn === "offline"
+              ? "الخادم غير متاح — تُحفَظ البيانات محلياً وستُزامَن عند توفره"
+              : "جارٍ فحص الاتصال بالخادم…"
+          }
+        >
+          <span
+            className={`w-1.5 h-1.5 rounded-full ${
+              conn === "online" ? "bg-mint pulse-dot" : conn === "checking" ? "bg-amber pulse-soft" : "bg-soft/40"
+            }`}
+          />
+          {conn === "online" ? (
+            <span className={`font-bold ${syncing ? "text-[#a06410]" : "text-[#1d6b47]"}`}>{syncing ? "مزامنة MySQL…" : "MySQL متصل"}</span>
+          ) : conn === "checking" ? (
+            <span className="font-bold text-[#a06410]">جارٍ الاتصال…</span>
+          ) : (
+            <span className="font-bold text-soft">تخزين محلي</span>
+          )}
         </span>
 
         {/* التنبيهات */}

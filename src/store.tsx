@@ -1,4 +1,5 @@
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useState } from "react";
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useRef, useState } from "react";
+import { fetchState, ping, saveState } from "./api";
 
 /* ============================== Types ============================== */
 
@@ -828,6 +829,7 @@ export type Action =
   | { type: "END_SESSION"; id: string; paid: number; fuId?: string }
   | { type: "CANCEL_SESSION"; id: string }
   | { type: "IMPORT"; db: DB }
+  | { type: "HYDRATE"; db: DB }
   | { type: "ADD_USER"; u: User }
   | { type: "UPDATE_USER"; u: User }
   | { type: "DELETE_USER"; id: string }
@@ -1113,6 +1115,8 @@ function reducer(db: DB, action: Action): DB {
 
     case "IMPORT":
       return action.db;
+    case "HYDRATE":
+      return ensureToday(normalizeDB(action.db));
     case "ADD_USER":
       return { ...db, users: [...db.users, action.u] };
     case "UPDATE_USER":
@@ -1185,41 +1189,38 @@ function reducer(db: DB, action: Action): DB {
 
 const KEY = "sharafi-dental-v1";
 
-function load(): DB {
-  let db: DB;
-  try {
-    const raw = localStorage.getItem(KEY);
-    db = raw ? (JSON.parse(raw) as DB) : seed();
-    if (!db.patients?.length || !db.currencies?.length) db = seed();
-    db = {
-      ...db,
-      expenses: db.expenses ?? [],
-      prescriptions: db.prescriptions ?? [],
-      sessions: (db.sessions ?? []).map((s) => ({ ...s, summary: s.summary ?? "" })),
-      staff: db.staff ?? [],
-      activity: db.activity ?? [],
-      implants: db.implants ?? [],
-      prosthetics: db.prosthetics ?? [],
-      orthoCases: db.orthoCases ?? [],
-      xrays: db.xrays ?? [],
-      followUps: db.followUps ?? [],
-      supplies: db.supplies ?? [],
-      supplyMoves: db.supplyMoves ?? [],
-      plans: db.plans ?? [],
-      settings: { ...DEFAULT_CLINIC_SETTINGS, ...(db.settings ?? {}) },
-      users: (db.users?.length ? db.users : seed().users).map((u) =>
-        // طاقم الاستقبال والمساعدة يرى السجل والجدول كاملين دائماً
-        u.role === "secretary" || u.role === "assistant"
-          ? { ...u, permissions: [...new Set([...u.permissions, "scope_all_patients", "scope_all_appointments"])] }
-          : u
-      ),
-    };
-  } catch {
-    db = seed();
-  }
-  // نضمن دائماً وجود مواعيد لليوم حتى تبقى اللوحة حيّة
+/** تطبيع أي نسخة خام (من localStorage أو من MySQL) إلى بنية DB مكتملة */
+export function normalizeDB(raw: DB): DB {
+  const db = raw ?? ({} as DB);
+  return {
+    ...db,
+    expenses: db.expenses ?? [],
+    prescriptions: db.prescriptions ?? [],
+    sessions: (db.sessions ?? []).map((s) => ({ ...s, summary: s.summary ?? "" })),
+    staff: db.staff ?? [],
+    activity: db.activity ?? [],
+    implants: db.implants ?? [],
+    prosthetics: db.prosthetics ?? [],
+    orthoCases: db.orthoCases ?? [],
+    xrays: db.xrays ?? [],
+    followUps: db.followUps ?? [],
+    supplies: db.supplies ?? [],
+    supplyMoves: db.supplyMoves ?? [],
+    plans: db.plans ?? [],
+    settings: { ...DEFAULT_CLINIC_SETTINGS, ...(db.settings ?? {}) },
+    users: (db.users?.length ? db.users : seed().users).map((u) =>
+      // طاقم الاستقبال والمساعدة يرى السجل والجدول كاملين دائماً
+      u.role === "secretary" || u.role === "assistant"
+        ? { ...u, permissions: [...new Set([...u.permissions, "scope_all_patients", "scope_all_appointments"])] }
+        : u
+    ),
+  };
+}
+
+/** ضمان وجود مواعيد لليوم حتى تبقى اللوحة حيّة */
+function ensureToday(db: DB): DB {
   if (!db.appointments.some((a) => a.date === today(0) && a.status !== "cancelled")) {
-    db = {
+    return {
       ...db,
       appointments: [
         ...db.appointments,
@@ -1233,6 +1234,20 @@ function load(): DB {
   return db;
 }
 
+function load(): DB {
+  let db: DB;
+  try {
+    const raw = localStorage.getItem(KEY);
+    db = raw ? normalizeDB(JSON.parse(raw) as DB) : seed();
+    if (!db.patients?.length || !db.currencies?.length) db = seed();
+  } catch {
+    db = seed();
+  }
+  return ensureToday(db);
+}
+
+export type ConnStatus = "checking" | "online" | "offline";
+
 interface Ctx {
   db: DB;
   dispatch: React.Dispatch<Action>;
@@ -1241,25 +1256,69 @@ interface Ctx {
   doctorById: (id: string) => Doctor | undefined;
   patientBalance: (id: string) => number;
   lastVisit: (id: string) => string | undefined;
+  conn: ConnStatus;
+  syncing: boolean;
 }
 
 const StoreCtx = createContext<Ctx | null>(null);
 
 export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [db, dispatch] = useReducer(reducer, undefined as unknown as DB, load);
+  const [conn, setConn] = useState<ConnStatus>("checking");
+  const [syncing, setSyncing] = useState(false);
+  const connRef = useRef<ConnStatus>("checking");
+  const dbRef = useRef<DB>(db);
+  const bootedRef = useRef(false);
+  connRef.current = conn;
+  dbRef.current = db;
 
+  /* عند الإقلاع: محاولة جلب الحالة المركزية من MySQL */
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const remote = await fetchState();
+      if (cancelled) return;
+      const r = remote as unknown as DB | null;
+      const hasData = !!r && Array.isArray(r.patients) && r.patients.length > 0;
+      if (hasData) {
+        dispatch({ type: "HYDRATE", db: r });
+        setConn("online");
+      } else {
+        const ok = await ping();
+        if (!cancelled) {
+          setConn(ok ? "online" : "offline");
+          // خادم متصل بقاعدة فارغة → نرفع البيانات المحلية لتعميرها
+          if (ok) saveState(dbRef.current).catch(() => undefined);
+        }
+      }
+      bootedRef.current = true;
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  /* حفظ محلي دائم + دفع إلى MySQL عند الاتصال (مع تجميع التغييرات) */
   useEffect(() => {
     try {
       localStorage.setItem(KEY, JSON.stringify(db));
     } catch {
       /* تجاهل */
     }
+    if (!bootedRef.current || connRef.current !== "online") return;
+    const t = setTimeout(() => {
+      setSyncing(true);
+      saveState(db).finally(() => setSyncing(false));
+    }, 700);
+    return () => clearTimeout(t);
   }, [db]);
 
   const value = useMemo<Ctx>(
     () => ({
       db,
       dispatch,
+      conn,
+      syncing,
       patientById: (id) => db.patients.find((p) => p.id === id),
       serviceById: (id) => db.services.find((s) => s.id === id),
       doctorById: (id) => db.doctors.find((d) => d.id === id),
@@ -1272,7 +1331,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         return past[0]?.date;
       },
     }),
-    [db]
+    [db, conn, syncing]
   );
 
   return <StoreCtx.Provider value={value}>{children}</StoreCtx.Provider>;
