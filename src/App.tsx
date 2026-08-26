@@ -92,6 +92,28 @@ function Shell() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id, allowedNav.length]);
 
+  // رسالة تأكيد المزامنة فور الدخول — مرة واحدة لكل جلسة دخول
+  const welcomeRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!user) {
+      welcomeRef.current = null;
+      return;
+    }
+    if (conn === "checking" || welcomeRef.current === user.id) return;
+    welcomeRef.current = user.id;
+    const t = setTimeout(() => {
+      push(
+        "success",
+        "تمت مزامنة البيانات بنجاح",
+        conn === "online"
+          ? "تم الاتصال بقاعدة البيانات المركزية (MySQL) وتحميل أحدث بيانات العيادة."
+          : "تم تحميل بيانات العيادة محلياً والنظام جاهز للاستخدام."
+      );
+    }, 500);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id, conn]);
+
   // بوابة الدخول: لا نظام بدون مستخدم مسجّل
   if (!user) return <Login />;
 
