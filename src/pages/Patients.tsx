@@ -19,7 +19,7 @@ import {
 import { IconCalendar, IconCalendarPlus, IconChevronDown, IconClock, IconPencil, IconPhone, IconPlus, IconPrinter, IconSearch, IconSpark, IconUserPlus, IconUsers, IconAlert } from "../icons";
 import { Avatar, Badge, EmptyState, Field, Modal, TArea, TInput, TSelect, TwoStepDelete, useToast } from "../components/ui";
 import DentalChart from "../components/DentalChart";
-import { PrintModal, RxPrint } from "../components/PrintSheet";
+import { PatientPrint, PrintModal, RxPrint } from "../components/PrintSheet";
 import { FollowUpModal } from "./Appointments";
 import type { Prescription, RxItem } from "../store";
 
@@ -50,6 +50,7 @@ export default function PatientsPage({ addSignal, onOpenPatient, onBook }: PageP
   const [q, setQ] = useState("");
   const [filter, setFilter] = useState("all");
   const [showAdd, setShowAdd] = useState(false);
+  const [printId, setPrintId] = useState<string | null>(null);
 
   useEffect(() => {
     if (addSignal > 0) setShowAdd(true);
@@ -174,12 +175,22 @@ export default function PatientsPage({ addSignal, onOpenPatient, onBook }: PageP
                         </div>
                       </td>
                       <td className="td" onClick={(e) => e.stopPropagation()}>
-                        <TwoStepDelete
-                          onConfirm={() => {
-                            dispatch({ type: "DELETE_PATIENT", id: p.id });
-                            push("info", "تم حذف المريض", `أُزيل ${p.name} مع مواعيده وفواتيره.`);
-                          }}
-                        />
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={() => setPrintId(p.id)}
+                            className="icon-btn !w-8 !h-8"
+                            aria-label="طباعة ملف المريض"
+                            title="طباعة الملف الطبي"
+                          >
+                            <IconPrinter className="w-4 h-4" />
+                          </button>
+                          <TwoStepDelete
+                            onConfirm={() => {
+                              dispatch({ type: "DELETE_PATIENT", id: p.id });
+                              push("info", "تم حذف المريض", `أُزيل ${p.name} مع مواعيده وفواتيره.`);
+                            }}
+                          />
+                        </div>
                       </td>
                     </tr>
                   );
@@ -201,6 +212,11 @@ export default function PatientsPage({ addSignal, onOpenPatient, onBook }: PageP
         onBook={onBook}
         dispatch={dispatch}
       />
+      {printId && (
+        <PrintModal open onClose={() => setPrintId(null)} title="طباعة الملف الطبي للمريض">
+          <PatientPrint patientId={printId} />
+        </PrintModal>
+      )}
     </div>
   );
 }
@@ -339,6 +355,7 @@ export function PatientDrawer({
   const p = id ? patientById(id) : undefined;
   const [showRx, setShowRx] = useState(false);
   const [showFu, setShowFu] = useState(false);
+  const [showPrint, setShowPrint] = useState(false);
   const [printRx, setPrintRx] = useState<Prescription | null>(null);
 
   useEffect(() => {
@@ -671,12 +688,21 @@ export function PatientDrawer({
             <IconCalendarPlus className="w-4.5 h-4.5" />
             حجز موعد لهذا المريض
           </button>
+          <button className="btn-soft" onClick={() => setShowPrint(true)} title="طباعة الملف الطبي الكامل">
+            <IconPrinter className="w-4.5 h-4.5" />
+            طباعة الملف
+          </button>
           <button className="btn-ghost" onClick={onClose}>إغلاق</button>
         </div>
       </aside>
 
       {showRx && <RxModal patientId={p.id} onClose={() => setShowRx(false)} />}
       {showFu && <FollowUpModal patientId={p.id} onClose={() => setShowFu(false)} />}
+      {showPrint && (
+        <PrintModal open onClose={() => setShowPrint(false)} title={`طباعة الملف الطبي — ${p.name}`}>
+          <PatientPrint patientId={p.id} />
+        </PrintModal>
+      )}
       {printRx && (
         <PrintModal open onClose={() => setPrintRx(null)} title="طباعة الروشتة">
           <RxPrint rx={printRx} />

@@ -29,6 +29,7 @@ import {
   IconChevronDown,
   IconClock,
   IconPlus,
+  IconPrinter,
   IconReceipt,
   IconSpark,
   IconStetho,
@@ -36,6 +37,7 @@ import {
   IconX,
 } from "../icons";
 import { Avatar, Badge, Drop, DropItem, EmptyState, Field, Modal, TArea, TInput, TSelect, TwoStepDelete, useToast } from "../components/ui";
+import { AppointmentsDayPrint, PrintModal } from "../components/PrintSheet";
 
 /* ساعات الحجز — تُشتق من إعدادات الدوام العامة */
 const hoursBetween = (start: string, end: string) => {
@@ -183,6 +185,7 @@ function ScheduleView({
   const { push } = useToast();
   const HOURS = useMemo(() => hoursBetween(clinicOf(db).workStart, clinicOf(db).workEnd), [db]);
   const [remindFor, setRemindFor] = useState<Appointment | null>(null);
+  const [printDay, setPrintDay] = useState<string | null>(null);
 
   const days = useMemo(() => Array.from({ length: 7 }, (_, i) => today(i)), []);
   const visible = useMemo(
@@ -203,6 +206,18 @@ function ScheduleView({
 
   return (
     <>
+      {/* أدوات اليوم المعروض */}
+      <div className="flex flex-wrap items-center justify-between gap-3 anim-rise" style={{ animationDelay: "60ms" }}>
+        <p className="text-xs font-bold text-soft">
+          جدول الأسبوع — اليوم المعروض: <span className="text-jade-deep">{fmtDate(day)}</span>
+          <span className="chip bg-white border border-line ms-2 stat-num !text-[10px]">{countFor(day)} موعداً</span>
+        </p>
+        <button className="btn-soft !h-9 !text-xs" onClick={() => setPrintDay(day)} title="طباعة كشف مواعيد اليوم المعروض مع المتابعات المستحقة">
+          <IconPrinter className="w-4 h-4" />
+          طباعة كشف اليوم
+        </button>
+      </div>
+
       {/* شريط الأيام */}
       <div className="grid grid-cols-7 gap-2 anim-rise" style={{ animationDelay: "100ms" }}>
         {days.map((d, i) => {
@@ -343,6 +358,11 @@ function ScheduleView({
       </div>
 
       {remindFor && <ReminderModal appt={remindFor} onClose={() => setRemindFor(null)} />}
+      {printDay && (
+        <PrintModal open onClose={() => setPrintDay(null)} title={`طباعة كشف مواعيد ${fmtDate(printDay)}`}>
+          <AppointmentsDayPrint date={printDay} />
+        </PrintModal>
+      )}
     </>
   );
 }
