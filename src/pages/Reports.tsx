@@ -32,7 +32,7 @@ import { AnimatedNumber, Avatar, Badge, EmptyState } from "../components/ui";
 const AR = "ar-EG-u-nu-latn";
 
 type Period = "month" | "last" | "q" | "year" | "all";
-type Tab = "overview" | "financial" | "doctors" | "followups" | "services" | "expenses";
+type Tab = "overview" | "financial" | "doctors" | "followups" | "services" | "expenses" | "patients";
 
 const PERIODS: { key: Period; label: string }[] = [
   { key: "month", label: "هذا الشهر" },
@@ -57,7 +57,7 @@ function downloadCsv(name: string, rows: (string | number)[][]) {
 }
 
 export default function ReportsPage() {
-  const { db, serviceById, patientById, doctorById } = useStore();
+  const { db, serviceById, patientById, doctorById, patientBalance, lastVisit } = useStore();
   const clinic = clinicOf(db);
   const money = useMoney();
   const cur = db.currencies.find((c) => c.code === db.defaultCurrency) ?? db.currencies[0];
@@ -97,6 +97,25 @@ export default function ReportsPage() {
   const collectionRate = billed > 0 ? Math.round((collected / billed) * 100) : 0;
   const expTotal = exp.reduce((s, e) => s + e.amount, 0);
   const net = collected - expTotal;
+
+  /* ============ بيانات تقرير المرضى ============ */
+  const patientRows = useMemo(
+    () =>
+      [...db.patients]
+        .map((p) => {
+          const teeth = Object.values(p.teeth);
+          const caries = teeth.filter((t) => t === "caries").length;
+          const treated = teeth.filter((t) => t === "filled" || t === "root" || t === "crown").length;
+          const visits = db.appointments.filter((a) => a.patientId === p.id && a.status !== "cancelled").length;
+          return { p, caries, treated, visits, bal: patientBalance(p.id), lv: lastVisit(p.id) };
+        })
+        .sort((a, b) => a.p.name.localeCompare(b.p.name, "ar")),
+    [db.patients, db.appointments, patientBalance, lastVisit]
+  );
+  const newInPeriod = patientRows.filter((r) => inPeriod(r.p.joined)).length;
+  const withCaries = patientRows.filter((r) => r.caries > 0).length;
+  const withBalance = patientRows.filter((r) => r.bal > 0).length;
+  const totalOutstanding = patientRows.reduce((s, r) => s + r.bal, 0);
   const doneAppts = appts.filter((a) => a.status === "done").length;
   const newPatients = db.patients.filter((p) => inPeriod(p.joined)).length;
 
@@ -167,6 +186,7 @@ export default function ReportsPage() {
 
   const TABS: { key: Tab; label: string; icon: (c: string) => React.ReactNode }[] = [
     { key: "overview", label: "نظرة عامة", icon: (c) => <IconTrendUp className={c} /> },
+    { key: "patients", label: "المرضى", icon: (c) => <IconUsers className={c} /> },
     { key: "financial", label: "المالي", icon: (c) => <IconWallet className={c} /> },
     { key: "doctors", label: "الأطباء", icon: (c) => <IconStetho className={c} /> },
     { key: "followups", label: "العودات", icon: (c) => <IconCalendarPlus className={c} /> },
@@ -175,7 +195,15 @@ export default function ReportsPage() {
   ];
 
   const exportCurrent = () => {
-    if (tab === "financial")
+    if (tab === "patients")
+      downloadCsv("تقرير-المرضى", [
+        ["الاسم", "رقم الجوال", "العمر", "الجنس", "المدينة", "فصيلة الدم", "الحساسية", "التسجيل", "آخر زيارة", "عدد الزيارات", "تسوس", "معالج", "مستحقات"],
+        ...patientRows.map((r) => [
+          r.p.name, r.p.phone, r.p.age, r.p.gender === "m" ? "ذكر" : "أنثى", r.p.city || "", r.p.blood,
+          r.p.allergies || "لا يوجد", r.p.joined, r.lv ?? "لم يزر", r.visits, r.caries, r.treated, r.bal,
+        ]),
+      ]);
+    else if (tab === "financial")
       downloadCsv("التقرير-المالي", [
         ["رقم الفاتورة", "المريض", "التاريخ", "الإجمالي", "المدفوع", "المتبقي", "الحالة"],
         ...inv.map((i) => [i.number, patientById(i.patientId)?.name ?? "", i.date, invoiceTotal(i), i.paid, invoiceTotal(i) - i.paid, INV_META[invoiceStatus(i)].label]),
@@ -320,6 +348,96 @@ export default function ReportsPage() {
                 </ul>
               </div>
             </div>
+          </div>
+        )}
+
+        {/* ====== تقرير المرضى ====== */}
+        {tab === "patients" && (
+          <div className="space-y-5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+              <Kpi label="إجمالي المرضى" value={patientRows.length} tint="bg-jade-soft text-jade-deep" icon={<IconUsers className="w-5 h-5" />} sub={`منهم ${newInPeriod} جديد ${periodLabel}`} />
+              <Kpi label="لديهم تسوس نشط" value={withCaries} tint="bg-coral-soft text-coral" icon={<IconTooth className="w-5 h-5" />} sub="بحاجة لمتابعة علاجية" />
+              <Kpi label="عليهم مستحقات" value={withBalance} tint="bg-amber-soft text-[#a06410]" icon={<IconWallet className="w-5 h-5" />} sub={`إجمالي ${money(totalOutstanding)}`} />
+              <Kpi label="نسبة المديونية" value={patientRows.length ? Math.round((withBalance / patientRows.length) * 100) : 0} suffix="%" tint="bg-sky-soft text-sky" icon={<IconTrendUp className="w-5 h-5" />} sub="من إجمالي قاعدة المرضى" />
+            </div>
+
+            <div className="card overflow-hidden anim-rise">
+              <div className="flex items-center justify-between px-5 pt-4 pb-3 border-b border-line">
+                <h2 className="font-display font-bold text-lg text-ink flex items-center gap-2">
+                  <IconUsers className="w-5 h-5 text-jade-deep" /> سجل المرضى وبيانات التواصل — {periodLabel}
+                </h2>
+                <span className="chip bg-mist text-soft stat-num">{patientRows.length} مريض</span>
+              </div>
+              {patientRows.length === 0 ? (
+                <EmptyState icon={<IconUsers className="w-6 h-6" />} title="لا مرضى مسجلون بعد" />
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[880px]">
+                    <thead className="bg-mist/70 border-b border-line">
+                      <tr>
+                        <th className="th">المريض</th>
+                        <th className="th">رقم الجوال</th>
+                        <th className="th">العمر / الجنس</th>
+                        <th className="th">المدينة</th>
+                        <th className="th">فصيلة الدم</th>
+                        <th className="th">التسجيل</th>
+                        <th className="th">آخر زيارة</th>
+                        <th className="th">الزيارات</th>
+                        <th className="th">حالة الفم</th>
+                        <th className="th">مستحقات</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {patientRows.map(({ p, caries, treated, visits, bal, lv }, i) => (
+                        <tr key={p.id} className="border-b border-line/60 last:border-0 hover:bg-jade-soft/25 transition-colors anim-fade" style={{ animationDelay: `${i * 25}ms` }}>
+                          <td className="td">
+                            <div className="flex items-center gap-2.5">
+                              <Avatar name={p.name} size="w-9 h-9 text-xs" />
+                              <div>
+                                <p className="font-bold text-ink leading-tight">{p.name}</p>
+                                {(p.allergies ?? "لا يوجد") !== "لا يوجد" && (
+                                  <p className="text-[10px] font-bold text-coral mt-0.5">حساسية: {p.allergies}</p>
+                                )}
+                              </div>
+                            </div>
+                          </td>
+                          <td className="td">
+                            <span className="stat-num font-bold text-jade-deep" dir="ltr">{p.phone}</span>
+                          </td>
+                          <td className="td text-soft">
+                            {p.age} سنة · {p.gender === "m" ? "ذكر" : "أنثى"}
+                          </td>
+                          <td className="td text-soft">{p.city || "—"}</td>
+                          <td className="td"><span className="stat-num" dir="ltr">{p.blood}</span></td>
+                          <td className="td text-soft">{fmtDate(p.joined)}</td>
+                          <td className="td text-soft">{lv ? fmtDate(lv) : <span className="text-coral font-bold text-[11px]">لم يزر</span>}</td>
+                          <td className="td"><span className="stat-num font-bold text-ink">{visits}</span></td>
+                          <td className="td">
+                            <div className="flex items-center gap-1.5">
+                              {caries > 0 && <Badge cls="bg-coral-soft text-coral">{caries} تسوس</Badge>}
+                              {treated > 0 && <Badge cls="bg-jade-soft text-jade-deep">{treated} معالَج</Badge>}
+                              {caries === 0 && treated === 0 && <Badge cls="bg-mint-soft text-[#1d6b47]">سليم</Badge>}
+                            </div>
+                          </td>
+                          <td className="td">
+                            {bal > 0 ? (
+                              <span className="stat-num font-bold text-coral">{money(bal)}</span>
+                            ) : (
+                              <span className="text-[11px] font-bold text-mint">مسدَّد</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
+            <p className="text-[11px] text-soft font-medium px-1 flex items-center gap-2">
+              <IconSpark className="w-3.5 h-3.5 text-[#a06410]" />
+              تُرتَّب القائمة أبجدياً. أرقام الجوال تظهر كما هي مسجلة — اضغط «تصدير CSV» للحصول على نسخة Excel كاملة.
+            </p>
           </div>
         )}
 
