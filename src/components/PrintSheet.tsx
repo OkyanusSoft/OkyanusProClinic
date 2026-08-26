@@ -1,5 +1,38 @@
-import React, { useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+
+/**
+ * محرك الطباعة الموثوق:
+ * 1) يضع صنف `print-doc` على body طوال فتح النافذة (يفعّل قواعد A4).
+ * 2) عند الطباعة يُخفي #root ويُظهر الورقة بأنماط مباشرة — لا يعتمد على توقيت المتصفح.
+ */
+function usePrintTrigger() {
+  const portalRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    document.body.classList.add("print-doc");
+    return () => document.body.classList.remove("print-doc");
+  }, []);
+
+  const doPrint = useCallback(() => {
+    const root = document.getElementById("root");
+    const portal = portalRef.current;
+    const setMode = (printing: boolean) => {
+      if (root) root.style.display = printing ? "none" : "";
+      if (portal) portal.style.display = printing ? "block" : "none";
+    };
+    setMode(true);
+    const restore = () => {
+      setMode(false);
+      window.removeEventListener("afterprint", restore);
+    };
+    window.addEventListener("afterprint", restore);
+    window.print();
+    setTimeout(restore, 250);
+  }, []);
+
+  return { portalRef, doPrint };
+}
 import {
   APPT_META,
   clinicOf,
@@ -70,6 +103,7 @@ function DocFooter() {
 }
 
 export function PrintModal({ open, onClose, title, children }: { open: boolean; onClose: () => void; title: string; children: React.ReactNode }) {
+  const { portalRef, doPrint } = usePrintTrigger();
   return (
     <>
       <Modal
@@ -85,7 +119,7 @@ export function PrintModal({ open, onClose, title, children }: { open: boolean; 
               مقاس A4 · 210×297 مم
             </span>
             <button className="btn-ghost" onClick={onClose}>إغلاق</button>
-            <button className="btn-primary" onClick={() => window.print()}>
+            <button className="btn-primary" onClick={doPrint}>
               <IconPrinter className="w-4.5 h-4.5" />
               طباعة الآن
             </button>
@@ -103,7 +137,7 @@ export function PrintModal({ open, onClose, title, children }: { open: boolean; 
       {/* بوابة الطباعة — الورقة الحقيقية على A4، خارج جذر التطبيق */}
       {open &&
         createPortal(
-          <div className="print-only">
+          <div ref={portalRef} className="print-only">
             <div className="print-a4" dir="rtl">
               <DocHeader />
               {children}
@@ -645,6 +679,7 @@ export function CardPrintModal({
   render: (count: number) => React.ReactNode;
 }) {
   const [count, setCount] = useState(2);
+  const { portalRef, doPrint } = usePrintTrigger();
   return (
     <>
       <Modal
@@ -672,7 +707,7 @@ export function CardPrintModal({
               </div>
             </div>
             <button className="btn-ghost" onClick={onClose}>إغلاق</button>
-            <button className="btn-primary" onClick={() => window.print()}>
+            <button className="btn-primary" onClick={doPrint}>
               <IconPrinter className="w-4.5 h-4.5" />
               طباعة الآن
             </button>
@@ -687,7 +722,7 @@ export function CardPrintModal({
       </Modal>
       {open &&
         createPortal(
-          <div className="print-only">
+          <div ref={portalRef} className="print-only">
             <div className="print-a4" dir="rtl" style={{ minHeight: "auto", padding: "4mm 0" }}>
               {render(count)}
             </div>

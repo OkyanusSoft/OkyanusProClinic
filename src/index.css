@@ -225,21 +225,49 @@ body {
   size: A4 portrait;
   margin: 10mm;
 }
+
+/* بوابة طباعة الوثائق — مخفية على الشاشة دائماً */
 .print-only {
   display: none;
 }
+
+/* الطباعة العامة لأي شاشة: ورقة نظيفة بلا قوائم وأزرار */
 @media print {
   html,
   body {
     background: #fff !important;
+    background-image: none !important;
   }
-  #root {
+  * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+    box-shadow: none !important;
+  }
+  aside,
+  header,
+  footer,
+  .btn,
+  .btn-primary,
+  .btn-soft,
+  .btn-ghost,
+  .btn-danger,
+  .icon-btn {
     display: none !important;
   }
-  .print-only {
-    display: block !important;
+  main {
+    padding: 0 !important;
+    max-width: none !important;
   }
-  .print-a4 {
+
+  /* وضع الوثيقة — يُفعَّل فقط عند فتح نوافذ الطباعة (صنف على body) */
+  body.print-doc #root {
+    display: none !important;
+  }
+  body.print-doc .print-only {
+    display: block !important;
+    visibility: visible !important;
+  }
+  body.print-doc .print-a4 {
     width: 190mm;
     min-height: 276mm;
     margin: 0 auto;
