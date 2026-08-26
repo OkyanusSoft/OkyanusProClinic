@@ -119,10 +119,6 @@ function Shell() {
           setTab(t as Tab);
           setMobileNav(false);
         }}
-        onReset={() => {
-          dispatch({ type: "RESET" });
-          push("info", "أُعيدت البيانات التجريبية", "عادت العيادة إلى حالتها الأولى.");
-        }}
         className="hidden lg:flex sticky top-0 h-screen w-64 shrink-0"
       />
       {mobileNav && (
@@ -135,10 +131,6 @@ function Shell() {
             onNav={(t) => {
               setTab(t as Tab);
               setMobileNav(false);
-            }}
-            onReset={() => {
-              dispatch({ type: "RESET" });
-              push("info", "أُعيدت البيانات التجريبية");
             }}
             onClose={() => setMobileNav(false)}
             className="anim-drawer absolute inset-y-0 start-0 w-72 flex shadow-2xl"
@@ -201,7 +193,6 @@ function SidebarContent({
   tab,
   badges,
   onNav,
-  onReset,
   onClose,
   className,
   items,
@@ -209,7 +200,6 @@ function SidebarContent({
   tab: Tab;
   badges: Partial<Record<Tab, number>>;
   onNav: (t: string) => void;
-  onReset: () => void;
   onClose?: () => void;
   className: string;
   items: typeof NAV;
@@ -267,13 +257,6 @@ function SidebarContent({
             </div>
           </div>
         </div>
-
-        <button
-          onClick={onReset}
-          className="w-full text-center text-[11px] font-bold text-white/40 hover:text-white/80 py-2 rounded-lg hover:bg-white/5 cursor-pointer transition-colors"
-        >
-          إعادة تعيين البيانات التجريبية
-        </button>
       </div>
     </aside>
   );
