@@ -4,6 +4,7 @@ import {
   fmtDate,
   FU_META,
   TOOTH_META,
+  dentitionOf,
   invoiceStatus,
   invoiceTotal,
   INV_META,
@@ -510,9 +511,14 @@ export function PatientDrawer({
           </div>
 
           <section className="card p-5">
-            <h3 className="font-display font-bold text-lg text-ink mb-4">خريطة الأسنان <span className="text-xs font-body font-medium text-soft">(ترقيم FDI)</span></h3>
+            <h3 className="font-display font-bold text-lg text-ink mb-1">خريطة الأسنان</h3>
+            <p className="text-xs font-body font-medium text-soft mb-4">
+              {dentitionOf(p.age) === "child" ? "أسنان لبنية (أطفال) — ترميز A إلى E" : "أسنان دائمة (بالغون) — ترقيم FDI"}
+              <span className="ms-2 text-soft/70">· تُحدَّد تلقائياً من عمر المريض ({p.age} سنة)</span>
+            </p>
             <DentalChart
               teeth={p.teeth}
+              age={p.age}
               onSet={(tooth, status) => {
                 dispatch({ type: "SET_TOOTH", patientId: p.id, tooth, status });
                 push("success", `تم تحديث السن ${tooth}`, status === "healthy" ? "عُدِّلت الحالة إلى سليم." : undefined);

@@ -122,6 +122,8 @@ export interface ClinicalSession {
   diagnosis: string;
   procedures: SessionProc[];
   teethTreated: { tooth: number; status: ToothStatus }[];
+  workItems: WorkItem[]; // خطة العمل السريرية (قلع/حشوات/عصب/تركيب…)
+  stages: SessionStage[]; // مراحل الجلسات (الأولى/الثانية/الثالثة…)
   meds: RxItem[];
   medNotes: string;
   summary: string; // تقرير العمل السريري للجلسة
@@ -129,6 +131,58 @@ export interface ClinicalSession {
   rxId?: string;
   fuId?: string; // العودة المرتبطة بالجلسة
 }
+
+/* ============================== خطة العمل السريرية ============================== */
+
+export type WorkKind = "قلع" | "حشوات" | "سحب عصب" | "تركيب" | "أطقم" | "تقويم";
+
+export interface WorkItem {
+  id: string;
+  kind: WorkKind;
+  teeth: number[]; // رموز الأسنان (FDI) التي يسري عليها العمل
+  stageId: string; // المرحلة (الجلسة) المرتبطة
+  extractType?: string; // نوع القلع
+  fillType?: string; // نوع الحشوة
+  rctType?: string; // نوع سحب العصب
+  channels?: number; // عدد القنوات المعالجة
+  rctFill?: string; // حشوة الجلسة الأولى بعد العصب
+  prosType?: string; // نوع التركيب
+  withRct?: boolean; // هل يترافق التركيب مع سحب عصب
+  dentureType?: string; // نوع الطقم
+  wireType?: string; // نوع سلك التقويم
+  wireNum?: string; // رقم السلك
+  rubberType?: string; // نوع الربلات
+  note?: string;
+}
+
+export interface SessionStage {
+  id: string;
+  name: string; // الجلسة الأولى…
+  date: string; // التاريخ المقرر
+  done: boolean;
+}
+
+/* مرجعيات الأنواع — تُعرض كأزرار/قوائم في مخطط العمل */
+export const EXTRACT_TYPES = ["قلع عادي", "قلع جراحي"];
+export const FILL_TYPES = ["حشوة كمبوزيت (تجميلية)", "حشوة أملغم", "حشوة زجاجية (GIC)", "حشوة مؤقتة"];
+export const RCT_TYPES = ["سحب عصب كامل", "سحب عصب جزئي (بتر اللب)", "إعادة علاج عصب"];
+export const RCT_FILLS = ["حشوة مؤقتة", "حشوة كمبوزيت", "تاج مؤقت"];
+export const DENTURE_TYPES = ["طقم كامل علوي", "طقم كامل سفلي", "طقم جزئي متحرك", "طقم فوري"];
+export const WIRE_TYPES = ["NiTi حراري", "ستانلس ستيل", "TMA"];
+export const RUBBER_TYPES = ["ربلات عادية", "ربلات سلسلة (Chain)", "أربطة معدنية"];
+
+export const WORK_META: Record<WorkKind, { color: string; status: ToothStatus; desc: string }> = {
+  "قلع": { color: "#d9503a", status: "missing", desc: "إزالة السن — عادي أو جراحي" },
+  "حشوات": { color: "#1273c4", status: "filled", desc: "ترميم التسوس بحشوة" },
+  "سحب عصب": { color: "#e2952b", status: "root", desc: "علاج القنوات الجذرية" },
+  "تركيب": { color: "#2f9fe0", status: "crown", desc: "تاج أو جسر ثابت" },
+  "أطقم": { color: "#0b518f", status: "crown", desc: "أطقم متحركة كاملة/جزئية" },
+  "تقويم": { color: "#2c9c69", status: "filled", desc: "تقويم وأسلاك وربلات" },
+};
+
+/* فئة المريض حسب العمر: لبنية (أطفال) أو دائمة (بالغون) */
+export type DentitionMode = "adult" | "child";
+export const dentitionOf = (age: number): DentitionMode => (age > 0 && age < 12 ? "child" : "adult");
 
 /* ============================== العودات والمتابعة ============================== */
 
@@ -670,6 +724,8 @@ function seed(): DB {
     diagnosis,
     procedures,
     teethTreated,
+    workItems: [],
+    stages: [],
     meds,
     medNotes,
     summary,
@@ -1034,6 +1090,8 @@ function reducer(db: DB, action: Action): DB {
         diagnosis: "",
         procedures: [],
         teethTreated: [],
+        workItems: [],
+        stages: [{ id: uid(), name: "الجلسة الأولى", date: today(0), done: false }],
         meds: [],
         medNotes: "",
         summary: "",
@@ -1289,7 +1347,12 @@ export function normalizeDB(raw: DB): DB {
     ...db,
     expenses: db.expenses ?? [],
     prescriptions: db.prescriptions ?? [],
-    sessions: (db.sessions ?? []).map((s) => ({ ...s, summary: s.summary ?? "" })),
+    sessions: (db.sessions ?? []).map((s) => ({
+      ...s,
+      summary: s.summary ?? "",
+      workItems: s.workItems ?? [],
+      stages: s.stages ?? [],
+    })),
     staff: db.staff ?? [],
     activity: db.activity ?? [],
     implants: db.implants ?? [],

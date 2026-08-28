@@ -1,7 +1,11 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   APPT_META,
+  DENTURE_TYPES,
+  dentitionOf,
   DRUG_WATCH,
+  EXTRACT_TYPES,
+  FILL_TYPES,
   fmtDate,
   fmtDateFull,
   IMPLANT_BRANDS,
@@ -11,6 +15,9 @@ import {
   INV_META,
   ORTHO_KINDS,
   PROSTHETIC_KINDS,
+  RCT_FILLS,
+  RCT_TYPES,
+  RUBBER_TYPES,
   suggestFollowUp,
   today,
   TOOTH_META,
@@ -18,12 +25,17 @@ import {
   useAuth,
   useMoney,
   useStore,
+  WIRE_TYPES,
+  WORK_META,
   XRAY_KINDS,
   type ClinicalSession,
   type Implant,
   type OrthoCase,
   type Prosthetic,
+  type SessionStage,
   type ToothStatus,
+  type WorkItem,
+  type WorkKind,
   type XrayRec,
 } from "../store";
 import {
@@ -633,6 +645,425 @@ function Workstation({ session }: { session: ClinicalSession }) {
   );
 }
 
+/* ============================ مخطط العمل السريري ============================ */
+
+const WORK_KINDS: WorkKind[] = ["قلع", "حشوات", "سحب عصب", "تركيب", "أطقم", "تقويم"];
+
+/* رسم مصغر لقنوات العصب حسب العدد المختار */
+function CanalMini({ n }: { n: number }) {
+  const xs = n === 1 ? [16] : n === 2 ? [11, 21] : n === 3 ? [8, 16, 24] : [7, 13.5, 19.5, 25.5];
+  return (
+    <svg viewBox="0 0 32 40" className="w-12 h-15 shrink-0" aria-hidden="true">
+      <path d="M6 14 Q5 6 10 4 Q16 2 22 4 Q27 6 26 14 Q25 20 22 24 L21 34 Q16 37 11 34 L10 24 Q7 20 6 14 Z" fill="#fdf4e2" stroke="#e2952b" strokeWidth="1.5" />
+      {xs.map((x, i) => (
+        <path key={i} d={`M ${x} 8 L ${x + (x < 16 ? -1.5 : 1.5)} 31`} stroke="#b9791f" strokeWidth="2" strokeLinecap="round" fill="none" />
+      ))}
+    </svg>
+  );
+}
+
+function WorkPlanSection({
+  session,
+  patch,
+  age,
+  baseTeeth,
+}: {
+  session: ClinicalSession;
+  patch: (pp: Partial<ClinicalSession>) => void;
+  age: number;
+  baseTeeth: Partial<Record<number, ToothStatus>>;
+}) {
+  const { db, serviceById } = useStore();
+  const { push } = useToast();
+  const [selection, setSelection] = useState<number[]>([]);
+  const [kind, setKind] = useState<WorkKind | null>(null);
+  const [stageId, setStageId] = useState(session.stages[0]?.id ?? "");
+  const [extractType, setExtractType] = useState(EXTRACT_TYPES[0]);
+  const [fillType, setFillType] = useState(FILL_TYPES[0]);
+  const [rctType, setRctType] = useState(RCT_TYPES[0]);
+  const [channels, setChannels] = useState(2);
+  const [rctFill, setRctFill] = useState(RCT_FILLS[0]);
+  const [prosType, setProsType] = useState(PROSTHETIC_KINDS[0]);
+  const [withRct, setWithRct] = useState(false);
+  const [dentureType, setDentureType] = useState(DENTURE_TYPES[0]);
+  const [wireType, setWireType] = useState(WIRE_TYPES[0]);
+  const [wireNum, setWireNum] = useState("014");
+  const [rubberType, setRubberType] = useState(RUBBER_TYPES[0]);
+  const [note, setNote] = useState("");
+
+  const mode = dentitionOf(age);
+
+  const workBadges = useMemo(() => {
+    const m: Partial<Record<number, WorkKind>> = {};
+    session.workItems.forEach((w) => w.teeth.forEach((t) => (m[t] = w.kind)));
+    return m;
+  }, [session.workItems]);
+
+  const toggleTooth = (n: number) =>
+    setSelection((sel) => (sel.includes(n) ? sel.filter((x) => x !== n) : [...sel, n]));
+
+  const stageName = (id: string) => session.stages.find((s) => s.id === id)?.name ?? "—";
+
+  const addWork = () => {
+    if (!kind) return push("warn", "اختر نوع العمل أولاً");
+    if (kind !== "أطقم" && kind !== "تقويم" && selection.length === 0)
+      return push("warn", "حدّد سناً واحداً على الأقل من الخريطة");
+    const item: WorkItem = {
+      id: uid(),
+      kind,
+      teeth: kind === "أطقم" || kind === "تقويم" ? [] : [...selection],
+      stageId,
+      note: note.trim() || undefined,
+    };
+    if (kind === "قلع") item.extractType = extractType;
+    if (kind === "حشوات") item.fillType = fillType;
+    if (kind === "سحب عصب") {
+      item.rctType = rctType;
+      item.channels = channels;
+      item.rctFill = rctFill;
+    }
+    if (kind === "تركيب") {
+      item.prosType = prosType;
+      item.withRct = withRct;
+      if (withRct) {
+        item.rctType = rctType;
+        item.channels = channels;
+      }
+    }
+    if (kind === "أطقم") item.dentureType = dentureType;
+    if (kind === "تقويم") {
+      item.wireType = wireType;
+      item.wireNum = wireNum;
+      item.rubberType = rubberType;
+    }
+    // تحديث ألوان الخريطة حسب العمل
+    const treated = [...session.teethTreated.filter((t) => !item.teeth.includes(t.tooth))];
+    item.teeth.forEach((tooth) => treated.push({ tooth, status: WORK_META[kind].status }));
+    patch({ workItems: [...session.workItems, item], teethTreated: treated });
+    push("success", `أُضيف عمل «${kind}»`, item.teeth.length ? `${item.teeth.length} سن — ${stageName(stageId)}` : stageName(stageId));
+    setSelection([]);
+    setKind(null);
+    setNote("");
+  };
+
+  const removeWork = (id: string) => {
+    const w = session.workItems.find((x) => x.id === id);
+    patch({ workItems: session.workItems.filter((x) => x.id !== id) });
+    if (w) push("info", `حُذف عمل «${w.kind}»`);
+  };
+
+  const addStage = () => {
+    const n = session.stages.length + 1;
+    const names = ["", "الجلسة الأولى", "الجلسة الثانية", "الجلسة الثالثة", "الجلسة الرابعة", "الجلسة الخامسة"];
+    const st: SessionStage = { id: uid(), name: names[n] ?? `الجلسة ${n}`, date: today(7 * (n - 1)), done: false };
+    patch({ stages: [...session.stages, st] });
+    setStageId(st.id);
+  };
+
+  const toggleStage = (id: string) =>
+    patch({ stages: session.stages.map((s) => (s.id === id ? { ...s, done: !s.done } : s)) });
+
+  const label = (n: number) => (mode === "child" ? "ABCDE"[(n % 10) - 1] : String(n));
+
+  const kindBtn = (k: WorkKind) => {
+    const active = kind === k;
+    const m = WORK_META[k];
+    return (
+      <button
+        key={k}
+        onClick={() => setKind(active ? null : k)}
+        className={`rounded-xl border-2 px-3 py-2.5 text-sm font-bold cursor-pointer transition-all flex items-center gap-2 ${
+          active ? "shadow-md scale-[1.02]" : "border-line bg-white text-soft hover:border-jade/40"
+        }`}
+        style={active ? { borderColor: m.color, background: `${m.color}14`, color: m.color } : undefined}
+      >
+        <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: m.color }} />
+        {k}
+      </button>
+    );
+  };
+
+  return (
+    <section className="card p-5 anim-fade">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+        <h3 className="font-display font-bold text-lg text-ink flex items-center gap-2">
+          <span className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-jade-soft text-jade-deep"><IconTooth className="w-4.5 h-4.5" /></span>
+          مخطط العمل السريري
+          <span className="chip bg-mist text-soft !text-[9px]">
+            {mode === "child" ? "أسنان لبنية A–E" : "أسنان دائمة FDI"} · حسب العمر
+          </span>
+        </h3>
+        {session.workItems.length > 0 && (
+          <span className="chip bg-amber-soft text-[#a06410]">
+            <IconClock className="w-3.5 h-3.5" />
+            {session.workItems.length} عمل مخطط — يُثبَّت عند الخروج
+          </span>
+        )}
+      </div>
+
+      {/* الخريطة بالاختيار المتعدد — تعرض حالة المريض الحالية + الأعمال المعلقة */}
+      <DentalChart
+        teeth={baseTeeth}
+        mode={mode}
+        multiSelect
+        selection={selection}
+        onToggle={toggleTooth}
+        workBadges={workBadges}
+      />
+
+      {/* شريط الاختيار + نوع العمل */}
+      <div className="mt-5 rounded-xl border border-line bg-mist/50 p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-3.5">
+          <div className="flex items-center gap-2.5">
+            <span className="inline-flex items-center justify-center w-9 h-9 rounded-lg bg-sky-soft text-sky stat-num text-lg font-bold">{selection.length}</span>
+            <div>
+              <p className="text-sm font-bold text-ink leading-tight">
+                {selection.length === 0 ? "لم تُحدد أسناناً" : selection.length === 1 ? "سن واحد محدد" : `${selection.length} أسنان محددة`}
+              </p>
+              {selection.length > 0 && (
+                <p className="text-[11px] font-semibold text-soft stat-num mt-0.5">{selection.map(label).join(" · ")}</p>
+              )}
+            </div>
+          </div>
+          <TSelect value={stageId} onChange={(e) => setStageId(e.target.value)} className="!w-44">
+            {session.stages.map((s) => (
+              <option key={s.id} value={s.id}>{s.name}</option>
+            ))}
+          </TSelect>
+        </div>
+
+        <div className="flex flex-wrap gap-2 mb-4">{WORK_KINDS.map(kindBtn)}</div>
+
+        {/* الحقول الديناميكية حسب نوع العمل */}
+        {kind && (
+          <div className="anim-pop rounded-xl border border-line bg-white p-4 space-y-3.5">
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-bold" style={{ color: WORK_META[kind].color }}>
+                تفاصيل «{kind}» — {WORK_META[kind].desc}
+              </p>
+              {kind !== "أطقم" && kind !== "تقويم" && (
+                <span className="chip bg-mist text-soft stat-num">عدد الأسنان: {selection.length}</span>
+              )}
+            </div>
+
+            {kind === "قلع" && (
+              <div className="flex flex-wrap items-end gap-3">
+                <div className="min-w-48 flex-1">
+                  <Field label="نوع القلع">
+                    <TSelect value={extractType} onChange={(e) => setExtractType(e.target.value)}>
+                      {EXTRACT_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+                      <option value="أخرى">أخرى…</option>
+                    </TSelect>
+                  </Field>
+                </div>
+                {extractType === "أخرى" && (
+                  <div className="min-w-48 flex-1">
+                    <Field label="حدّد النوع">
+                      <TInput value={note} onChange={(e) => setNote(e.target.value)} placeholder="مثال: قلع ضرس عقل منطمر" />
+                    </Field>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {kind === "حشوات" && (
+              <div className="min-w-48">
+                <Field label="نوع الحشوة">
+                  <TSelect value={fillType} onChange={(e) => setFillType(e.target.value)}>
+                    {FILL_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+                    <option value="أخرى">أخرى…</option>
+                  </TSelect>
+                </Field>
+                {fillType === "أخرى" && (
+                  <TInput value={note} onChange={(e) => setNote(e.target.value)} placeholder="اكتب نوع الحشوة…" className="!mt-2" />
+                )}
+              </div>
+            )}
+
+            {(kind === "سحب عصب" || (kind === "تركيب" && withRct)) && (
+              <div className="flex flex-wrap items-end gap-4">
+                <div className="min-w-48 flex-1">
+                  <Field label="نوع سحب العصب">
+                    <TSelect value={rctType} onChange={(e) => setRctType(e.target.value)}>
+                      {RCT_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+                    </TSelect>
+                  </Field>
+                </div>
+                <div>
+                  <Field label="عدد القنوات">
+                    <div className="flex items-center gap-2.5">
+                      <CanalMini n={channels} />
+                      <div className="flex items-center gap-1 bg-mist rounded-lg p-1" dir="ltr">
+                        <button onClick={() => setChannels((c) => Math.max(1, c - 1))} className="w-8 h-8 rounded-md bg-white border border-line font-bold cursor-pointer hover:border-jade">−</button>
+                        <span className="stat-num text-base w-8 text-center text-ink">{channels}</span>
+                        <button onClick={() => setChannels((c) => Math.min(4, c + 1))} className="w-8 h-8 rounded-md bg-white border border-line font-bold cursor-pointer hover:border-jade">+</button>
+                      </div>
+                    </div>
+                  </Field>
+                </div>
+                {kind === "سحب عصب" && (
+                  <div className="min-w-48 flex-1">
+                    <Field label="حشوة الجلسة الأولى">
+                      <TSelect value={rctFill} onChange={(e) => setRctFill(e.target.value)}>
+                        {RCT_FILLS.map((t) => <option key={t} value={t}>{t}</option>)}
+                      </TSelect>
+                    </Field>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {kind === "تركيب" && (
+              <div className="flex flex-wrap items-end gap-3">
+                <div className="min-w-48 flex-1">
+                  <Field label="نوع التركيب">
+                    <TSelect value={prosType} onChange={(e) => setProsType(e.target.value)}>
+                      {PROSTHETIC_KINDS.map((t) => <option key={t} value={t}>{t}</option>)}
+                    </TSelect>
+                  </Field>
+                </div>
+                <label className="flex items-center gap-2.5 cursor-pointer pb-2.5 select-none">
+                  <Switch on={withRct} onChange={setWithRct} />
+                  <span className="text-xs font-bold text-soft">يترافق مع سحب عصب</span>
+                </label>
+              </div>
+            )}
+
+            {kind === "أطقم" && (
+              <div className="min-w-48">
+                <Field label="نوع الطقم">
+                  <TSelect value={dentureType} onChange={(e) => setDentureType(e.target.value)}>
+                    {DENTURE_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+                  </TSelect>
+                </Field>
+              </div>
+            )}
+
+            {kind === "تقويم" && (
+              <div className="grid sm:grid-cols-3 gap-3">
+                <Field label="نوع السلك">
+                  <TSelect value={wireType} onChange={(e) => setWireType(e.target.value)}>
+                    {WIRE_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+                  </TSelect>
+                </Field>
+                <Field label="رقم السلك">
+                  <TInput value={wireNum} onChange={(e) => setWireNum(e.target.value)} placeholder="مثال: 014" />
+                </Field>
+                <Field label="نوع الربلات">
+                  <TSelect value={rubberType} onChange={(e) => setRubberType(e.target.value)}>
+                    {RUBBER_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+                  </TSelect>
+                </Field>
+              </div>
+            )}
+
+            <div className="flex items-center justify-between gap-3 pt-1">
+              <button className="btn-ghost !h-9 !text-xs" onClick={() => { setKind(null); setSelection([]); }}>إلغاء</button>
+              <button
+                onClick={addWork}
+                className="btn-primary !h-10"
+                style={{ background: WORK_META[kind].color, boxShadow: `0 8px 18px -6px ${WORK_META[kind].color}88` }}
+              >
+                <IconPlus className="w-4 h-4" />
+                إضافة إلى خطة العمل — {stageName(stageId)}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* خطة العمل المضافة */}
+      {session.workItems.length > 0 && (
+        <div className="mt-4">
+          <p className="label !mb-2">الأعمال المخططة ({session.workItems.length})</p>
+          <ul className="space-y-2">
+            {session.workItems.map((w) => {
+              const m = WORK_META[w.kind];
+              const detail =
+                w.kind === "قلع" ? w.extractType :
+                w.kind === "حشوات" ? w.fillType :
+                w.kind === "سحب عصب" ? `${w.rctType} · ${w.channels} قناة · ${w.rctFill}` :
+                w.kind === "تركيب" ? `${w.prosType}${w.withRct ? ` · عصب ${w.channels} قناة` : ""}` :
+                w.kind === "أطقم" ? w.dentureType :
+                `${w.wireType} · سلك ${w.wireNum} · ${w.rubberType}`;
+              return (
+                <li key={w.id} className="flex items-center gap-3 rounded-xl border border-line bg-white px-4 py-3 anim-fade" style={{ borderInlineStartWidth: 4, borderInlineStartColor: m.color }}>
+                  <span className="chip" style={{ background: `${m.color}14`, color: m.color }}>{w.kind}</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-bold text-ink truncate">{detail}</p>
+                    <p className="text-[11px] text-soft mt-0.5">
+                      {w.teeth.length > 0 ? <>الأسنان: <span className="stat-num font-bold">{w.teeth.map(label).join("، ")}</span> · </> : null}
+                      {stageName(w.stageId)}
+                      {w.note ? ` · ${w.note}` : ""}
+                    </p>
+                  </div>
+                  <button className="icon-btn !w-8 !h-8 hover:!bg-coral-soft hover:!text-coral" onClick={() => removeWork(w.id)} aria-label="حذف العمل">
+                    <IconTrash className="w-4 h-4" />
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
+
+      {/* جدول مراحل الجلسات */}
+      <div className="mt-5">
+        <div className="flex items-center justify-between mb-2.5">
+          <p className="label !mb-0">مراحل الجلسات — للعلاج متعدد الزيارات</p>
+          <button className="btn-soft !h-8 !px-3 !text-[11px]" onClick={addStage}>
+            <IconPlus className="w-3.5 h-3.5" />
+            مرحلة جديدة
+          </button>
+        </div>
+        <div className="rounded-xl border border-line overflow-hidden">
+          <table className="w-full text-sm">
+            <thead className="bg-mist/70">
+              <tr>
+                <th className="th !py-2.5">المرحلة</th>
+                <th className="th !py-2.5">التاريخ المقرر</th>
+                <th className="th !py-2.5">الأعمال</th>
+                <th className="th !py-2.5">الحالة</th>
+              </tr>
+            </thead>
+            <tbody>
+              {session.stages.map((s) => {
+                const items = session.workItems.filter((w) => w.stageId === s.id);
+                return (
+                  <tr key={s.id} className={`border-t border-line/70 ${s.done ? "bg-mint-soft/30" : "bg-white"}`}>
+                    <td className="td !py-2.5 font-bold text-ink">{s.name}</td>
+                    <td className="td !py-2.5 text-soft stat-num">{fmtDate(s.date)}</td>
+                    <td className="td !py-2.5">
+                      {items.length === 0 ? (
+                        <span className="text-soft/60 text-xs">—</span>
+                      ) : (
+                        <div className="flex flex-wrap gap-1">
+                          {items.map((w) => (
+                            <span key={w.id} className="chip !text-[9px]" style={{ background: `${WORK_META[w.kind].color}14`, color: WORK_META[w.kind].color }}>{w.kind}</span>
+                          ))}
+                        </div>
+                      )}
+                    </td>
+                    <td className="td !py-2.5">
+                      <button
+                        onClick={() => toggleStage(s.id)}
+                        className={`chip cursor-pointer transition-all ${s.done ? "bg-mint-soft text-[#1d6b47]" : "bg-mist text-soft hover:bg-sky-soft hover:text-sky"}`}
+                      >
+                        {s.done ? <IconCheck className="w-3 h-3" /> : <IconClock className="w-3 h-3" />}
+                        {s.done ? "منجزة" : "قيد التنفيذ"}
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 /* ============================ تبويب العلاج ============================ */
 
 function TreatmentTab(props: {
@@ -824,26 +1255,8 @@ function TreatmentTab(props: {
         )}
       </section>
 
-      {/* خريطة الأسنان — قسم موسّع بعرض كامل */}
-      <section className="card p-5 anim-fade">
-        <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-          <h3 className="font-display font-bold text-lg text-ink flex items-center gap-2">
-            <span className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-jade-soft text-jade-deep"><IconTooth className="w-4.5 h-4.5" /></span>
-            خريطة الأسنان أثناء الجلسة
-          </h3>
-          {session.teethTreated.length > 0 && (
-            <span className="chip bg-amber-soft text-[#a06410]">
-              <IconClock className="w-3.5 h-3.5" />
-              {session.teethTreated.length} تغيير معلّق — يُثبَّت عند الخروج
-            </span>
-          )}
-        </div>
-        <DentalChart
-          teeth={props.mergedTeeth}
-          onSet={props.setTooth}
-          editorNote="التغيير هنا معلّق — يُثبَّت في ملف المريض نهائياً عند إنهاء الجلسة."
-        />
-      </section>
+      {/* مخطط العمل السريري — خريطة + اختيار متعدد + مراحل الجلسات */}
+      <WorkPlanSection session={session} patch={patch} age={p?.age ?? 30} baseTeeth={props.mergedTeeth} />
     </div>
   );
 }
