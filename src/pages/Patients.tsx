@@ -52,14 +52,19 @@ export default function PatientsPage({ addSignal, onOpenPatient, onBook }: PageP
   const [showAdd, setShowAdd] = useState(false);
   const [printId, setPrintId] = useState<string | null>(null);
   const [cardId, setCardId] = useState<string | null>(null);
+  // مرضى أُضيفوا للتو — يُظهرون فورًا لمن أضافهم حتى لو كانوا خارج نطاق رؤيته المعتاد
+  const [justAdded, setJustAdded] = useState<string[]>([]);
 
   useEffect(() => {
     if (addSignal > 0) setShowAdd(true);
   }, [addSignal]);
 
   const scopedPatients = useMemo(
-    () => (patientScope ? db.patients.filter((p) => patientScope.has(p.id)) : db.patients),
-    [db.patients, patientScope]
+    () =>
+      patientScope
+        ? db.patients.filter((p) => patientScope.has(p.id) || justAdded.includes(p.id))
+        : db.patients,
+    [db.patients, patientScope, justAdded]
   );
 
   const list = useMemo(() => {
@@ -215,6 +220,7 @@ export default function PatientsPage({ addSignal, onOpenPatient, onBook }: PageP
         onClose={() => setShowAdd(false)}
         onSaved={(p) => {
           setShowAdd(false);
+          setJustAdded((prev) => [...prev, p.id]);
           push("success", "تمت إضافة المريض", `${p.name} أُضيف إلى السجل بنجاح.`);
           onOpenPatient(p.id);
         }}
