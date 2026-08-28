@@ -312,17 +312,17 @@ export const IconCopy = (p: P) =>
 export function Logo({ className = "w-10 h-10" }: P) {
   return (
     <svg className={className} viewBox="0 0 64 64" fill="none" aria-hidden="true">
-      <rect width="64" height="64" rx="16" fill="#0d8f83" />
+      <rect width="64" height="64" rx="16" fill="#1273c4" />
       <rect width="64" height="64" rx="16" fill="url(#lg)" />
       <path
         d="M32 13c-4.6-2.9-11-3.8-15.4-.4-4.8 3.7-5.7 9.6-3.9 14.8 1.7 4.6 2.9 8.9 3.7 13.4.5 3.8 1.2 11.8 5.8 11.8 4.6 0 3.6-7.7 5.1-13.2.7-2.7 2.2-4.6 4.7-4.6s4 1.9 4.7 4.6c1.5 5.5.5 13.2 5.1 13.2 4.6 0 5.3-8 5.8-11.8.8-4.5 2-8.8 3.7-13.4 1.8-5.2.9-11.1-3.9-14.8C43 9.2 36.6 10.1 32 13Z"
         fill="#fff"
       />
-      <path d="M14 36h8l3-6 4 9 3.5-6H50" stroke="#0d8f83" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M14 36h8l3-6 4 9 3.5-6H50" stroke="#0b518f" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" />
       <defs>
         <linearGradient id="lg" x1="0" y1="0" x2="64" y2="64">
-          <stop stopColor="#12a594" />
-          <stop offset="1" stopColor="#0a6158" />
+          <stop stopColor="#2f9fe0" />
+          <stop offset="1" stopColor="#0b518f" />
         </linearGradient>
       </defs>
     </svg>

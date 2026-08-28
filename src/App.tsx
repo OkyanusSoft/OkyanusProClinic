@@ -261,7 +261,7 @@ function SidebarContent({
             {n.icon("w-5 h-5")}
             <span className="flex-1 text-start">{n.label}</span>
             {badges[n.key] ? (
-              <span className="chip !py-1 !px-2 bg-white/12 text-[#7fe0d4] !text-[10px]">{badges[n.key]}</span>
+              <span className="chip !py-1 !px-2 bg-white/12 text-frost !text-[10px]">{badges[n.key]}</span>
             ) : null}
           </button>
         ))}

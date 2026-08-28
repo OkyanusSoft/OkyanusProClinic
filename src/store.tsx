@@ -390,12 +390,12 @@ export const BASE_CURRENCY = "YER";
 /* ============================== Meta ============================== */
 
 export const TOOTH_META: Record<ToothStatus, { label: string; fill: string; stroke: string; dash?: boolean }> = {
-  healthy: { label: "سليم", fill: "#ffffff", stroke: "#9db8b1" },
+  healthy: { label: "سليم", fill: "#ffffff", stroke: "#93a9bd" },
   caries: { label: "تسوس", fill: "#f6d7d0", stroke: "#d9503a" },
-  filled: { label: "حشوة", fill: "#cfeae5", stroke: "#0d8f83" },
+  filled: { label: "حشوة", fill: "#d3e8fa", stroke: "#1273c4" },
   root: { label: "علاج عصب", fill: "#f7e5c4", stroke: "#e2952b" },
-  crown: { label: "تاج / زراعة", fill: "#d5e6f5", stroke: "#3a86c4" },
-  missing: { label: "مفقود", fill: "#eef2f0", stroke: "#a7bab4", dash: true },
+  crown: { label: "تاج / زراعة", fill: "#d5e6f5", stroke: "#2f9fe0" },
+  missing: { label: "مفقود", fill: "#eef2f5", stroke: "#a7bac7", dash: true },
 };
 
 export const APPT_META: Record<ApptStatus, { label: string; cls: string; dot: string }> = {

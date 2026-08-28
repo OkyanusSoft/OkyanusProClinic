@@ -84,7 +84,7 @@ export default function Login() {
         <svg className="absolute inset-x-0 top-1/3 w-[200%] opacity-25" viewBox="0 0 1200 120" fill="none" preserveAspectRatio="none">
           <path
             d="M0 60 H280 L310 20 L340 100 L365 60 H560 L590 34 L615 86 L640 60 H900 L930 14 L960 104 L985 60 H1200"
-            stroke="#3fd0c0"
+            stroke="#4fc9f7"
             strokeWidth="2.5"
             strokeLinejoin="round"
             className="ecg-line"
@@ -105,7 +105,7 @@ export default function Login() {
             <p className="font-display font-bold text-4xl leading-[1.25]">
               نظام إدارة
               <br />
-              <span className="text-[#3fd0c0]">العيادة الكامل</span>
+              <span className="text-ice">العيادة الكامل</span>
             </p>
             <p className="text-sm text-white/60 mt-4 leading-relaxed">
               مواعيد، ملفات مرضى، جلسات علاج، فواتير وتقارير — كل ذلك من مكان واحد.

@@ -52,12 +52,12 @@ const SHAPE: Record<ReturnType<typeof toothKind>, { w: number; cusps: number; ro
 
 /* ألوان أوضح من TOOTH_META الافتراضية — تاج ملوّن واضح لكل حالة */
 const STYLE: Record<ToothStatus, { fill: string; stroke: string; rootFill: string; num: string }> = {
-  healthy: { fill: "#ffffff", stroke: "#9fb4ad", rootFill: "#fbf8f0", num: "#5c716b" },
+  healthy: { fill: "#ffffff", stroke: "#93a9bd", rootFill: "#f7fafc", num: "#5c7186" },
   caries: { fill: "#f4ac9d", stroke: "#d9503a", rootFill: "#fdf1ed", num: "#c0392b" },
-  filled: { fill: "#97d9cd", stroke: "#0d8f83", rootFill: "#eefaf7", num: "#0a6158" },
+  filled: { fill: "#97c9ec", stroke: "#1273c4", rootFill: "#eef6fd", num: "#0b518f" },
   root: { fill: "#f6c988", stroke: "#e2952b", rootFill: "#fdf4e2", num: "#a06410" },
-  crown: { fill: "#a8cdef", stroke: "#3a86c4", rootFill: "#f2f8fd", num: "#2b6cb0" },
-  missing: { fill: "none", stroke: "#b3c1bc", rootFill: "none", num: "#93a5a0" },
+  crown: { fill: "#a8cdef", stroke: "#2f9fe0", rootFill: "#f2f8fd", num: "#2b6cb0" },
+  missing: { fill: "none", stroke: "#a7bac7", rootFill: "none", num: "#93a5b3" },
 };
 
 /* ====== مولدات الأشكال (تُرسم باتجاه "سفلي": التاج للأعلى والجذر للأسفل) ====== */
@@ -163,7 +163,7 @@ function Tooth({
           cy={topY + TH / 2}
           r={w / 2 + 9}
           fill={selected ? "rgba(13,143,131,0.10)" : "rgba(13,143,131,0.05)"}
-          stroke={selected ? "#0d8f83" : "#0d8f83"}
+          stroke={selected ? "#1273c4" : "#2f9fe0"}
           strokeOpacity={selected ? 0.85 : 0.35}
           strokeWidth={selected ? 2 : 1.4}
           strokeDasharray={selected ? undefined : "4 3"}
@@ -206,7 +206,7 @@ function Tooth({
         {/* تفاصيل الحالة على التاج */}
         {!missing && st === "caries" && <circle cx={w / 2} cy={CH * 0.5} r={w * 0.14} fill="#c0392b" opacity={0.85} />}
         {!missing && st === "filled" && (
-          <rect x={w * 0.36} y={CH * 0.36} width={w * 0.28} height={w * 0.28} rx={2.5} fill="#0a6158" opacity={0.8} transform={`rotate(45 ${w / 2} ${CH * 0.5})`} />
+          <rect x={w * 0.36} y={CH * 0.36} width={w * 0.28} height={w * 0.28} rx={2.5} fill="#1273c4" opacity={0.85} transform={`rotate(45 ${w / 2} ${CH * 0.5})`} />
         )}
         {!missing && st === "crown" && (
           <path
@@ -232,7 +232,7 @@ function Tooth({
         {missing && (
           <path
             d={`M ${w * 0.28} ${CH * 0.28} L ${w * 0.72} ${CH * 0.75} M ${w * 0.72} ${CH * 0.28} L ${w * 0.28} ${CH * 0.75}`}
-            stroke="#8fa09a"
+            stroke="#8fa3b3"
             strokeWidth={2.4}
             strokeLinecap="round"
           />
@@ -246,8 +246,8 @@ function Tooth({
         textAnchor="middle"
         fontSize={15}
         fontWeight={selected ? 800 : 700}
-        fontFamily="Changa, sans-serif"
-        fill={selected ? "#0a6158" : s.num}
+        fontFamily="Cairo, sans-serif"
+        fill={selected ? "#0b518f" : s.num}
         stroke="#ffffff"
         strokeWidth={4}
         paintOrder="stroke"
@@ -282,10 +282,10 @@ function Glyph({ s, size = "w-5 h-5" }: { s: ToothStatus; size?: string }) {
         opacity={missing ? 0.55 : 1}
       />
       {!missing && s === "caries" && <circle cx={12} cy={9} r={2} fill="#c0392b" opacity={0.85} />}
-      {!missing && s === "filled" && <rect x={10.6} y={7.6} width={2.8} height={2.8} rx={0.7} fill="#0a6158" opacity={0.8} transform="rotate(45 12 9)" />}
+      {!missing && s === "filled" && <rect x={10.6} y={7.6} width={2.8} height={2.8} rx={0.7} fill="#1273c4" opacity={0.85} transform="rotate(45 12 9)" />}
       {!missing && s === "root" && <path d="M12 7 L12 18" stroke="#b9791f" strokeWidth={1.8} strokeLinecap="round" />}
       {!missing && s === "crown" && <path d="M9.2 11.8 Q8.9 8.4 10 6.4 Q10.8 5 12 5.6 Q13.2 5 14 6.4 Q15.1 8.4 14.8 11.8 Q12 13.4 9.2 11.8 Z" fill="none" stroke="#2b6cb0" strokeWidth={1.2} strokeOpacity={0.6} />}
-      {missing && <path d="M9.5 7 L14.5 11.5 M14.5 7 L9.5 11.5" stroke="#8fa09a" strokeWidth={1.8} strokeLinecap="round" />}
+      {missing && <path d="M9.5 7 L14.5 11.5 M14.5 7 L9.5 11.5" stroke="#8fa3b3" strokeWidth={1.8} strokeLinecap="round" />}
     </svg>
   );
 }
@@ -347,20 +347,20 @@ export default function DentalChart({ teeth, onSet, editorNote = "يُحفَظ �
           <div style={{ width: `${zoom * 100}%`, minWidth: 760 }} className="transition-[width] duration-300 ease-out mx-auto">
             <svg viewBox="0 0 1020 212" className="w-full h-auto block select-none" role="img" aria-label="مخطط الأسنان الرباعي">
               {/* اتجاهات المريض */}
-              <text x={X0 + 4 * CELL_W} y={16} textAnchor="middle" fontSize="12.5" fontWeight="800" fill="#8fa6a0" fontFamily="Changa, sans-serif">
+              <text x={X0 + 4 * CELL_W} y={16} textAnchor="middle" fontSize="12.5" fontWeight="800" fill="#8fa3b3" fontFamily="Cairo, sans-serif">
                 يمين المريض
               </text>
-              <text x={X0 + 12 * CELL_W} y={16} textAnchor="middle" fontSize="12.5" fontWeight="800" fill="#8fa6a0" fontFamily="Changa, sans-serif">
+              <text x={X0 + 12 * CELL_W} y={16} textAnchor="middle" fontSize="12.5" fontWeight="800" fill="#8fa3b3" fontFamily="Cairo, sans-serif">
                 أيسر المريض
               </text>
 
               {/* خط المنتصف بين الربعين */}
-              <line x1={MID_X} y1={26} x2={MID_X} y2={200} stroke="#c9dbd6" strokeWidth="1.4" strokeDasharray="3 7" strokeLinecap="round" />
+              <line x1={MID_X} y1={26} x2={MID_X} y2={200} stroke="#c9dbea" strokeWidth="1.4" strokeDasharray="3 7" strokeLinecap="round" />
 
               {/* خط الإطباق */}
-              <line x1={X0} y1={BITE_Y} x2={X0 + 16 * CELL_W} y2={BITE_Y} stroke="#dbe7e3" strokeWidth="1.2" strokeDasharray="6 6" />
-              <rect x={MID_X - 52} y={BITE_Y - 11} width={104} height={22} rx={11} fill="#eaf3f0" stroke="#d0e2dc" />
-              <text x={MID_X} y={BITE_Y + 4} textAnchor="middle" fontSize="11.5" fontWeight="800" fill="#4d6a63" fontFamily="Changa, sans-serif">
+              <line x1={X0} y1={BITE_Y} x2={X0 + 16 * CELL_W} y2={BITE_Y} stroke="#dbe7f1" strokeWidth="1.2" strokeDasharray="6 6" />
+              <rect x={MID_X - 52} y={BITE_Y - 11} width={104} height="22" rx={11} fill="#eaf2f9" stroke="#d0e2f0" />
+              <text x={MID_X} y={BITE_Y + 4} textAnchor="middle" fontSize="11.5" fontWeight="800" fill="#3d5a75" fontFamily="Cairo, sans-serif">
                 خط الإطباق
               </text>
 
@@ -377,10 +377,10 @@ export default function DentalChart({ teeth, onSet, editorNote = "يُحفَظ �
               ))}
 
               {/* علامتا الفكين */}
-              <text x={12} y={UPPER_TOP + TH / 2 + 4} fontSize="11" fontWeight="800" fill="#a7bab4" fontFamily="Changa, sans-serif">
+              <text x={12} y={UPPER_TOP + TH / 2 + 4} fontSize="11" fontWeight="800" fill="#a7bac7" fontFamily="Cairo, sans-serif">
                 علوي
               </text>
-              <text x={12} y={LOWER_TOP + TH / 2 + 4} fontSize="11" fontWeight="800" fill="#a7bab4" fontFamily="Changa, sans-serif">
+              <text x={12} y={LOWER_TOP + TH / 2 + 4} fontSize="11" fontWeight="800" fill="#a7bac7" fontFamily="Cairo, sans-serif">
                 سفلي
               </text>
             </svg>
@@ -389,7 +389,7 @@ export default function DentalChart({ teeth, onSet, editorNote = "يُحفَظ �
 
         {/* شريط المعاينة الحي */}
         <div className="px-4 py-2 border-t border-line/70 bg-white/60 flex items-center gap-2.5">
-          <span className="w-2.5 h-2.5 rounded-full shrink-0 transition-colors" style={{ background: focus ? STYLE[focusStatus].stroke : "#c9d8d3" }} />
+          <span className="w-2.5 h-2.5 rounded-full shrink-0 transition-colors" style={{ background: focus ? STYLE[focusStatus].stroke : "#c9d8e6" }} />
           <p className="text-[11px] font-bold text-soft truncate">
             {focus ? (
               <>
@@ -422,7 +422,7 @@ export default function DentalChart({ teeth, onSet, editorNote = "يُحفَظ �
               <span
                 className="chip"
                 style={{
-                  background: STYLE[selStatus].fill === "none" ? "#eef4f2" : STYLE[selStatus].fill,
+                  background: STYLE[selStatus].fill === "none" ? "#eef2f5" : STYLE[selStatus].fill,
                   color: STYLE[selStatus].stroke,
                 }}
               >

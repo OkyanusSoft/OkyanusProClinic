@@ -173,7 +173,7 @@ export function Badge({ cls, children }: { cls: string; children: React.ReactNod
   return <span className={`chip ${cls}`}>{children}</span>;
 }
 
-const AV_COLORS = ["#0d8f83", "#3a86c4", "#e2952b", "#2c9c69", "#b23a48", "#0a6158"];
+const AV_COLORS = ["#1273c4", "#2f9fe0", "#e2952b", "#2c9c69", "#b23a48", "#0b518f"];
 export function Avatar({ name, size = "w-10 h-10 text-sm" }: { name: string; size?: string }) {
   const initials = name
     .replace("د. ", "")
