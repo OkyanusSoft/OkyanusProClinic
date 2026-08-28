@@ -106,6 +106,8 @@ export interface Prescription {
 export interface SessionProc {
   serviceId: string;
   tooth?: number;
+  detail?: string;   // وصف نوع العمل: قلع جراحي، حشوة كمبوزيت…
+  channels?: number; // عدد قنوات العصب المنفَّذة
 }
 export interface ClinicalSession {
   id: string;
