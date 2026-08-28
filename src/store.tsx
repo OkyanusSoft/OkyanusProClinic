@@ -245,14 +245,20 @@ export const PERMISSIONS: { key: string; label: string; desc: string; scope?: bo
   { key: "appointments", label: "المواعيد", desc: "الحجوزات وجدول الأيام" },
   { key: "session", label: "محطة العمل", desc: "جلسات العلاج السريرية" },
   { key: "patients", label: "ملفات المرضى", desc: "السجل وخريطة الأسنان والروشتات" },
+  { key: "team", label: "الفريق الطبي", desc: "الأطباء والموظفون" },
+  { key: "serviceCats", label: "فئات الخدمات", desc: "تصنيفات الخدمات الطبية" },
+  { key: "services", label: "بيانات الخدمات", desc: "الخدمات وأسعارها ومددها" },
   { key: "invoices", label: "الفواتير", desc: "الإصدار والتحصيل والطباعة" },
   { key: "expenses", label: "المصروفات", desc: "تسجيل مصاريف العيادة" },
-  { key: "reports", label: "التقارير", desc: "الإيرادات وأداء الأطباء" },
-  { key: "services", label: "قائمة الأسعار", desc: "الخدمات وأسعارها" },
-  { key: "team", label: "الفريق الطبي", desc: "الأطباء والموظفون" },
+  { key: "priceList", label: "قائمة الأسعار", desc: "قائمة أسعار جاهزة للطباعة" },
   { key: "currencies", label: "العملات", desc: "العملات وأسعار الصرف" },
-  { key: "users", label: "المستخدمون والصلاحيات", desc: "إدارة الحسابات والأدوار" },
+  { key: "inventory", label: "المخزون والمستهلكات", desc: "لوحة المخزون والتنبيهات" },
+  { key: "itemCats", label: "فئات الأصناف", desc: "تصنيفات أصناف المخزون" },
+  { key: "itemsData", label: "بيانات الأصناف", desc: "أصناف المخزون وحركاتها" },
+  { key: "reports", label: "التقارير", desc: "الإيرادات وأداء الأطباء" },
   { key: "settings", label: "الإعدادات العامة", desc: "هوية العيادة والدوام والفوترة والبيانات" },
+  { key: "users", label: "المستخدمون والصلاحيات", desc: "إدارة الحسابات والأدوار" },
+  { key: "guide", label: "دليل المستخدم", desc: "شرح شاشات النظام" },
   { key: "scope_all_patients", label: "كل المرضى", desc: "رؤية جميع ملفات المرضى — بدونها يرى الطبيب مرضاه فقط", scope: true },
   { key: "scope_all_appointments", label: "كل المواعيد", desc: "رؤية جدول مواعيد كل الأطباء — بدونها يرى الطبيب مواعيده فقط", scope: true },
 ];
@@ -268,23 +274,23 @@ export const ROLE_META: Record<Role, { label: string; cls: string; color: string
   doctor: {
     label: "طبيب",
     cls: "bg-jade-soft text-jade-deep",
-    color: "#0d8f83",
+    color: "#1273c4",
     desc: "يرى مرضاه ومواعيده وجلسات علاجه فقط",
-    defaults: ["dashboard", "appointments", "session", "patients", "reports", "services"],
+    defaults: ["dashboard", "appointments", "session", "patients", "reports", "services", "serviceCats", "priceList", "guide"],
   },
   secretary: {
     label: "سكرتارية",
     cls: "bg-sky-soft text-sky",
-    color: "#3a86c4",
+    color: "#2f9fe0",
     desc: "الاستقبال والحجوزات والفواتير حسب الممنوح",
-    defaults: ["dashboard", "appointments", "patients", "invoices", "services", "scope_all_patients", "scope_all_appointments"],
+    defaults: ["dashboard", "appointments", "patients", "invoices", "services", "serviceCats", "priceList", "inventory", "itemCats", "itemsData", "expenses", "reports", "guide", "scope_all_patients", "scope_all_appointments"],
   },
   assistant: {
     label: "مساعد طبيب",
     cls: "bg-amber-soft text-[#a06410]",
     color: "#e2952b",
     desc: "مساعدة الطبيب في الجلسات والملفات",
-    defaults: ["appointments", "session", "patients", "scope_all_patients", "scope_all_appointments"],
+    defaults: ["appointments", "session", "patients", "inventory", "itemCats", "itemsData", "guide", "scope_all_patients", "scope_all_appointments"],
   },
 };
 
@@ -308,6 +314,8 @@ export interface DB {
   followUps: FollowUp[];
   supplies: SupplyItem[];
   supplyMoves: SupplyMove[];
+  serviceCats: string[];
+  itemCats: string[];
   plans: TreatmentPlan[];
   users: User[];
   settings: ClinicSettings;
@@ -852,6 +860,12 @@ export type Action =
   | { type: "ADD_PLAN"; plan: TreatmentPlan }
   | { type: "UPDATE_PLAN"; plan: TreatmentPlan }
   | { type: "DELETE_PLAN"; id: string }
+  | { type: "ADD_SERVICE_CAT"; name: string }
+  | { type: "RENAME_SERVICE_CAT"; from: string; to: string }
+  | { type: "DELETE_SERVICE_CAT"; name: string }
+  | { type: "ADD_ITEM_CAT"; name: string }
+  | { type: "RENAME_ITEM_CAT"; from: string; to: string }
+  | { type: "DELETE_ITEM_CAT"; name: string }
   | { type: "RESET" };
 
 const nowIso = () => new Date().toISOString();
