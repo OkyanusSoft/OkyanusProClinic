@@ -388,27 +388,31 @@ export function PatientDrawer({
     return () => window.removeEventListener("keydown", onKey);
   }, [id, onClose]);
 
-  if (!p) return null;
+  // لا إرجاع مبكر هنا — يجب تنفيذ كل الـ hooks بنفس الترتيب في كل عرض (قاعدة React)
+  const pid = p?.id ?? "";
 
   const visits = db.appointments
-    .filter((a) => a.patientId === p.id)
+    .filter((a) => a.patientId === pid)
     .sort((a, b) => (b.date + b.time).localeCompare(a.date + a.time));
-  const invoices = db.invoices.filter((i) => i.patientId === p.id);
-  const rxs = db.prescriptions.filter((r) => r.patientId === p.id);
+  const invoices = db.invoices.filter((i) => i.patientId === pid);
+  const rxs = db.prescriptions.filter((r) => r.patientId === pid);
   const fus = db.followUps
-    .filter((f) => f.patientId === p.id)
+    .filter((f) => f.patientId === pid)
     .sort((a, b) => (a.status === b.status ? a.dueDate.localeCompare(b.dueDate) : a.status === "pending" ? -1 : 1));
 
   /* سجل الأعمال: جلسات العلاج المكتملة (غنية) + الزيارات بدون جلسة */
   const workLog = useMemo(() => {
-    const sess = db.sessions.filter((s) => s.patientId === p.id && s.status === "done");
+    if (!pid) return [];
+    const sess = db.sessions.filter((s) => s.patientId === pid && s.status === "done");
     const sessAppts = new Set(sess.map((s) => s.apptId).filter(Boolean));
     const plain = visits.filter((a) => a.status === "done" && !sessAppts.has(a.id));
     return [
       ...sess.map((s) => ({ kind: "session" as const, id: s.id, date: s.date, sort: s.endedAt ?? s.startedAt, s })),
       ...plain.map((a) => ({ kind: "visit" as const, id: a.id, date: a.date, sort: a.date + "T" + a.time + ":00", a })),
     ].sort((x, y) => y.sort.localeCompare(x.sort));
-  }, [db.sessions, visits, p.id]);
+  }, [db.sessions, visits, pid]);
+
+  if (!p) return null;
 
   const fuChip = (fuId?: string) => {
     const fu = fuId ? db.followUps.find((f) => f.id === fuId) : undefined;
