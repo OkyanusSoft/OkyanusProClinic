@@ -269,11 +269,12 @@ function AddPatientModal({
 
   const save = () => {
     if (name.trim().length < 3) return setErr("أدخل الاسم الثلاثي على الأقل.");
-    if (!/^7\d{8}$/.test(phone.trim())) return setErr("رقم الجوال يجب أن يكون 9 أرقام يبدأ بـ 7 (مثل 77xxxxxxx).");
+    const cleanPhone = phone.replace(/[\s\-().]/g, "");
+    if (!/^7\d{8,14}$/.test(cleanPhone)) return setErr("رقم الجوال يجب أن يبدأ بـ 7 ويتكون من 9 أرقام على الأقل (مثل 771234567).");
     const p: Patient = {
       id: uid(),
       name: name.trim(),
-      phone: phone.trim(),
+      phone: cleanPhone,
       age: Number(age) || 25,
       gender,
       blood,

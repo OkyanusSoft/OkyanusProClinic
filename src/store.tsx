@@ -801,7 +801,10 @@ function seed(): DB {
     },
   ];
 
-  return { patients, doctors, staff, currencies, defaultCurrency: "YER", services, appointments, invoices, activity, expenses, prescriptions, sessions, implants, prosthetics, orthoCases, xrays, followUps, supplies, supplyMoves, plans, users, settings: DEFAULT_CLINIC_SETTINGS, nextInv: 1043 };
+  const serviceCats: string[] = ["تشخيص", "وقاية", "علاج", "تجميل", "جراحة", "تعويضات", "تقويم"];
+  const itemCats: string[] = ["تخدير", "حشوات", "علاج عصب", "جراحة", "وقاية", "تعقيم", "مختبر", "استهلاكي عام"];
+
+  return { patients, doctors, staff, currencies, defaultCurrency: "YER", services, appointments, invoices, activity, expenses, prescriptions, sessions, implants, prosthetics, orthoCases, xrays, followUps, supplies, supplyMoves, serviceCats, itemCats, plans, users, settings: DEFAULT_CLINIC_SETTINGS, nextInv: 1043 };
 }
 
 /* ============================== Store ============================== */
@@ -1194,6 +1197,46 @@ function reducer(db: DB, action: Action): DB {
     case "DELETE_PLAN":
       return { ...db, plans: db.plans.filter((p) => p.id !== action.id) };
 
+    /* ---------- فئات الخدمات ---------- */
+    case "ADD_SERVICE_CAT":
+      if (!action.name.trim() || db.serviceCats.includes(action.name.trim())) return db;
+      return { ...db, serviceCats: [...db.serviceCats, action.name.trim()] };
+    case "RENAME_SERVICE_CAT":
+      return {
+        ...db,
+        serviceCats: db.serviceCats.map((c) => (c === action.from ? action.to.trim() : c)),
+        services: db.services.map((s) => (s.category === action.from ? { ...s, category: action.to.trim() } : s)),
+      };
+    case "DELETE_SERVICE_CAT": {
+      const rest = db.serviceCats.filter((c) => c !== action.name);
+      const fallback = rest[0] ?? "علاج";
+      return {
+        ...db,
+        serviceCats: rest,
+        services: db.services.map((s) => (s.category === action.name ? { ...s, category: fallback } : s)),
+      };
+    }
+
+    /* ---------- فئات الأصناف ---------- */
+    case "ADD_ITEM_CAT":
+      if (!action.name.trim() || db.itemCats.includes(action.name.trim())) return db;
+      return { ...db, itemCats: [...db.itemCats, action.name.trim()] };
+    case "RENAME_ITEM_CAT":
+      return {
+        ...db,
+        itemCats: db.itemCats.map((c) => (c === action.from ? action.to.trim() : c)),
+        supplies: db.supplies.map((s) => (s.category === action.from ? { ...s, category: action.to.trim() } : s)),
+      };
+    case "DELETE_ITEM_CAT": {
+      const rest = db.itemCats.filter((c) => c !== action.name);
+      const fallback = rest[0] ?? "استهلاكي عام";
+      return {
+        ...db,
+        itemCats: rest,
+        supplies: db.supplies.map((s) => (s.category === action.name ? { ...s, category: fallback } : s)),
+      };
+    }
+
     case "RESET":
       return seed();
     default:
@@ -1221,6 +1264,8 @@ export function normalizeDB(raw: DB): DB {
     supplies: db.supplies ?? [],
     supplyMoves: db.supplyMoves ?? [],
     plans: db.plans ?? [],
+    serviceCats: db.serviceCats?.length ? db.serviceCats : seed().serviceCats,
+    itemCats: db.itemCats?.length ? db.itemCats : seed().itemCats,
     settings: { ...DEFAULT_CLINIC_SETTINGS, ...(db.settings ?? {}) },
     users: (db.users?.length ? db.users : seed().users).map((u) =>
       // طاقم الاستقبال والمساعدة يرى السجل والجدول كاملين دائماً
