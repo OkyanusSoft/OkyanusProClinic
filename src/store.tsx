@@ -252,6 +252,7 @@ export const PERMISSIONS: { key: string; label: string; desc: string; scope?: bo
   { key: "expenses", label: "المصروفات", desc: "تسجيل مصاريف العيادة" },
   { key: "priceList", label: "قائمة الأسعار", desc: "قائمة أسعار جاهزة للطباعة" },
   { key: "currencies", label: "العملات", desc: "العملات وأسعار الصرف" },
+  { key: "expenseCats", label: "فئات المصروفات", desc: "تصنيفات مصروفات العيادة" },
   { key: "inventory", label: "المخزون والمستهلكات", desc: "لوحة المخزون والتنبيهات" },
   { key: "itemCats", label: "فئات الأصناف", desc: "تصنيفات أصناف المخزون" },
   { key: "itemsData", label: "بيانات الأصناف", desc: "أصناف المخزون وحركاتها" },
@@ -283,7 +284,7 @@ export const ROLE_META: Record<Role, { label: string; cls: string; color: string
     cls: "bg-sky-soft text-sky",
     color: "#2f9fe0",
     desc: "الاستقبال والحجوزات والفواتير حسب الممنوح",
-    defaults: ["dashboard", "appointments", "patients", "invoices", "services", "serviceCats", "priceList", "inventory", "itemCats", "itemsData", "expenses", "reports", "guide", "scope_all_patients", "scope_all_appointments"],
+    defaults: ["dashboard", "appointments", "patients", "invoices", "services", "serviceCats", "priceList", "inventory", "itemCats", "itemsData", "expenses", "expenseCats", "reports", "guide", "scope_all_patients", "scope_all_appointments"],
   },
   assistant: {
     label: "مساعد طبيب",
@@ -316,6 +317,7 @@ export interface DB {
   supplyMoves: SupplyMove[];
   serviceCats: string[];
   itemCats: string[];
+  expenseCats: string[];
   plans: TreatmentPlan[];
   users: User[];
   settings: ClinicSettings;
@@ -431,7 +433,14 @@ export const EXPENSE_CATS: { name: string; color: string }[] = [
   { name: "فواتير خدمات", color: "#3a86c4" },
   { name: "أخرى", color: "#5b7370" },
 ];
-export const expCatColor = (name: string) => EXPENSE_CATS.find((c) => c.name === name)?.color ?? "#5b7370";
+const EXP_FALLBACK = ["#1273c4", "#2c9c69", "#e2952b", "#d9503a", "#b23a48", "#3a86c4", "#0b518f", "#8e5ac8"];
+export const expCatColor = (name: string) => {
+  const known = EXPENSE_CATS.find((c) => c.name === name)?.color;
+  if (known) return known;
+  let h = 0;
+  for (const ch of name) h = (h + ch.charCodeAt(0)) % 997;
+  return EXP_FALLBACK[h % EXP_FALLBACK.length];
+};
 
 export const YEMEN_CITIES = ["صنعاء", "عدن", "تعز", "الحديدة", "إب", "المكلا", "ذمار", "سيئون", "مأرب", "عمران", "لحج", "الضالع"];
 
@@ -803,8 +812,9 @@ function seed(): DB {
 
   const serviceCats: string[] = ["تشخيص", "وقاية", "علاج", "تجميل", "جراحة", "تعويضات", "تقويم"];
   const itemCats: string[] = ["تخدير", "حشوات", "علاج عصب", "جراحة", "وقاية", "تعقيم", "مختبر", "استهلاكي عام"];
+  const expenseCats: string[] = EXPENSE_CATS.map((c) => c.name);
 
-  return { patients, doctors, staff, currencies, defaultCurrency: "YER", services, appointments, invoices, activity, expenses, prescriptions, sessions, implants, prosthetics, orthoCases, xrays, followUps, supplies, supplyMoves, serviceCats, itemCats, plans, users, settings: DEFAULT_CLINIC_SETTINGS, nextInv: 1043 };
+  return { patients, doctors, staff, currencies, defaultCurrency: "YER", services, appointments, invoices, activity, expenses, prescriptions, sessions, implants, prosthetics, orthoCases, xrays, followUps, supplies, supplyMoves, serviceCats, itemCats, expenseCats, plans, users, settings: DEFAULT_CLINIC_SETTINGS, nextInv: 1043 };
 }
 
 /* ============================== Store ============================== */
@@ -869,6 +879,9 @@ export type Action =
   | { type: "ADD_ITEM_CAT"; name: string }
   | { type: "RENAME_ITEM_CAT"; from: string; to: string }
   | { type: "DELETE_ITEM_CAT"; name: string }
+  | { type: "ADD_EXPENSE_CAT"; name: string }
+  | { type: "RENAME_EXPENSE_CAT"; from: string; to: string }
+  | { type: "DELETE_EXPENSE_CAT"; name: string }
   | { type: "RESET" };
 
 const nowIso = () => new Date().toISOString();
@@ -1237,6 +1250,27 @@ function reducer(db: DB, action: Action): DB {
       };
     }
 
+    /* ---------- فئات المصروفات ---------- */
+    case "ADD_EXPENSE_CAT":
+      if (!action.name.trim() || db.expenseCats.includes(action.name.trim())) return db;
+      return { ...db, expenseCats: [...db.expenseCats, action.name.trim()] };
+    case "RENAME_EXPENSE_CAT":
+      return {
+        ...db,
+        expenseCats: db.expenseCats.map((c) => (c === action.from ? action.to.trim() : c)),
+        expenses: db.expenses.map((e) => (e.category === action.from ? { ...e, category: action.to.trim() } : e)),
+      };
+    case "DELETE_EXPENSE_CAT": {
+      let rest = db.expenseCats.filter((c) => c !== action.name);
+      if (rest.length === 0) rest = ["أخرى"];
+      const fallback = rest[0];
+      return {
+        ...db,
+        expenseCats: rest,
+        expenses: db.expenses.map((e) => (e.category === action.name ? { ...e, category: fallback } : e)),
+      };
+    }
+
     case "RESET":
       return seed();
     default:
@@ -1266,6 +1300,7 @@ export function normalizeDB(raw: DB): DB {
     plans: db.plans ?? [],
     serviceCats: db.serviceCats?.length ? db.serviceCats : seed().serviceCats,
     itemCats: db.itemCats?.length ? db.itemCats : seed().itemCats,
+    expenseCats: db.expenseCats?.length ? db.expenseCats : seed().expenseCats,
     settings: { ...DEFAULT_CLINIC_SETTINGS, ...(db.settings ?? {}) },
     users: (db.users?.length ? db.users : seed().users).map((u) =>
       // طاقم الاستقبال والمساعدة يرى السجل والجدول كاملين دائماً

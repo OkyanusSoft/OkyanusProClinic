@@ -42,12 +42,13 @@ import ServiceCatsPage from "./pages/ServiceCats";
 import ItemCatsPage from "./pages/ItemCats";
 import PriceListPage from "./pages/PriceList";
 import ItemsDataPage from "./pages/ItemsData";
+import ExpenseCatsPage from "./pages/ExpenseCats";
 import Login from "./pages/Login";
 
 type Tab =
   | "dashboard"
   | "appointments" | "session" | "patients" | "team" | "serviceCats" | "services"
-  | "invoices" | "expenses" | "priceList" | "currencies"
+  | "invoices" | "expenses" | "priceList" | "currencies" | "expenseCats"
   | "inventory" | "itemCats" | "itemsData"
   | "reports"
   | "settings" | "users"
@@ -75,6 +76,7 @@ const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
       { key: "expenses", label: "المصروفات", icon: (c) => <IconWallet className={c} /> },
       { key: "priceList", label: "قائمة الأسعار", icon: (c) => <IconGrid className={c} /> },
       { key: "currencies", label: "العملات", icon: (c) => <IconCoins className={c} /> },
+      { key: "expenseCats", label: "فئات المصروفات", icon: (c) => <IconWallet className={c} /> },
     ],
   },
   {
@@ -117,6 +119,7 @@ const TITLES: Record<Tab, string> = {
   expenses: "المصروفات",
   priceList: "قائمة الأسعار",
   currencies: "العملات",
+  expenseCats: "فئات المصروفات",
   inventory: "المخزون والمستهلكات",
   itemCats: "فئات الأصناف",
   itemsData: "بيانات الأصناف",
@@ -261,6 +264,7 @@ function Shell() {
           {tab === "reports" && <ReportsPage />}
           {tab === "team" && <TeamPage />}
           {tab === "currencies" && <CurrenciesPage />}
+          {tab === "expenseCats" && <ExpenseCatsPage />}
           {tab === "users" && <UsersPage />}
           {tab === "settings" && <SettingsPage />}
           {tab === "guide" && <GuidePage focus={guideFocus} />}
@@ -328,7 +332,11 @@ function SidebarContent({
         {/* لوحة التحكم — عنصر رئيسي مستقل */}
         {showDashboard && (
           <div>
-            <p className="px-2 text-[10px] font-bold text-white/35 tracking-widest mb-1.5">القائمة الرئيسية</p>
+            <div className="flex items-center gap-2 px-1 mb-2">
+              <span className="w-1.5 h-4 rounded-full bg-frost/80" />
+              <p className="text-[11px] font-black text-white/80 tracking-wide">القائمة الرئيسية</p>
+              <span className="flex-1 h-px bg-gradient-to-l from-white/25 to-transparent" />
+            </div>
             <button className={`navlink ${tab === "dashboard" ? "active" : ""}`} onClick={() => onNav("dashboard")}>
               {NAV_STANDALONE_TOP.icon("w-5 h-5")}
               <span className="flex-1 text-start">{NAV_STANDALONE_TOP.label}</span>
@@ -339,7 +347,11 @@ function SidebarContent({
         {/* الأقسام المجمّعة */}
         {groups.map((g) => (
           <div key={g.label}>
-            <p className="px-2 text-[10px] font-bold text-white/35 tracking-widest mb-1.5">{g.label}</p>
+            <div className="flex items-center gap-2 px-1 mb-2 mt-3">
+              <span className="w-1.5 h-4 rounded-full bg-frost/80" />
+              <p className="text-[12px] font-black text-white/90 tracking-wide">{g.label}</p>
+              <span className="flex-1 h-px bg-gradient-to-l from-white/25 to-transparent" />
+            </div>
             <div className="space-y-1">
               {g.items.map((n) => (
                 <button key={n.key} className={`navlink ${tab === n.key ? "active" : ""}`} onClick={() => onNav(n.key)}>
@@ -357,7 +369,11 @@ function SidebarContent({
         {/* دليل المستخدم — عنصر مستقل أسفل القائمة */}
         {showGuide && (
           <div>
-            <p className="px-2 text-[10px] font-bold text-white/35 tracking-widest mb-1.5">المساعدة</p>
+            <div className="flex items-center gap-2 px-1 mb-2 mt-3">
+              <span className="w-1.5 h-4 rounded-full bg-frost/80" />
+              <p className="text-[12px] font-black text-white/90 tracking-wide">المساعدة</p>
+              <span className="flex-1 h-px bg-gradient-to-l from-white/25 to-transparent" />
+            </div>
             <button className={`navlink ${tab === "guide" ? "active" : ""}`} onClick={() => onNav("guide")}>
               {NAV_STANDALONE_BOTTOM.icon("w-5 h-5")}
               <span className="flex-1 text-start">{NAV_STANDALONE_BOTTOM.label}</span>
