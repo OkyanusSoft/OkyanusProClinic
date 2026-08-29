@@ -225,7 +225,7 @@ function Shell() {
           setTab(t as Tab);
           setMobileNav(false);
         }}
-        className="hidden lg:flex fixed inset-y-0 start-0 w-64 z-40 shadow-[8px_0_30px_-12px_rgba(10,43,71,0.25)]"
+        className="hidden lg:flex w-64 shrink-0 self-stretch z-30 shadow-[8px_0_30px_-12px_rgba(10,43,71,0.25)]"
       />
       {mobileNav && (
         <div className="fixed inset-0 z-[65] lg:hidden">
@@ -246,10 +246,8 @@ function Shell() {
         </div>
       )}
 
-      {/* ====== المحتوى — الجزء المتحرك ====== */}
-      <div className="flex-1 min-w-0 flex flex-col lg:ps-64">
-        {/* عمود المحتوى — محاذٍ لجانب الشريط الجانبي (يمين القسم الأيسر) */}
-        <div className="flex-1 flex flex-col w-full max-w-[1400px] min-w-0">
+      {/* ====== المحتوى — عمود ملاصق للشريط الجانبي يمتد حتى أسفل الصفحة ====== */}
+      <div className="flex-1 min-w-0 flex flex-col min-h-dvh">
         <Topbar
           tab={tab}
           onMenu={() => setMobileNav(true)}
@@ -259,7 +257,8 @@ function Shell() {
             setTab("guide");
           }}
         />
-        <main className="flex-1 px-4 sm:px-6 lg:px-8 py-6 w-full">
+        <main className="flex-1 w-full">
+          <div className="w-full max-w-[1400px] ps-2 pe-4 sm:pe-6 lg:pe-8 py-6">
           {tab === "dashboard" && (
             <Dashboard
               onOpenPatient={setDrawerId}
@@ -287,8 +286,10 @@ function Shell() {
           {tab === "settings" && <SettingsPage />}
           {tab === "preferences" && <PreferencesPage />}
           {tab === "guide" && <GuidePage focus={guideFocus} />}
+          </div>
+        </main>
 
-          <footer className="mt-12 border-t border-line pt-5 pb-4">
+        <footer className="border-t border-line pt-5 pb-4 px-4 sm:px-6 lg:px-8">
             <div className="text-center space-y-2.5">
               <p className="text-xs font-bold text-soft">
                 © {new Date().getFullYear()} جميع الحقوق محفوظة — <span className="text-jade-deep">شركة أوكيانوس سوفت</span>
@@ -310,9 +311,7 @@ function Shell() {
               </div>
               <p className="text-[10px] text-soft/60">نظام {clinicOf(db).clinicName} · الإصدار 3.0</p>
             </div>
-          </footer>
-        </main>
-        </div>
+        </footer>
       </div>
 
       {/* ====== طبقات عامة ====== */}
@@ -353,7 +352,10 @@ function SidebarContent({
   const clinic = clinicOf(db);
   const doc = db.doctors[0];
   return (
-    <aside className={`${className} flex-col bg-pine sidebar-texture text-white`}>
+    <aside className={`${className} bg-pine sidebar-texture text-white relative`}>
+      <span className="sidebar-edge" aria-hidden="true" />
+      {/* القشرة الخارجية تمتد بكامل ارتفاع الصفحة — والعمود الداخلي يلتصق أثناء التمرير */}
+      <div className="sticky top-0 h-dvh flex flex-col">
       <div className="flex items-center gap-3 px-5 pt-6 pb-5">
         <Logo className="w-11 h-11 shrink-0" />
         <div className="min-w-0">
@@ -443,6 +445,7 @@ function SidebarContent({
             </div>
           </div>
         </div>
+        </div>
       </div>
     </aside>
   );
@@ -518,8 +521,8 @@ function Topbar({ tab, onMenu, onOpenPatient, onHelp }: { tab: Tab; onMenu: () =
   const clock = new Intl.DateTimeFormat("ar-EG-u-nu-latn", { hour: "2-digit", minute: "2-digit", second: "2-digit" }).format(now);
 
   return (
-    <header className="sticky top-0 z-40 bg-mist/85 backdrop-blur-md border-b border-line">
-      <div className="flex items-center gap-3 px-4 sm:px-6 lg:px-8 h-16">
+    <header className="shrink-0 z-40 bg-card/80 backdrop-blur-md border-b border-line">
+      <div className="flex items-center gap-3 ps-2 pe-4 sm:pe-6 lg:pe-8 h-16">
         <button className="icon-btn lg:hidden" onClick={onMenu} aria-label="القائمة">
           <IconMenu />
         </button>

@@ -77,12 +77,43 @@ body {
   font-family: var(--font-body);
   color: var(--color-ink);
   background-color: var(--color-mist);
+  /* خلفية محيطية حيّة — تتوهّج بلون الهوية المختار في التفضيلات */
   background-image:
-    radial-gradient(900px 480px at 85% -10%, rgba(18, 115, 196, 0.1), transparent 60%),
-    radial-gradient(700px 420px at -10% 100%, rgba(47, 159, 224, 0.08), transparent 60%),
+    radial-gradient(1100px 560px at 90% -14%, color-mix(in srgb, var(--color-jade) 13%, transparent), transparent 62%),
+    radial-gradient(900px 520px at -14% 110%, color-mix(in srgb, var(--color-frost) 12%, transparent), transparent 60%),
+    radial-gradient(700px 380px at 50% 118%, color-mix(in srgb, var(--color-jade) 7%, transparent), transparent 60%),
     radial-gradient(rgba(19, 42, 64, 0.05) 1px, transparent 1px);
-  background-size: auto, auto, 22px 22px;
+  background-size: auto, auto, auto, 22px 22px;
+  background-attachment: fixed;
   -webkit-font-smoothing: antialiased;
+}
+
+/* لوحة العمل العائمة — سطح المحتوى المرتفع فوق الخلفية المحيطية */
+.workspace-panel {
+  background-color: var(--color-card);
+  border: 1px solid var(--color-line);
+  box-shadow:
+    0 1px 2px rgba(10, 43, 71, 0.05),
+    0 12px 32px -12px color-mix(in srgb, var(--color-pine) 22%, transparent),
+    0 40px 90px -30px color-mix(in srgb, var(--color-pine) 28%, transparent);
+}
+
+/* حافة توهّج رفيعة على جانب الشريط الجانبي المواجهة للوحة العمل */
+.sidebar-edge {
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: 0;
+  width: 1px;
+  background: linear-gradient(
+    to bottom,
+    transparent 6%,
+    color-mix(in srgb, var(--color-frost) 55%, transparent) 30%,
+    color-mix(in srgb, var(--color-frost) 70%, transparent) 50%,
+    color-mix(in srgb, var(--color-frost) 55%, transparent) 70%,
+    transparent 94%
+  );
+  opacity: 0.5;
+  pointer-events: none;
 }
 
 ::selection {
