@@ -248,6 +248,8 @@ function Shell() {
 
       {/* ====== المحتوى — الجزء المتحرك ====== */}
       <div className="flex-1 min-w-0 flex flex-col lg:ps-64">
+        {/* عمود المحتوى المتمركز — يضم الشريط العلوي والمحتوى ككتلة واحدة */}
+        <div className="flex-1 flex flex-col w-full max-w-[1320px] mx-auto min-w-0">
         <Topbar
           tab={tab}
           onMenu={() => setMobileNav(true)}
@@ -257,7 +259,7 @@ function Shell() {
             setTab("guide");
           }}
         />
-        <main className="flex-1 px-4 sm:px-6 lg:px-8 py-6 w-full max-w-[1320px] mx-auto">
+        <main className="flex-1 px-4 sm:px-6 lg:px-8 py-6 w-full">
           {tab === "dashboard" && (
             <Dashboard
               onOpenPatient={setDrawerId}
@@ -310,6 +312,7 @@ function Shell() {
             </div>
           </footer>
         </main>
+        </div>
       </div>
 
       {/* ====== طبقات عامة ====== */}
@@ -516,7 +519,7 @@ function Topbar({ tab, onMenu, onOpenPatient, onHelp }: { tab: Tab; onMenu: () =
 
   return (
     <header className="sticky top-0 z-40 bg-mist/85 backdrop-blur-md border-b border-line">
-      <div className="max-w-[1320px] mx-auto flex items-center gap-3 px-4 sm:px-6 lg:px-8 h-16">
+      <div className="flex items-center gap-3 px-4 sm:px-6 lg:px-8 h-16">
         <button className="icon-btn lg:hidden" onClick={onMenu} aria-label="القائمة">
           <IconMenu />
         </button>
