@@ -445,6 +445,7 @@ function SidebarContent({
             </div>
           </div>
         </div>
+        </div>
       </div>
     </aside>
   );
