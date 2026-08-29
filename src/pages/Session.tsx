@@ -1178,6 +1178,9 @@ function WorkPlanSection({
                             return (
                               <Drop
                                 align="start"
+                                direction="up"
+                                fixed
+                                panelCls="!min-w-56 !p-1.5"
                                 button={
                                   <span className={`chip !text-[10px] cursor-pointer hover:opacity-80 transition-opacity ${chipCls}`} title="انقر لتغيير حالة المتابعة">
                                     <span className="w-1.5 h-1.5 rounded-full bg-current" />
