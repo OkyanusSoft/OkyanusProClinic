@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from "react";
-import { ACCENTS, applyPrefs, arLocale, DEFAULT_PREFS, loadPrefs, savePrefs, type Prefs } from "../prefs";
+import { ACCENTS, applyPrefs, arLocale, DEFAULT_PREFS, loadPrefs, savePrefs, SURFACE_STYLES, type Prefs } from "../prefs";
 import { fmtDate, today, useStore } from "../store";
 import { IconCheck, IconMoon, IconSliders, IconSun, IconTooth, IconUsers } from "../icons";
 import { Avatar, useToast } from "../components/ui";
@@ -234,6 +234,48 @@ export default function PreferencesPage() {
                       <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all ${prefs.motion ? "start-[22px]" : "start-0.5"}`} />
                     </span>
                   </button>
+                </section>
+
+                {/* خلفيات القوائم */}
+                <section className="card p-6 anim-pop" style={{ animationDelay: "200ms" }}>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <h2 className="font-display font-bold text-xl text-ink">خلفيات القوائم</h2>
+                    <span className="chip bg-mist text-soft">القائمة الجانبية وشاشة الدخول</span>
+                  </div>
+                  <p className="text-[11px] text-soft mb-5 leading-relaxed">اختر نمط النقش الذي يغطي الأسطح الداكنة — يتبدّل فوراً في كل مكان.</p>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3.5">
+                    {SURFACE_STYLES.map((s, i) => {
+                      const active = prefs.surfaceStyle === s.id;
+                      return (
+                        <button
+                          key={s.id}
+                          onClick={() => update({ surfaceStyle: s.id }, true)}
+                          className={`rounded-xl overflow-hidden border-2 text-start cursor-pointer transition-all anim-rise ${
+                            active ? "border-jade ring-2 ring-jade/25 shadow-md -translate-y-0.5" : "border-line hover:border-jade/40 hover:-translate-y-0.5"
+                          }`}
+                          style={{ animationDelay: `${i * 60}ms` }}
+                        >
+                          {/* معاينة مصغرة للنمط على سطح داكن */}
+                          <div className={`relative h-16 bg-pine sidebar-texture style-${s.id} overflow-hidden`}>
+                            <div className="absolute inset-x-2.5 top-2.5 space-y-1.5">
+                              <div className="h-2 w-1/2 rounded-full bg-white/35" />
+                              <div className="h-1.5 w-3/4 rounded-full bg-white/15" />
+                              <div className="h-1.5 w-2/3 rounded-full bg-white/15" />
+                            </div>
+                            {active && (
+                              <span className="absolute bottom-1.5 end-1.5 inline-flex items-center justify-center w-5 h-5 rounded-full bg-jade text-white shadow">
+                                <IconCheck className="w-3 h-3" />
+                              </span>
+                            )}
+                          </div>
+                          <div className="px-3 py-2.5 bg-card">
+                            <p className="text-xs font-bold text-ink">{s.label}</p>
+                            <p className="text-[10px] text-soft mt-0.5 leading-snug">{s.desc}</p>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
                 </section>
               </div>
             </>

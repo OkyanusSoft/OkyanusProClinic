@@ -7,8 +7,10 @@ import {
   IconBox,
   IconCalendar,
   IconCoins,
+  IconGlobe,
   IconGrid,
   IconLogout,
+  IconPhone,
   IconMenu,
   IconPulse,
   IconReceipt,
@@ -284,9 +286,28 @@ function Shell() {
           {tab === "preferences" && <PreferencesPage />}
           {tab === "guide" && <GuidePage focus={guideFocus} />}
 
-          <footer className="mt-10 pb-4 flex flex-wrap items-center justify-between gap-2 text-[11px] text-soft/80 font-medium">
-            <span>نظام {clinicOf(db).clinicName} · إصدار 2.6</span>
-            <span>البيانات تُحفَظ محلياً على هذا الجهاز</span>
+          <footer className="mt-12 border-t border-line pt-5 pb-4">
+            <div className="text-center space-y-2.5">
+              <p className="text-xs font-bold text-soft">
+                © {new Date().getFullYear()} جميع الحقوق محفوظة — <span className="text-jade-deep">شركة أوكيانوس سوفت</span>
+              </p>
+              <div className="flex items-center justify-center gap-5 text-[11px] flex-wrap">
+                <a
+                  href="https://okyanussoft.online/"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex items-center gap-1.5 text-jade-deep hover:underline underline-offset-4 font-semibold transition-colors"
+                >
+                  <IconGlobe className="w-3.5 h-3.5" />
+                  <span dir="ltr">okyanussoft.online</span>
+                </a>
+                <span className="flex items-center gap-1.5 text-soft font-semibold">
+                  <IconPhone className="w-3.5 h-3.5" />
+                  <span dir="ltr">781 183 050</span>
+                </span>
+              </div>
+              <p className="text-[10px] text-soft/60">نظام {clinicOf(db).clinicName} · الإصدار 3.0</p>
+            </div>
           </footer>
         </main>
       </div>

@@ -307,6 +307,15 @@ export const IconBox = (p: P) =>
     </>
   );
 
+export const IconGlobe = (p: P) =>
+  base(
+    p,
+    <>
+      <circle cx="12" cy="12" r="8.5" />
+      <path d="M3.5 12h17M12 3.5c2.5 2.3 3.8 5.2 3.8 8.5s-1.3 6.2-3.8 8.5c-2.5-2.3-3.8-5.2-3.8-8.5s1.3-6.2 3.8-8.5Z" />
+    </>
+  );
+
 export const IconSun = (p: P) =>
   base(
     p,

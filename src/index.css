@@ -356,11 +356,35 @@ body {
 
 /* ---------- misc ---------- */
 .sidebar-texture {
+  position: relative;
   background-image:
     radial-gradient(420px 300px at 110% 0%, rgba(79, 201, 247, 0.16), transparent 60%),
-    radial-gradient(300px 260px at -10% 100%, rgba(18, 115, 196, 0.22), transparent 60%),
-    repeating-linear-gradient(-45deg, rgba(255, 255, 255, 0.022) 0 2px, transparent 2px 14px);
+    radial-gradient(300px 260px at -10% 100%, rgba(18, 115, 196, 0.22), transparent 60%);
 }
+/* طبقة النمط — تحمل خلفية القوائم (الشريط الجانبي وشاشة الدخول) وتتحكم بها تفضيلات المستخدم */
+.sidebar-texture::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image: var(--pat, none);
+  background-size: var(--pat-size, auto);
+}
+.style-lines { --pat: repeating-linear-gradient(-45deg, rgba(255, 255, 255, 0.028) 0 2px, transparent 2px 15px); }
+.style-clean { --pat: none; }
+.style-dots { --pat: radial-gradient(rgba(255, 255, 255, 0.09) 1.2px, transparent 1.4px); --pat-size: 18px 18px; }
+.style-grid {
+  --pat: linear-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+  --pat-size: 24px 24px;
+}
+.style-waves {
+  --pat: radial-gradient(circle at 15% 130%, transparent 34%, rgba(255, 255, 255, 0.045) 34.5%, transparent 36%),
+    radial-gradient(circle at 85% -30%, transparent 34%, rgba(255, 255, 255, 0.045) 34.5%, transparent 36%),
+    radial-gradient(circle at 15% 130%, transparent 52%, rgba(255, 255, 255, 0.035) 52.5%, transparent 54%),
+    radial-gradient(circle at 85% -30%, transparent 52%, rgba(255, 255, 255, 0.035) 52.5%, transparent 54%);
+}
+.style-diagonal { --pat: repeating-linear-gradient(-55deg, rgba(255, 255, 255, 0.05) 0 12px, transparent 12px 34px); }
 
 /* ---------- لمسات حيّة ---------- */
 /* عناوين العرض — وزن أسود وتبصر محكم لشخصية أقوى */

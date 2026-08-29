@@ -7,7 +7,7 @@ import {
   useStore,
   type ClinicSettings,
 } from "../store";
-import { IconAlert, IconBox, IconCalendar, IconCheck, IconCoins, IconPulse, IconReceipt, IconShield, IconSpark, IconTrash, IconWallet, Logo } from "../icons";
+import { IconAlert, IconBook, IconBox, IconCalendar, IconCheck, IconCoins, IconPulse, IconReceipt, IconShield, IconSpark, IconTrash, IconWallet, Logo } from "../icons";
 import { Field, Modal, TArea, TInput, TSelect, useToast } from "../components/ui";
 import { IconSettings } from "../icons";
 import { ping } from "../api";
@@ -20,6 +20,77 @@ const TABS: { key: SetTab; label: string; desc: string; icon: (c: string) => Rea
   { key: "invoice", label: "الفواتير والمالية", desc: "عنوان الفاتورة وبادئة الترقيم والعملة", icon: (c) => <IconReceipt className={c} /> },
   { key: "data", label: "البيانات والنسخ", desc: "تصدير واستيراد وإعادة التعيين", icon: (c) => <IconShield className={c} /> },
 ];
+
+/* سجل التغييرات — تاريخ تطور النظام */
+const CHANGELOG: { v: string; date: string; current?: boolean; items: { tag: "جديد" | "تحسين" | "إصلاح"; text: string }[] }[] = [
+  {
+    v: "3.0",
+    date: "فبراير 2026",
+    current: true,
+    items: [
+      { tag: "جديد", text: "أنماط خلفيات القوائم: ٦ نقوش (خطوط متوازية، نظيف، نقاط، شبكة، موجات، أقطار) للقائمة الجانبية وشاشة الدخول" },
+      { tag: "جديد", text: "سجل التغييرات (Change Log) بخط زمني تفاعلي في الإعدادات العامة" },
+      { tag: "جديد", text: "تذييل حقوق شركة أوكيانوس سوفت مع رابط الموقع ورقم التواصل" },
+      { tag: "تحسين", text: "ترقية رقم الإصدار إلى 3.0" },
+    ],
+  },
+  {
+    v: "2.6",
+    date: "فبراير 2026",
+    items: [
+      { tag: "جديد", text: "شاشة تفضيلات المستخدم: مظهر داكن/فاتح/تلقائي، ٦ ألوان مميزة، حجم الخط، الترقيم العربي، مدة الإشعارات" },
+      { tag: "جديد", text: "إعدادات قاعدة البيانات MySQL: الاتصال المركزي، اختبار الاتصال، حالة التشغيل، خطوات التفعيل" },
+      { tag: "جديد", text: "شاشة فئات المصروفات مع الألوان وإعادة التوزيع التلقائي" },
+      { tag: "جديد", text: "عرض الجلسات المكتملة السابقة للقراءة فقط من محطة العمل" },
+      { tag: "تحسين", text: "تعديل حالة المتابعات المرتبطة بمراحل الجلسات من داخل الجدول" },
+    ],
+  },
+  {
+    v: "2.5",
+    date: "فبراير 2026",
+    items: [
+      { tag: "جديد", text: "محطة عمل الدكتور الكاملة: ٨ تبويبات، مخطط العمل السريري، جدول مراحل الجلسات متعدد الزيارات" },
+      { tag: "جديد", text: "خريطة أسنان ذكية: بالغون بترقيم FDI (٣٢ سنًا) وأطفال بترميز A–E (٢٠ سنًا) مع اختيار متعدد" },
+      { tag: "جديد", text: "نظام العودات والمتابعة المرتبط تلقائيًا بمراحل الجلسات" },
+      { tag: "جديد", text: "مؤشر صحة الفم، رسم قنوات العصب، رصد الأعراض الجانبية للأدوية" },
+    ],
+  },
+  {
+    v: "2.4",
+    date: "فبراير 2026",
+    items: [
+      { tag: "جديد", text: "منظومة البطاقات المطبوعة على A4: كرت المريض، كرت الموعد، كرت الرجوع" },
+      { tag: "جديد", text: "تقرير المرضى الشامل في مركز التقارير مع التصدير والطباعة" },
+      { tag: "جديد", text: "قائمة جانبية مجمعة: الإجراءات الطبية، المالية، المخازن، التقارير، إعدادات النظام" },
+      { tag: "جديد", text: "شاشات فئات الخدمات، فئات الأصناف، بيانات الأصناف، قائمة الأسعار" },
+    ],
+  },
+  {
+    v: "2.0",
+    date: "فبراير 2026",
+    items: [
+      { tag: "جديد", text: "قاعدة بيانات MySQL مركزية مع مزامنة حية وتخزين محلي احتياطي تلقائي" },
+      { tag: "جديد", text: "دليل المستخدم التفاعلي مع البحث الفوري والأسئلة الشائعة" },
+      { tag: "جديد", text: "تقرير العمل السريري المولّد تلقائيًا من بيانات الجلسة" },
+      { tag: "جديد", text: "منظومة الطباعة الموحدة على مقاس A4" },
+    ],
+  },
+  {
+    v: "1.0",
+    date: "فبراير 2026",
+    items: [
+      { tag: "جديد", text: "الإطلاق الأول: المرضى، المواعيد، الفواتير، الخدمات، الفريق الطبي، العملات" },
+      { tag: "جديد", text: "خريطة الأسنان التفاعلية، الروشتات الإلكترونية، المصروفات، التقارير" },
+      { tag: "جديد", text: "نظام صلاحيات متعدد الأدوار: مدير، طبيب، سكرتارية، مساعد" },
+    ],
+  },
+];
+
+const TAG_CLS: Record<string, string> = {
+  "جديد": "bg-jade-soft text-jade-deep",
+  "تحسين": "bg-sky-soft text-sky",
+  "إصلاح": "bg-amber-soft text-[#a06410]",
+};
 
 export default function SettingsPage() {
   const { db, dispatch, conn, syncing } = useStore();
@@ -41,6 +112,7 @@ export default function SettingsPage() {
   const invDirty = invForm.invoiceTitle !== clinic.invoiceTitle || invForm.invoicePrefix !== clinic.invoicePrefix || invForm.invoiceFooter !== clinic.invoiceFooter;
 
   const [confirmReset, setConfirmReset] = useState(false);
+  const [showChangelog, setShowChangelog] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   /* ====== قاعدة البيانات (MySQL) ====== */
@@ -455,11 +527,17 @@ export default function SettingsPage() {
               </div>
 
               <div className="card p-6 anim-pop" style={{ animationDelay: "140ms" }}>
-                <h2 className="font-display font-bold text-xl text-ink mb-3">حول النظام</h2>
+                <div className="flex items-center justify-between mb-3">
+                  <h2 className="font-display font-bold text-xl text-ink">حول النظام</h2>
+                  <button onClick={() => setShowChangelog(true)} className="btn-soft !h-9 !px-3.5 !text-xs">
+                    <IconBook className="w-4 h-4" />
+                    سجل التغييرات (Change Log)
+                  </button>
+                </div>
                 <div className="grid sm:grid-cols-3 gap-3 text-xs">
                   <div className="rounded-lg bg-mist/70 border border-line p-3.5">
                     <p className="font-bold text-soft">الإصدار</p>
-                    <p className="stat-num text-lg text-ink mt-1">2.6</p>
+                    <p className="stat-num text-lg text-ink mt-1">3.0</p>
                   </div>
                   <div className="rounded-lg bg-mist/70 border border-line p-3.5">
                     <p className="font-bold text-soft">التخزين</p>
@@ -518,6 +596,37 @@ export default function SettingsPage() {
         <p className="text-sm text-soft leading-relaxed">
           سيُمسح كل ما أضفته أو عدّلته: <b className="text-ink">{db.patients.length} مريضاً</b>، <b className="text-ink">{db.appointments.length} موعداً</b>، <b className="text-ink">{db.invoices.length} فاتورة</b>، و<b className="text-ink">{db.sessions.length} جلسة علاج</b> — وتعود الإعدادات وهوية العيادة للافتراضي. هل صدّرت نسخة احتياطية؟
         </p>
+      </Modal>
+
+      {/* ====== سجل التغييرات ====== */}
+      <Modal open={showChangelog} onClose={() => setShowChangelog(false)} title="سجل التغييرات" subtitle="تاريخ تطور نظام عيادة د. عبدالله الشرفي" width="max-w-2xl">
+        <div className="relative ms-3">
+          <span className="absolute top-1 bottom-1 start-[9px] w-0.5 bg-gradient-to-b from-jade via-line to-transparent rounded-full" />
+          <div className="space-y-7">
+            {CHANGELOG.map((rel, ri) => (
+              <div key={rel.v} className="relative ps-8 anim-rise" style={{ animationDelay: `${ri * 80}ms` }}>
+                <span className={`absolute top-0.5 start-0 inline-flex items-center justify-center w-5 h-5 rounded-full border-2 ${rel.current ? "bg-jade border-jade text-white pulse-dot" : "bg-card border-line text-soft"}`}>
+                  {rel.current ? <IconSpark className="w-2.5 h-2.5" /> : <span className="w-1.5 h-1.5 rounded-full bg-soft/50" />}
+                </span>
+                <div className={`rounded-xl border p-4 ${rel.current ? "border-jade/40 bg-jade-soft/40" : "border-line bg-card"}`}>
+                  <div className="flex items-center gap-2.5 flex-wrap">
+                    <span className="font-display font-bold text-lg text-ink" dir="ltr">v{rel.v}</span>
+                    <span className="text-[11px] font-semibold text-soft">{rel.date}</span>
+                    {rel.current && <span className="chip bg-jade text-white !text-[9px] !py-1">الإصدار الحالي</span>}
+                  </div>
+                  <ul className="mt-3 space-y-2">
+                    {rel.items.map((it, i) => (
+                      <li key={i} className="flex items-start gap-2.5">
+                        <span className={`chip shrink-0 mt-0.5 !text-[9px] !py-0.5 !px-2 ${TAG_CLS[it.tag]}`}>{it.tag}</span>
+                        <p className="text-[12.5px] text-ink/85 leading-relaxed">{it.text}</p>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
       </Modal>
     </div>
   );

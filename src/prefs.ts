@@ -10,6 +10,7 @@ export interface Prefs {
   digits: "latn" | "ar";
   toastDur: number;
   defaultTab: string;
+  surfaceStyle: string;
 }
 
 export const DEFAULT_PREFS: Prefs = {
@@ -20,7 +21,18 @@ export const DEFAULT_PREFS: Prefs = {
   digits: "latn",
   toastDur: 3600,
   defaultTab: "dashboard",
+  surfaceStyle: "lines",
 };
+
+/* أنماط خلفيات القائمة الجانبية وشاشة الدخول */
+export const SURFACE_STYLES: { id: string; label: string; desc: string }[] = [
+  { id: "lines", label: "خطوط متوازية", desc: "خطوط مائلة رفيعة — الطابع الافتراضي" },
+  { id: "clean", label: "نظيف", desc: "سطح أملس بدون خطوط" },
+  { id: "dots", label: "نقاط شبكية", desc: "نقاط دقيقة منتظمة الإيقاع" },
+  { id: "grid", label: "شبكة هندسية", desc: "تقاطعات أفقية وعمودية" },
+  { id: "waves", label: "موجات", desc: "أمواج منحنية متراكبة" },
+  { id: "diagonal", label: "أقطار جريئة", desc: "أشرطة مائلة عريضة" },
+];
 
 export interface Accent {
   id: string;
@@ -99,6 +111,11 @@ export function applyPrefs(p: Prefs) {
 
   /* تقليل الحركة */
   root.classList.toggle("reduce-motion", !p.motion);
+
+  /* نمط خلفية القوائم — يعيد تشكيل الشريط الجانبي وشاشة الدخول */
+  SURFACE_STYLES.forEach((s) => root.classList.remove("style-" + s.id));
+  const sid = SURFACE_STYLES.some((s) => s.id === p.surfaceStyle) ? p.surfaceStyle : "lines";
+  root.classList.add("style-" + sid);
 }
 
 /** لغة الأرقام حسب التفضيل — لاتيني 123 أو عربي ١٢٣ */
