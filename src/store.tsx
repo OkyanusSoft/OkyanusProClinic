@@ -161,6 +161,7 @@ export interface SessionStage {
   date: string; // التاريخ المقرر
   done: boolean;
   notes?: string; // ملاحظات المرحلة
+  fuId?: string; // معرّف العودة/المتابعة المرتبطة بهذه المرحلة
 }
 
 /* مرجعيات الأنواع — تُعرض كأزرار/قوائم في مخطط العمل */

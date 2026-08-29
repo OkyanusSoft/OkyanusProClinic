@@ -675,7 +675,7 @@ function WorkPlanSection({
   baseTeeth: Partial<Record<number, ToothStatus>>;
   onSetTooth?: (tooth: number, status: ToothStatus) => void;
 }) {
-  const { db, serviceById } = useStore();
+  const { db, dispatch, serviceById } = useStore();
   const { push } = useToast();
   const [selection, setSelection] = useState<number[]>([]);
   const [kind, setKind] = useState<WorkKind | null>(null);
@@ -754,10 +754,24 @@ function WorkPlanSection({
     if (w) push("info", `حُذف عمل «${w.kind}»`);
   };
 
+  /* ربط المرحلة بعودة/متابعة تلقائياً — الجلسة الثانية بتاريخ لاحق = عودة مسجلة */
+  const stageReason = (name: string) => `${name} — متابعة خطة العلاج (${serviceById(session.procedures[0]?.serviceId ?? "")?.name ?? "علاج مستمر"})`;
+
   const addStage = () => {
     const n = session.stages.length + 1;
     const names = ["", "الجلسة الأولى", "الجلسة الثانية", "الجلسة الثالثة", "الجلسة الرابعة", "الجلسة الخامسة"];
     const st: SessionStage = { id: uid(), name: names[n] ?? `الجلسة ${n}`, date: today(7 * (n - 1)), done: false };
+    // مرحلة بتاريخ قادم ← تُسجل عودة/متابعة في نظام المتابعات تلقائياً
+    if (st.date >= today(0)) {
+      st.fuId = uid();
+      dispatch({
+        type: "ADD_FOLLOWUP",
+        f: { id: st.fuId, patientId: session.patientId, doctorId: session.doctorId, reason: stageReason(st.name), dueDate: st.date, status: "pending", createdAt: new Date().toISOString() },
+      });
+      push("success", `أُضيفت «${st.name}»`, "سُجّلت عودة/متابعة تلقائياً في نظام المتابعات.");
+    } else {
+      push("info", `أُضيفت «${st.name}»`);
+    }
     patch({ stages: [...session.stages, st] });
     setStageId(st.id);
   };
@@ -765,17 +779,41 @@ function WorkPlanSection({
   const toggleStage = (id: string) =>
     patch({ stages: session.stages.map((s) => (s.id === id ? { ...s, done: !s.done } : s)) });
 
-  const updateStage = (id: string, p: Partial<SessionStage>) =>
+  const updateStage = (id: string, p: Partial<SessionStage>) => {
+    const st = session.stages.find((s) => s.id === id);
     patch({ stages: session.stages.map((s) => (s.id === id ? { ...s, ...p } : s)) });
+    // مزامنة العودة المرتبطة عند تغيير التاريخ أو الاسم
+    if (st?.fuId && (p.date !== undefined || p.name !== undefined)) {
+      const fu = db.followUps.find((f) => f.id === st.fuId);
+      if (fu) {
+        dispatch({ type: "UPDATE_FOLLOWUP", f: { ...fu, dueDate: p.date ?? fu.dueDate, reason: p.name ? stageReason(p.name) : fu.reason } });
+      }
+    }
+  };
+
+  /* ربط مرحلة قديمة (بلا عودة) بنظام المتابعات */
+  const linkStageFollowUp = (id: string) => {
+    const st = session.stages.find((s) => s.id === id);
+    if (!st || st.fuId) return;
+    const fuId = uid();
+    patch({ stages: session.stages.map((s) => (s.id === id ? { ...s, fuId } : s)) });
+    dispatch({
+      type: "ADD_FOLLOWUP",
+      f: { id: fuId, patientId: session.patientId, doctorId: session.doctorId, reason: stageReason(st.name), dueDate: st.date, status: "pending", createdAt: new Date().toISOString() },
+    });
+    push("success", "رُبطت المرحلة بعودة", "ظهرت الآن في نظام المتابعات.");
+  };
 
   const deleteStage = (id: string) => {
     if (session.stages.length <= 1) return push("warn", "لا يمكن حذف المرحلة الوحيدة");
     const st = session.stages.find((s) => s.id === id);
+    // حذف العودة المرتبطة إن وُجدت
+    if (st?.fuId) dispatch({ type: "DELETE_FOLLOWUP", id: st.fuId });
     patch({
       stages: session.stages.filter((s) => s.id !== id),
       workItems: session.workItems.map((w) => (w.stageId === id ? { ...w, stageId: session.stages.find((s) => s.id !== id)!.id } : w)),
     });
-    if (st) push("info", `حُذفت مرحلة «${st.name}»`, "نُقلت أعمالها إلى مرحلة أخرى.");
+    if (st) push("info", `حُذفت مرحلة «${st.name}»`, st.fuId ? "أُزيلت عودتها المرتبطة من المتابعات." : "نُقلت أعمالها إلى مرحلة أخرى.");
   };
 
   const label = (n: number) => (mode === "child" ? "ABCDE"[(n % 10) - 1] : String(n));
@@ -1040,6 +1078,7 @@ function WorkPlanSection({
                 <tr>
                   <th className="th !py-2.5">المرحلة</th>
                   <th className="th !py-2.5">التاريخ المقرر</th>
+                  <th className="th !py-2.5">المتابعة</th>
                   <th className="th !py-2.5">الأعمال</th>
                   <th className="th !py-2.5">الحالة</th>
                   <th className="th !py-2.5 text-end">إجراءات</th>
@@ -1066,6 +1105,33 @@ function WorkPlanSection({
                           className="text-soft stat-num bg-transparent border border-transparent hover:border-line focus:border-jade focus:bg-white rounded-md px-2 py-1 outline-none transition-all cursor-pointer"
                           aria-label="التاريخ المقرر"
                         />
+                      </td>
+                      <td className="td !py-2">
+                        {s.fuId ? (
+                          (() => {
+                            const fu = db.followUps.find((f) => f.id === s.fuId);
+                            if (!fu) return <span className="text-soft/50 text-xs">—</span>;
+                            const overdue = fu.status === "pending" && fu.dueDate < today(0);
+                            return (
+                              <span
+                                className={`chip !text-[10px] ${
+                                  fu.status === "done" ? "bg-mint-soft text-[#1d6b47]" : fu.status === "booked" ? "bg-sky-soft text-sky" : overdue ? "bg-coral-soft text-coral" : "bg-jade-soft text-jade-deep"
+                                }`}
+                                title="عودة/متابعة مسجلة في نظام المتابعات"
+                              >
+                                <span className="w-1.5 h-1.5 rounded-full bg-current" />
+                                {fu.status === "done" ? "عودة مكتملة" : fu.status === "booked" ? "عودة محجوزة" : overdue ? "عودة متأخرة" : "عودة مسجلة ✓"}
+                              </span>
+                            );
+                          })()
+                        ) : s.date >= today(0) ? (
+                          <button onClick={() => linkStageFollowUp(s.id)} className="chip !text-[10px] bg-white border border-dashed border-line text-soft hover:border-jade hover:text-jade-deep cursor-pointer transition-all">
+                            <IconPlus className="w-3 h-3" />
+                            ربط بعودة
+                          </button>
+                        ) : (
+                          <span className="text-soft/50 text-xs">—</span>
+                        )}
                       </td>
                       <td className="td !py-2">
                         {items.length === 0 ? (

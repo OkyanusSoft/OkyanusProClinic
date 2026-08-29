@@ -329,7 +329,8 @@ export default function DentalChart({
   };
 
   return (
-    <div className="grid xl:grid-cols-[1fr_290px] gap-5 items-start">
+    <div className="space-y-5 min-w-0">
+      <div className="grid xl:grid-cols-[1fr_300px] gap-5 items-start min-w-0">
       <div className="rounded-xl border border-line bg-gradient-to-b from-white to-mist/60 overflow-hidden min-w-0 shadow-[0_1px_2px_rgba(19,42,64,0.06)]">
         <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-b border-line bg-white/70">
           <div>
@@ -477,28 +478,66 @@ export default function DentalChart({
           </div>
         )}
 
-        {/* 3) مؤشر صحة الفم */}
-        <div className="rounded-xl border border-line bg-white p-4">
-          <div className="flex items-center justify-between">
-            <p className="font-display font-bold text-sm text-ink">مؤشر صحة الفم</p>
-            <span className="stat-num text-xl" style={{ color: healthColor }}>{health}%</span>
+        </div>
+      </div>
+
+      {/* 3) مؤشر صحة الأسنان — شريط أفقي أسفل المخطط */}
+      <div className="rounded-xl border border-line bg-white overflow-hidden">
+        <div className="flex flex-col lg:flex-row lg:items-center gap-4 lg:gap-8 px-5 py-4">
+          {/* النسبة */}
+          <div className="flex items-center gap-4 shrink-0">
+            <div className="relative w-16 h-16 shrink-0">
+              <svg viewBox="0 0 64 64" className="w-16 h-16 -rotate-90">
+                <circle cx="32" cy="32" r="27" fill="none" stroke="#e9f1f9" strokeWidth="7" />
+                <circle
+                  cx="32" cy="32" r="27" fill="none"
+                  stroke={healthColor} strokeWidth="7" strokeLinecap="round"
+                  strokeDasharray={`${(health / 100) * 169.6} 169.6`}
+                  className="transition-all duration-700 ease-out"
+                />
+              </svg>
+              <span className="absolute inset-0 flex items-center justify-center stat-num font-bold text-base" style={{ color: healthColor }}>
+                {health}%
+              </span>
+            </div>
+            <div>
+              <p className="font-display font-bold text-sm text-ink leading-tight">مؤشر صحة الأسنان</p>
+              <p className="text-[11px] font-semibold text-soft mt-0.5">
+                <span className="stat-num text-ink">{totalTeeth - issues}</span> سليماً من <span className="stat-num text-ink">{totalTeeth}</span>
+                <span className="mx-1.5">·</span>
+                <span className="stat-num" style={{ color: healthColor }}>{issues}</span> تحتاج تدخلاً
+              </p>
+            </div>
           </div>
-          <div className="h-2 rounded-full bg-mist overflow-hidden mt-2.5">
-            <div className="h-full rounded-full anim-grow-w" style={{ width: `${health}%`, background: healthColor }} />
+
+          {/* الشريط التقدمي */}
+          <div className="flex-1 min-w-40">
+            <div className="h-2.5 rounded-full bg-mist overflow-hidden">
+              <div className="h-full rounded-full anim-grow-w transition-all duration-700" style={{ width: `${health}%`, background: `linear-gradient(90deg, ${healthColor}, ${healthColor}cc)` }} />
+            </div>
+            <div className="flex justify-between mt-1.5 text-[9px] font-bold text-soft/70 stat-num" dir="ltr">
+              <span>0</span><span>25</span><span>50</span><span>75</span><span>100</span>
+            </div>
           </div>
-          <p className="text-[10px] font-semibold text-soft mt-2">
-            <span className="stat-num">{totalTeeth - issues}</span> سناً سليماً من أصل <span className="stat-num">{totalTeeth}</span>
-          </p>
-          <div className="mt-4 pt-3.5 border-t border-line space-y-2.5">
-            {TOOTH_STATUS_ORDER.filter((s) => s !== "healthy").map((s) => (
-              <div key={s} className="flex items-center justify-between text-xs font-semibold">
-                <span className="flex items-center gap-2 text-soft">
-                  <Glyph s={s} />
+
+          {/* عدّادات الحالات — أفقية */}
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
+            {TOOTH_STATUS_ORDER.filter((s) => s !== "healthy").map((s) => {
+              const n = counts[s] ?? 0;
+              return (
+                <span
+                  key={s}
+                  className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1.5 text-[11px] font-bold transition-all ${
+                    n > 0 ? "border-transparent" : "border-line text-soft/50 bg-white"
+                  }`}
+                  style={n > 0 ? { background: `${STYLE[s].stroke}14`, color: STYLE[s].stroke } : undefined}
+                >
+                  <Glyph s={s} size="w-4 h-4" />
                   {TOOTH_META[s].label}
+                  <span className="stat-num">{n}</span>
                 </span>
-                <span className={`stat-num text-sm ${counts[s] > 0 ? "text-ink" : "text-soft/50"}`}>{counts[s] ?? 0}</span>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       </div>
