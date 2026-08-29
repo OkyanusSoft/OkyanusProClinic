@@ -352,8 +352,10 @@ function SidebarContent({
   const clinic = clinicOf(db);
   const doc = db.doctors[0];
   return (
-    <aside className={`${className} flex-col bg-pine sidebar-texture text-white relative`}>
+    <aside className={`${className} bg-pine sidebar-texture text-white relative`}>
       <span className="sidebar-edge" aria-hidden="true" />
+      {/* القشرة الخارجية تمتد بكامل ارتفاع الصفحة — والعمود الداخلي يلتصق أثناء التمرير */}
+      <div className="sticky top-0 h-dvh flex flex-col">
       <div className="flex items-center gap-3 px-5 pt-6 pb-5">
         <Logo className="w-11 h-11 shrink-0" />
         <div className="min-w-0">
