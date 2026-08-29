@@ -3,7 +3,7 @@ import { fetchState, ping, saveState } from "./api";
 
 /* ============================== Types ============================== */
 
-export type ToothStatus = "healthy" | "caries" | "filled" | "root" | "crown" | "missing";
+export type ToothStatus = "healthy" | "caries" | "filled" | "root" | "prosthetic" | "ortho" | "crown" | "missing";
 export type ApptStatus = "confirmed" | "waiting" | "inprogress" | "done" | "cancelled" | "noshow";
 export type InvoiceStatus = "paid" | "partial" | "unpaid";
 
@@ -459,10 +459,15 @@ export const TOOTH_META: Record<ToothStatus, { label: string; fill: string; stro
   healthy: { label: "سليم", fill: "#ffffff", stroke: "#93a9bd" },
   caries: { label: "تسوس", fill: "#f6d7d0", stroke: "#d9503a" },
   filled: { label: "حشوة", fill: "#d3e8fa", stroke: "#1273c4" },
-  root: { label: "علاج عصب", fill: "#f7e5c4", stroke: "#e2952b" },
+  root: { label: "سحب عصب", fill: "#f7e5c4", stroke: "#e2952b" },
+  prosthetic: { label: "تركيب", fill: "#d6e6f5", stroke: "#0b518f" },
+  ortho: { label: "تقويم", fill: "#e6dcf7", stroke: "#8e5ac8" },
   crown: { label: "تاج / زراعة", fill: "#d5e6f5", stroke: "#2f9fe0" },
   missing: { label: "مفقود", fill: "#eef2f5", stroke: "#a7bac7", dash: true },
 };
+
+/* ترتيب الحالات الثماني في واجهات حالة السن */
+export const TOOTH_STATUS_ORDER: ToothStatus[] = ["healthy", "caries", "filled", "root", "prosthetic", "ortho", "crown", "missing"];
 
 export const APPT_META: Record<ApptStatus, { label: string; cls: string; dot: string }> = {
   confirmed: { label: "مؤكد", cls: "bg-sky-soft text-sky", dot: "#3a86c4" },
