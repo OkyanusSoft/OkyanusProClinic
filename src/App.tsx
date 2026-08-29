@@ -1,21 +1,26 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { APPT_META, AuthProvider, clinicOf, invoiceTotal, ROLE_META, StoreProvider, today, useAuth, useStore } from "./store";
+import { loadPrefs } from "./prefs";
 import {
   IconBell,
   IconBook,
   IconBox,
   IconCalendar,
   IconCoins,
+  IconGlobe,
   IconGrid,
   IconLogout,
+  IconPhone,
   IconMenu,
   IconPulse,
   IconReceipt,
   IconSearch,
   IconSettings,
   IconShield,
+  IconSliders,
   IconSpark,
   IconStetho,
+  IconTooth,
   IconTrendUp,
   IconUsers,
   IconWallet,
@@ -37,41 +42,97 @@ import UsersPage from "./pages/Users";
 import SettingsPage from "./pages/Settings";
 import InventoryPage from "./pages/Inventory";
 import GuidePage from "./pages/Guide";
+import ServiceCatsPage from "./pages/ServiceCats";
+import ItemCatsPage from "./pages/ItemCats";
+import PriceListPage from "./pages/PriceList";
+import ItemsDataPage from "./pages/ItemsData";
+import ExpenseCatsPage from "./pages/ExpenseCats";
+import PreferencesPage from "./pages/Preferences";
 import Login from "./pages/Login";
 
-type Tab = "dashboard" | "appointments" | "session" | "patients" | "invoices" | "inventory" | "expenses" | "reports" | "services" | "team" | "currencies" | "users" | "settings" | "guide";
+type Tab =
+  | "dashboard"
+  | "appointments" | "session" | "patients" | "team" | "serviceCats" | "services"
+  | "invoices" | "expenses" | "priceList" | "currencies" | "expenseCats"
+  | "inventory" | "itemCats" | "itemsData"
+  | "reports"
+  | "settings" | "users" | "preferences"
+  | "guide";
 
-const NAV: { key: Tab; label: string; icon: (c: string) => React.ReactNode }[] = [
-  { key: "dashboard", label: "لوحة التحكم", icon: (c) => <IconGrid className={c} /> },
-  { key: "appointments", label: "المواعيد", icon: (c) => <IconCalendar className={c} /> },
-  { key: "session", label: "محطة عمل الدكتور", icon: (c) => <IconPulse className={c} /> },
-  { key: "patients", label: "المرضى", icon: (c) => <IconUsers className={c} /> },
-  { key: "invoices", label: "الفواتير", icon: (c) => <IconReceipt className={c} /> },
-  { key: "inventory", label: "المخزون والمستهلكات", icon: (c) => <IconBox className={c} /> },
-  { key: "services", label: "قائمة الأسعار", icon: (c) => <IconSpark className={c} /> },
-  { key: "expenses", label: "المصروفات", icon: (c) => <IconWallet className={c} /> },
-  { key: "reports", label: "التقارير", icon: (c) => <IconTrendUp className={c} /> },
-  { key: "team", label: "الفريق الطبي", icon: (c) => <IconStetho className={c} /> },
-  { key: "currencies", label: "العملات", icon: (c) => <IconCoins className={c} /> },
-  { key: "users", label: "المستخدمون والصلاحيات", icon: (c) => <IconShield className={c} /> },
-  { key: "settings", label: "الإعدادات العامة", icon: (c) => <IconSettings className={c} /> },
-  { key: "guide", label: "دليل المستخدم", icon: (c) => <IconBook className={c} /> },
+type NavItem = { key: Tab; label: string; icon: (c: string) => React.ReactNode };
+
+/* القائمة المجمّعة — كل قسم يجمع شاشاته تحت عنوان واحد */
+const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
+  {
+    label: "الإجراءات الطبية",
+    items: [
+      { key: "appointments", label: "المواعيد", icon: (c) => <IconCalendar className={c} /> },
+      { key: "session", label: "محطة عمل الدكتور", icon: (c) => <IconPulse className={c} /> },
+      { key: "patients", label: "المرضى", icon: (c) => <IconUsers className={c} /> },
+      { key: "team", label: "الفريق الطبي", icon: (c) => <IconStetho className={c} /> },
+      { key: "serviceCats", label: "فئات الخدمات", icon: (c) => <IconSpark className={c} /> },
+      { key: "services", label: "بيانات الخدمات", icon: (c) => <IconTooth className={c} /> },
+    ],
+  },
+  {
+    label: "المالية",
+    items: [
+      { key: "invoices", label: "الفواتير", icon: (c) => <IconReceipt className={c} /> },
+      { key: "expenses", label: "المصروفات", icon: (c) => <IconWallet className={c} /> },
+      { key: "priceList", label: "قائمة الأسعار", icon: (c) => <IconGrid className={c} /> },
+      { key: "currencies", label: "العملات", icon: (c) => <IconCoins className={c} /> },
+      { key: "expenseCats", label: "فئات المصروفات", icon: (c) => <IconWallet className={c} /> },
+    ],
+  },
+  {
+    label: "المخازن",
+    items: [
+      { key: "inventory", label: "المخزون والمستهلكات", icon: (c) => <IconBox className={c} /> },
+      { key: "itemCats", label: "فئات الأصناف", icon: (c) => <IconSpark className={c} /> },
+      { key: "itemsData", label: "بيانات الأصناف", icon: (c) => <IconBox className={c} /> },
+    ],
+  },
+  {
+    label: "التقارير",
+    items: [{ key: "reports", label: "تقارير العيادة", icon: (c) => <IconTrendUp className={c} /> }],
+  },
+  {
+    label: "إعدادات النظام",
+    items: [
+      { key: "settings", label: "الإعدادات العامة", icon: (c) => <IconSettings className={c} /> },
+      { key: "users", label: "المستخدمون والصلاحيات", icon: (c) => <IconShield className={c} /> },
+      { key: "preferences", label: "التفضيلات", icon: (c) => <IconSliders className={c} /> },
+    ],
+  },
 ];
+
+/* لوحة التحكم + دليل المستخدم عناصر قائمة بذاتها خارج المجموعات */
+const NAV_STANDALONE_TOP: NavItem = { key: "dashboard", label: "لوحة التحكم", icon: (c) => <IconGrid className={c} /> };
+const NAV_STANDALONE_BOTTOM: NavItem = { key: "guide", label: "دليل المستخدم", icon: (c) => <IconBook className={c} /> };
+
+/* قائمة مسطّحة للاستخدام في الصلاحيات والعناوين */
+const NAV: NavItem[] = [NAV_STANDALONE_TOP, ...NAV_GROUPS.flatMap((g) => g.items), NAV_STANDALONE_BOTTOM];
 
 const TITLES: Record<Tab, string> = {
   dashboard: "لوحة التحكم",
   appointments: "المواعيد",
   session: "محطة عمل الدكتور",
   patients: "المرضى",
-  invoices: "الفواتير",
-  inventory: "المخزون والمستهلكات",
-  services: "قائمة الأسعار",
-  expenses: "المصروفات",
-  reports: "التقارير",
   team: "الفريق الطبي",
+  serviceCats: "فئات الخدمات",
+  services: "بيانات الخدمات",
+  invoices: "الفواتير",
+  expenses: "المصروفات",
+  priceList: "قائمة الأسعار",
   currencies: "العملات",
-  users: "المستخدمون والصلاحيات",
+  expenseCats: "فئات المصروفات",
+  inventory: "المخزون والمستهلكات",
+  itemCats: "فئات الأصناف",
+  itemsData: "بيانات الأصناف",
+  reports: "تقارير العيادة",
   settings: "الإعدادات العامة",
+  users: "المستخدمون والصلاحيات",
+  preferences: "التفضيلات",
   guide: "دليل المستخدم",
 };
 
@@ -86,16 +147,32 @@ function Shell() {
   const [book, setBook] = useState<{ open: boolean; patientId?: string; time?: string; date?: string }>({ open: false });
   const [guideFocus, setGuideFocus] = useState<string | null>(null);
 
-  // تصفية القائمة حسب الصلاحيات — دليل المستخدم متاح لكل الأدوار
-  const allowedNav = NAV.filter((n) => n.key === "guide" || can(n.key));
+  // تصفية القائمة حسب الصلاحيات — الدليل والتفضيلات متاحان لكل الأدوار
+  const openForAll = (k: Tab) => k === "guide" || k === "preferences";
+  const allowedNav = NAV.filter((n) => openForAll(n.key) || can(n.key));
+
+  // القائمة المجمّعة بعد التصفية — تُعرض في الشريط الجانبي بأقسامها
+  const allowedGroups = NAV_GROUPS.map((g) => ({ ...g, items: g.items.filter((n) => openForAll(n.key) || can(n.key)) })).filter(
+    (g) => g.items.length > 0
+  );
+  const showDashboard = can("dashboard");
+  const showGuide = true; // دليل المستخدم متاح للجميع
 
   // عند تغيّر المستخدم أو صلاحياته: اضمن أن التبويب الحالي مسموح
   useEffect(() => {
-    if (user && !can(tab)) {
+    if (user && !openForAll(tab) && !can(tab)) {
       setTab(allowedNav[0]?.key ?? "dashboard");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id, allowedNav.length]);
+
+  // الشاشة الافتراضية من تفضيلات المستخدم — تُطبَّق عند الدخول
+  useEffect(() => {
+    if (!user) return;
+    const def = loadPrefs().defaultTab as Tab;
+    if (def && def !== "guide" && (can(def) || def === "preferences")) setTab(def);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
 
   // رسالة تأكيد المزامنة فور الدخول — مرة واحدة لكل جلسة دخول
   const welcomeRef = useRef<string | null>(null);
@@ -141,12 +218,14 @@ function Shell() {
       <SidebarContent
         tab={tab}
         badges={badges}
-        items={allowedNav}
+        groups={allowedGroups}
+        showDashboard={showDashboard}
+        showGuide={showGuide}
         onNav={(t) => {
           setTab(t as Tab);
           setMobileNav(false);
         }}
-        className="hidden lg:flex sticky top-0 h-screen w-64 shrink-0"
+        className="hidden lg:flex fixed inset-y-0 start-0 w-64 z-40 shadow-[8px_0_30px_-12px_rgba(10,43,71,0.25)]"
       />
       {mobileNav && (
         <div className="fixed inset-0 z-[65] lg:hidden">
@@ -154,7 +233,9 @@ function Shell() {
           <SidebarContent
             tab={tab}
             badges={badges}
-            items={allowedNav}
+            groups={allowedGroups}
+            showDashboard={showDashboard}
+            showGuide={showGuide}
             onNav={(t) => {
               setTab(t as Tab);
               setMobileNav(false);
@@ -165,8 +246,10 @@ function Shell() {
         </div>
       )}
 
-      {/* ====== المحتوى ====== */}
-      <div className="flex-1 min-w-0 flex flex-col">
+      {/* ====== المحتوى — الجزء المتحرك ====== */}
+      <div className="flex-1 min-w-0 flex flex-col lg:ps-64">
+        {/* عمود المحتوى — محاذٍ لجانب الشريط الجانبي (يمين القسم الأيسر) */}
+        <div className="flex-1 flex flex-col w-full max-w-[1400px] min-w-0">
         <Topbar
           tab={tab}
           onMenu={() => setMobileNav(true)}
@@ -176,7 +259,7 @@ function Shell() {
             setTab("guide");
           }}
         />
-        <main className="flex-1 px-4 sm:px-6 lg:px-8 py-6 w-full max-w-[1440px] mx-auto">
+        <main className="flex-1 px-4 sm:px-6 lg:px-8 py-6 w-full">
           {tab === "dashboard" && (
             <Dashboard
               onOpenPatient={setDrawerId}
@@ -189,21 +272,47 @@ function Shell() {
           {tab === "session" && <SessionPage />}
           {tab === "patients" && <PatientsPage addSignal={addPatientSignal} onOpenPatient={setDrawerId} onBook={(pid) => openBook(pid)} />}
           {tab === "invoices" && <InvoicesPage />}
-          {tab === "inventory" && <InventoryPage />}
+          {tab === "inventory" && <InventoryPage onGoItems={() => setTab("itemsData")} />}
           {tab === "services" && <ServicesPage />}
+          {tab === "serviceCats" && <ServiceCatsPage />}
+          {tab === "priceList" && <PriceListPage />}
+          {tab === "itemCats" && <ItemCatsPage />}
+          {tab === "itemsData" && <ItemsDataPage />}
           {tab === "expenses" && <ExpensesPage />}
           {tab === "reports" && <ReportsPage />}
           {tab === "team" && <TeamPage />}
           {tab === "currencies" && <CurrenciesPage />}
+          {tab === "expenseCats" && <ExpenseCatsPage />}
           {tab === "users" && <UsersPage />}
           {tab === "settings" && <SettingsPage />}
+          {tab === "preferences" && <PreferencesPage />}
           {tab === "guide" && <GuidePage focus={guideFocus} />}
 
-          <footer className="mt-10 pb-4 flex flex-wrap items-center justify-between gap-2 text-[11px] text-soft/80 font-medium">
-            <span>نظام {clinicOf(db).clinicName} · إصدار 2.6</span>
-            <span>البيانات تُحفَظ محلياً على هذا الجهاز</span>
+          <footer className="mt-12 border-t border-line pt-5 pb-4">
+            <div className="text-center space-y-2.5">
+              <p className="text-xs font-bold text-soft">
+                © {new Date().getFullYear()} جميع الحقوق محفوظة — <span className="text-jade-deep">شركة أوكيانوس سوفت</span>
+              </p>
+              <div className="flex items-center justify-center gap-5 text-[11px] flex-wrap">
+                <a
+                  href="https://okyanussoft.online/"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex items-center gap-1.5 text-jade-deep hover:underline underline-offset-4 font-semibold transition-colors"
+                >
+                  <IconGlobe className="w-3.5 h-3.5" />
+                  <span dir="ltr">okyanussoft.online</span>
+                </a>
+                <span className="flex items-center gap-1.5 text-soft font-semibold">
+                  <IconPhone className="w-3.5 h-3.5" />
+                  <span dir="ltr">781 183 050</span>
+                </span>
+              </div>
+              <p className="text-[10px] text-soft/60">نظام {clinicOf(db).clinicName} · الإصدار 3.0</p>
+            </div>
           </footer>
         </main>
+        </div>
       </div>
 
       {/* ====== طبقات عامة ====== */}
@@ -227,14 +336,18 @@ function SidebarContent({
   onNav,
   onClose,
   className,
-  items,
+  groups,
+  showDashboard,
+  showGuide,
 }: {
   tab: Tab;
   badges: Partial<Record<Tab, number>>;
   onNav: (t: string) => void;
   onClose?: () => void;
   className: string;
-  items: typeof NAV;
+  groups: typeof NAV_GROUPS;
+  showDashboard: boolean;
+  showGuide: boolean;
 }) {
   const { db } = useStore();
   const clinic = clinicOf(db);
@@ -254,17 +367,58 @@ function SidebarContent({
         )}
       </div>
 
-      <p className="px-6 text-[10px] font-bold text-white/35 tracking-widest mb-2 mt-2">القائمة الرئيسية</p>
-      <nav className="px-4 space-y-1">
-        {items.map((n) => (
-          <button key={n.key} className={`navlink ${tab === n.key ? "active" : ""}`} onClick={() => onNav(n.key)}>
-            {n.icon("w-5 h-5")}
-            <span className="flex-1 text-start">{n.label}</span>
-            {badges[n.key] ? (
-              <span className="chip !py-1 !px-2 bg-white/12 text-[#7fe0d4] !text-[10px]">{badges[n.key]}</span>
-            ) : null}
-          </button>
+      <nav className="px-4 pb-4 space-y-4 overflow-y-auto flex-1 min-h-0">
+        {/* لوحة التحكم — عنصر رئيسي مستقل */}
+        {showDashboard && (
+          <div>
+            <div className="flex items-center gap-2 px-1 mb-2">
+              <span className="w-1.5 h-4 rounded-full bg-frost/80" />
+              <p className="text-[11px] font-black text-white/80 tracking-wide">القائمة الرئيسية</p>
+              <span className="flex-1 h-px bg-gradient-to-l from-white/25 to-transparent" />
+            </div>
+            <button className={`navlink ${tab === "dashboard" ? "active" : ""}`} onClick={() => onNav("dashboard")}>
+              {NAV_STANDALONE_TOP.icon("w-5 h-5")}
+              <span className="flex-1 text-start">{NAV_STANDALONE_TOP.label}</span>
+            </button>
+          </div>
+        )}
+
+        {/* الأقسام المجمّعة */}
+        {groups.map((g) => (
+          <div key={g.label}>
+            <div className="flex items-center gap-2 px-1 mb-2 mt-3">
+              <span className="w-1.5 h-4 rounded-full bg-frost/80" />
+              <p className="text-[12px] font-black text-white/90 tracking-wide">{g.label}</p>
+              <span className="flex-1 h-px bg-gradient-to-l from-white/25 to-transparent" />
+            </div>
+            <div className="space-y-1">
+              {g.items.map((n) => (
+                <button key={n.key} className={`navlink ${tab === n.key ? "active" : ""}`} onClick={() => onNav(n.key)}>
+                  {n.icon("w-5 h-5")}
+                  <span className="flex-1 text-start">{n.label}</span>
+                  {badges[n.key] ? (
+                    <span className="chip !py-1 !px-2 bg-white/12 text-frost !text-[10px]">{badges[n.key]}</span>
+                  ) : null}
+                </button>
+              ))}
+            </div>
+          </div>
         ))}
+
+        {/* دليل المستخدم — عنصر مستقل أسفل القائمة */}
+        {showGuide && (
+          <div>
+            <div className="flex items-center gap-2 px-1 mb-2 mt-3">
+              <span className="w-1.5 h-4 rounded-full bg-frost/80" />
+              <p className="text-[12px] font-black text-white/90 tracking-wide">المساعدة</p>
+              <span className="flex-1 h-px bg-gradient-to-l from-white/25 to-transparent" />
+            </div>
+            <button className={`navlink ${tab === "guide" ? "active" : ""}`} onClick={() => onNav("guide")}>
+              {NAV_STANDALONE_BOTTOM.icon("w-5 h-5")}
+              <span className="flex-1 text-start">{NAV_STANDALONE_BOTTOM.label}</span>
+            </button>
+          </div>
+        )}
       </nav>
 
       <div className="mt-auto px-4 pb-5 space-y-3">
@@ -365,7 +519,7 @@ function Topbar({ tab, onMenu, onOpenPatient, onHelp }: { tab: Tab; onMenu: () =
 
   return (
     <header className="sticky top-0 z-40 bg-mist/85 backdrop-blur-md border-b border-line">
-      <div className="max-w-[1440px] mx-auto flex items-center gap-3 px-4 sm:px-6 lg:px-8 h-16">
+      <div className="flex items-center gap-3 px-4 sm:px-6 lg:px-8 h-16">
         <button className="icon-btn lg:hidden" onClick={onMenu} aria-label="القائمة">
           <IconMenu />
         </button>

@@ -1,7 +1,11 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   APPT_META,
+  DENTURE_TYPES,
+  dentitionOf,
   DRUG_WATCH,
+  EXTRACT_TYPES,
+  FILL_TYPES,
   fmtDate,
   fmtDateFull,
   IMPLANT_BRANDS,
@@ -11,6 +15,9 @@ import {
   INV_META,
   ORTHO_KINDS,
   PROSTHETIC_KINDS,
+  RCT_FILLS,
+  RCT_TYPES,
+  RUBBER_TYPES,
   suggestFollowUp,
   today,
   TOOTH_META,
@@ -18,21 +25,30 @@ import {
   useAuth,
   useMoney,
   useStore,
+  WIRE_TYPES,
+  WORK_META,
   XRAY_KINDS,
   type ClinicalSession,
+  type FollowUpStatus,
   type Implant,
   type OrthoCase,
   type Prosthetic,
+  type SessionStage,
   type ToothStatus,
+  type WorkItem,
+  type WorkKind,
   type XrayRec,
 } from "../store";
 import {
   IconAlert,
+  IconArrowLeft,
   IconBraces,
   IconCalendar,
+  IconEye,
   IconCopy,
   IconPencil,
   IconCheck,
+  IconChevronDown,
   IconClock,
   IconCrown,
   IconImplant,
@@ -48,7 +64,7 @@ import {
   IconWallet,
   IconXray,
 } from "../icons";
-import { Avatar, Badge, EmptyState, Field, Modal, Switch, TArea, TInput, TSelect, TwoStepDelete, useToast } from "../components/ui";
+import { Avatar, Badge, Drop, DropItem, EmptyState, Field, Modal, Switch, TArea, TInput, TSelect, TwoStepDelete, useToast } from "../components/ui";
 import DentalChart from "../components/DentalChart";
 import { InvoicePrint, PrintModal, RxPrint } from "../components/PrintSheet";
 
@@ -94,6 +110,9 @@ export default function SessionPage() {
   const [doctorId, setDoctorId] = useState(db.doctors[0]?.id ?? "d1");
   const [adHoc, setAdHoc] = useState(false);
   const [adHocPatient, setAdHocPatient] = useState("");
+  // جلسة سابقة تُعرض للقراءة فقط بعد إنهائها
+  const [viewId, setViewId] = useState<string | null>(null);
+  const viewSession = viewId ? db.sessions.find((s) => s.id === viewId && s.status === "done") : undefined;
 
   // الطبيب المقيَّد يعمل على كرسيّه فقط
   useEffect(() => {
@@ -158,15 +177,20 @@ export default function SessionPage() {
         </div>
       </div>
 
-      {/* الجلسة المفتوحة */}
-      {open ? (
-        <Workstation key={open.id} session={open} />
+      {/* عرض جلسة سابقة للقراءة فقط */}
+      {viewSession ? (
+        <Workstation key={viewSession.id} session={viewSession} readonly onExit={() => setViewId(null)} />
       ) : (
-        <div className="card p-4 flex items-center gap-3 bg-jade-soft/60 !border-jade/30 anim-fade">
-          <span className="inline-flex items-center justify-center w-9 h-9 rounded-lg bg-jade text-white shrink-0"><IconPulse className="w-5 h-5" /></span>
-          <p className="text-sm text-jade-deep font-semibold">الغرفة جاهزة — اختر مريضاً من قائمة الانتظار أدناه لبدء جلسة العلاج.</p>
-        </div>
-      )}
+        <>
+          {/* الجلسة المفتوحة */}
+          {open ? (
+            <Workstation key={open.id} session={open} />
+          ) : (
+            <div className="card p-4 flex items-center gap-3 bg-jade-soft/60 !border-jade/30 anim-fade">
+              <span className="inline-flex items-center justify-center w-9 h-9 rounded-lg bg-jade text-white shrink-0"><IconPulse className="w-5 h-5" /></span>
+              <p className="text-sm text-jade-deep font-semibold">الغرفة جاهزة — اختر مريضاً من قائمة الانتظار أدناه لبدء جلسة العلاج.</p>
+            </div>
+          )}
 
       {/* قائمة الانتظار */}
       <section className="anim-rise" style={{ animationDelay: "120ms" }}>
@@ -273,6 +297,14 @@ export default function SessionPage() {
                       {val > 0 && <Money v={val} />}
                       <p className="text-[10px] text-soft mt-0.5">{d?.name}</p>
                     </div>
+                    <button
+                      onClick={() => setViewId(s.id)}
+                      className="btn-soft !h-9 !px-3.5 !text-xs shrink-0"
+                      title="إعادة فتح المحطة لعرض ما تم إنجازه"
+                    >
+                      <IconEye className="w-4 h-4" />
+                      عرض الجلسة
+                    </button>
                   </div>
                 </li>
               );
@@ -280,6 +312,8 @@ export default function SessionPage() {
           </ul>
         )}
       </section>
+        </>
+      )}
 
       {/* مريض غير مجدول */}
       <Modal
@@ -339,7 +373,7 @@ const TABS: { key: WTab; label: string; icon: (c: string) => React.ReactNode }[]
 
 /* ============================ محطة الجلسة ============================ */
 
-function Workstation({ session }: { session: ClinicalSession }) {
+function Workstation({ session, readonly = false, onExit }: { session: ClinicalSession; readonly?: boolean; onExit?: () => void }) {
   const { db, dispatch, patientById, serviceById, doctorById } = useStore();
   const money = useMoney();
   const { push } = useToast();
@@ -353,8 +387,10 @@ function Workstation({ session }: { session: ClinicalSession }) {
   const [procTooth, setProcTooth] = useState("");
   const [armCancel, setArmCancel] = useState(false);
 
-  const now = useNowTick(1000);
-  const elapsed = Math.max(0, now - new Date(session.startedAt).getTime());
+  const now = useNowTick(readonly ? 0 : 1000);
+  const elapsed = readonly
+    ? Math.max(0, new Date(session.endedAt ?? session.startedAt).getTime() - new Date(session.startedAt).getTime())
+    : Math.max(0, now - new Date(session.startedAt).getTime());
   const mm = Math.floor(elapsed / 60000);
   const ss = Math.floor((elapsed % 60000) / 1000);
   const hh = Math.floor(mm / 60);
@@ -366,7 +402,10 @@ function Workstation({ session }: { session: ClinicalSession }) {
     return () => clearTimeout(t);
   }, [armCancel]);
 
-  const patch = (pp: Partial<ClinicalSession>) => dispatch({ type: "PATCH_SESSION", id: session.id, patch: pp });
+  const patch = (pp: Partial<ClinicalSession>) => {
+    if (readonly) return push("info", "هذه الجلسة للقراءة فقط", "انقر «عودة لمحطة العمل» لبدء جلسة جديدة.");
+    dispatch({ type: "PATCH_SESSION", id: session.id, patch: pp });
+  };
 
   const pendingTeeth = useMemo(
     () => Object.fromEntries(session.teethTreated.map((t) => [t.tooth, t.status])) as Record<number, ToothStatus>,
@@ -472,7 +511,25 @@ function Workstation({ session }: { session: ClinicalSession }) {
   const hasAllergy = p.allergies && p.allergies !== "لا يوجد";
 
   return (
-    <div className="card !rounded-2xl overflow-hidden anim-pop !border-jade/40 shadow-[0_20px_50px_-20px_rgba(11,47,43,0.35)]">
+    <div className={`card !rounded-2xl overflow-hidden anim-pop shadow-[0_20px_50px_-20px_rgba(11,47,43,0.35)] ${readonly ? "!border-amber/50" : "!border-jade/40"}`}>
+      {/* شريط القراءة فقط */}
+      {readonly && (
+        <div className="bg-gradient-to-l from-amber-soft to-amber-soft/40 border-b border-amber/30 px-5 py-2.5 flex flex-wrap items-center gap-3">
+          <span className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-amber text-white shrink-0"><IconEye className="w-4 h-4" /></span>
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-bold text-[#7a4c08]">عرض جلسة سابقة — للقراءة فقط</p>
+            <p className="text-[10px] text-[#a06410]/80 mt-0.5">
+              انتهت {session.endedAt ? fmtDate(session.endedAt.slice(0, 10)) : ""} · المدة {fmtDur(elapsed)} · لا يمكن تعديل البيانات
+            </p>
+          </div>
+          {onExit && (
+            <button onClick={onExit} className="btn-ghost !h-8 !px-3 !text-[11px] !bg-white">
+              <IconArrowLeft className="w-3.5 h-3.5" />
+              عودة لمحطة العمل
+            </button>
+          )}
+        </div>
+      )}
       {/* شريط الجلسة */}
       <div className="bg-pine sidebar-texture text-white px-5 py-4">
         <div className="flex flex-wrap items-center gap-5">
@@ -578,6 +635,7 @@ function Workstation({ session }: { session: ClinicalSession }) {
       </div>
 
       {/* شريط الخروج الدائم */}
+      {!readonly && (
       <div className="border-t border-line bg-white px-5 py-4">
         <div className="flex flex-wrap items-center gap-4">
           <div className="flex items-center gap-5">
@@ -629,7 +687,596 @@ function Workstation({ session }: { session: ClinicalSession }) {
           </div>
         </div>
       </div>
+      )}
     </div>
+  );
+}
+
+/* ============================ مخطط العمل السريري ============================ */
+
+const WORK_KINDS: WorkKind[] = ["قلع", "حشوات", "سحب عصب", "تركيب", "أطقم", "تقويم"];
+
+/* رسم مصغر لقنوات العصب حسب العدد المختار */
+function CanalMini({ n }: { n: number }) {
+  const xs = n === 1 ? [16] : n === 2 ? [11, 21] : n === 3 ? [8, 16, 24] : [7, 13.5, 19.5, 25.5];
+  return (
+    <svg viewBox="0 0 32 40" className="w-12 h-15 shrink-0" aria-hidden="true">
+      <path d="M6 14 Q5 6 10 4 Q16 2 22 4 Q27 6 26 14 Q25 20 22 24 L21 34 Q16 37 11 34 L10 24 Q7 20 6 14 Z" fill="#fdf4e2" stroke="#e2952b" strokeWidth="1.5" />
+      {xs.map((x, i) => (
+        <path key={i} d={`M ${x} 8 L ${x + (x < 16 ? -1.5 : 1.5)} 31`} stroke="#b9791f" strokeWidth="2" strokeLinecap="round" fill="none" />
+      ))}
+    </svg>
+  );
+}
+
+function WorkPlanSection({
+  session,
+  patch,
+  age,
+  baseTeeth,
+  onSetTooth,
+}: {
+  session: ClinicalSession;
+  patch: (pp: Partial<ClinicalSession>) => void;
+  age: number;
+  baseTeeth: Partial<Record<number, ToothStatus>>;
+  onSetTooth?: (tooth: number, status: ToothStatus) => void;
+}) {
+  const { db, dispatch, serviceById } = useStore();
+  const { push } = useToast();
+  const [selection, setSelection] = useState<number[]>([]);
+  const [kind, setKind] = useState<WorkKind | null>(null);
+  const [stageId, setStageId] = useState(session.stages[0]?.id ?? "");
+  const [extractType, setExtractType] = useState(EXTRACT_TYPES[0]);
+  const [fillType, setFillType] = useState(FILL_TYPES[0]);
+  const [rctType, setRctType] = useState(RCT_TYPES[0]);
+  const [channels, setChannels] = useState(2);
+  const [rctFill, setRctFill] = useState(RCT_FILLS[0]);
+  const [prosType, setProsType] = useState(PROSTHETIC_KINDS[0]);
+  const [withRct, setWithRct] = useState(false);
+  const [dentureType, setDentureType] = useState(DENTURE_TYPES[0]);
+  const [wireType, setWireType] = useState(WIRE_TYPES[0]);
+  const [wireNum, setWireNum] = useState("014");
+  const [rubberType, setRubberType] = useState(RUBBER_TYPES[0]);
+  const [note, setNote] = useState("");
+
+  const mode = dentitionOf(age);
+
+  const workBadges = useMemo(() => {
+    const m: Partial<Record<number, WorkKind>> = {};
+    session.workItems.forEach((w) => w.teeth.forEach((t) => (m[t] = w.kind)));
+    return m;
+  }, [session.workItems]);
+
+  const toggleTooth = (n: number) =>
+    setSelection((sel) => (sel.includes(n) ? sel.filter((x) => x !== n) : [...sel, n]));
+
+  const stageName = (id: string) => session.stages.find((s) => s.id === id)?.name ?? "—";
+
+  const addWork = () => {
+    if (!kind) return push("warn", "اختر نوع العمل أولاً");
+    if (kind !== "أطقم" && kind !== "تقويم" && selection.length === 0)
+      return push("warn", "حدّد سناً واحداً على الأقل من الخريطة");
+    const item: WorkItem = {
+      id: uid(),
+      kind,
+      teeth: kind === "أطقم" || kind === "تقويم" ? [] : [...selection],
+      stageId,
+      note: note.trim() || undefined,
+    };
+    if (kind === "قلع") item.extractType = extractType;
+    if (kind === "حشوات") item.fillType = fillType;
+    if (kind === "سحب عصب") {
+      item.rctType = rctType;
+      item.channels = channels;
+      item.rctFill = rctFill;
+    }
+    if (kind === "تركيب") {
+      item.prosType = prosType;
+      item.withRct = withRct;
+      if (withRct) {
+        item.rctType = rctType;
+        item.channels = channels;
+      }
+    }
+    if (kind === "أطقم") item.dentureType = dentureType;
+    if (kind === "تقويم") {
+      item.wireType = wireType;
+      item.wireNum = wireNum;
+      item.rubberType = rubberType;
+    }
+    // تحديث ألوان الخريطة حسب العمل
+    const treated = [...session.teethTreated.filter((t) => !item.teeth.includes(t.tooth))];
+    item.teeth.forEach((tooth) => treated.push({ tooth, status: WORK_META[kind].status }));
+    patch({ workItems: [...session.workItems, item], teethTreated: treated });
+    push("success", `أُضيف عمل «${kind}»`, item.teeth.length ? `${item.teeth.length} سن — ${stageName(stageId)}` : stageName(stageId));
+    setSelection([]);
+    setKind(null);
+    setNote("");
+  };
+
+  const removeWork = (id: string) => {
+    const w = session.workItems.find((x) => x.id === id);
+    patch({ workItems: session.workItems.filter((x) => x.id !== id) });
+    if (w) push("info", `حُذف عمل «${w.kind}»`);
+  };
+
+  /* ربط المرحلة بعودة/متابعة تلقائياً — الجلسة الثانية بتاريخ لاحق = عودة مسجلة */
+  const stageReason = (name: string) => `${name} — متابعة خطة العلاج (${serviceById(session.procedures[0]?.serviceId ?? "")?.name ?? "علاج مستمر"})`;
+
+  const addStage = () => {
+    const n = session.stages.length + 1;
+    const names = ["", "الجلسة الأولى", "الجلسة الثانية", "الجلسة الثالثة", "الجلسة الرابعة", "الجلسة الخامسة"];
+    const st: SessionStage = { id: uid(), name: names[n] ?? `الجلسة ${n}`, date: today(7 * (n - 1)), done: false };
+    // مرحلة بتاريخ قادم ← تُسجل عودة/متابعة في نظام المتابعات تلقائياً
+    if (st.date >= today(0)) {
+      st.fuId = uid();
+      dispatch({
+        type: "ADD_FOLLOWUP",
+        f: { id: st.fuId, patientId: session.patientId, doctorId: session.doctorId, reason: stageReason(st.name), dueDate: st.date, status: "pending", createdAt: new Date().toISOString() },
+      });
+      push("success", `أُضيفت «${st.name}»`, "سُجّلت عودة/متابعة تلقائياً في نظام المتابعات.");
+    } else {
+      push("info", `أُضيفت «${st.name}»`);
+    }
+    patch({ stages: [...session.stages, st] });
+    setStageId(st.id);
+  };
+
+  const toggleStage = (id: string) =>
+    patch({ stages: session.stages.map((s) => (s.id === id ? { ...s, done: !s.done } : s)) });
+
+  const updateStage = (id: string, p: Partial<SessionStage>) => {
+    const st = session.stages.find((s) => s.id === id);
+    patch({ stages: session.stages.map((s) => (s.id === id ? { ...s, ...p } : s)) });
+    // مزامنة العودة المرتبطة عند تغيير التاريخ أو الاسم
+    if (st?.fuId && (p.date !== undefined || p.name !== undefined)) {
+      const fu = db.followUps.find((f) => f.id === st.fuId);
+      if (fu) {
+        dispatch({ type: "UPDATE_FOLLOWUP", f: { ...fu, dueDate: p.date ?? fu.dueDate, reason: p.name ? stageReason(p.name) : fu.reason } });
+      }
+    }
+  };
+
+  /* ربط مرحلة قديمة (بلا عودة) بنظام المتابعات */
+  const linkStageFollowUp = (id: string) => {
+    const st = session.stages.find((s) => s.id === id);
+    if (!st || st.fuId) return;
+    const fuId = uid();
+    patch({ stages: session.stages.map((s) => (s.id === id ? { ...s, fuId } : s)) });
+    dispatch({
+      type: "ADD_FOLLOWUP",
+      f: { id: fuId, patientId: session.patientId, doctorId: session.doctorId, reason: stageReason(st.name), dueDate: st.date, status: "pending", createdAt: new Date().toISOString() },
+    });
+    push("success", "رُبطت المرحلة بعودة", "ظهرت الآن في نظام المتابعات.");
+  };
+
+  /* تغيير حالة العودة المرتبطة بالمرحلة (إرجاعها لمعلقة/محجوزة/مكتملة) */
+  const setFuStatus = (fuId: string, status: FollowUpStatus) => {
+    const fu = db.followUps.find((f) => f.id === fuId);
+    if (!fu) return;
+    dispatch({ type: "UPDATE_FOLLOWUP", f: { ...fu, status } });
+    const labels: Record<FollowUpStatus, string> = { pending: "عودة معلقة (تنتظر المراجعة)", booked: "عودة محجوزة", done: "عودة مكتملة" };
+    push("success", "تغيّرت حالة المتابعة", labels[status]);
+  };
+
+  const deleteStage = (id: string) => {
+    if (session.stages.length <= 1) return push("warn", "لا يمكن حذف المرحلة الوحيدة");
+    const st = session.stages.find((s) => s.id === id);
+    // حذف العودة المرتبطة إن وُجدت
+    if (st?.fuId) dispatch({ type: "DELETE_FOLLOWUP", id: st.fuId });
+    patch({
+      stages: session.stages.filter((s) => s.id !== id),
+      workItems: session.workItems.map((w) => (w.stageId === id ? { ...w, stageId: session.stages.find((s) => s.id !== id)!.id } : w)),
+    });
+    if (st) push("info", `حُذفت مرحلة «${st.name}»`, st.fuId ? "أُزيلت عودتها المرتبطة من المتابعات." : "نُقلت أعمالها إلى مرحلة أخرى.");
+  };
+
+  const label = (n: number) => (mode === "child" ? "ABCDE"[(n % 10) - 1] : String(n));
+
+  const kindBtn = (k: WorkKind) => {
+    const active = kind === k;
+    const m = WORK_META[k];
+    return (
+      <button
+        key={k}
+        onClick={() => setKind(active ? null : k)}
+        className={`rounded-xl border-2 px-3 py-2.5 text-sm font-bold cursor-pointer transition-all flex items-center gap-2 ${
+          active ? "shadow-md scale-[1.02]" : "border-line bg-white text-soft hover:border-jade/40"
+        }`}
+        style={active ? { borderColor: m.color, background: `${m.color}14`, color: m.color } : undefined}
+      >
+        <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: m.color }} />
+        {k}
+      </button>
+    );
+  };
+
+  return (
+    <section className="card p-5 anim-fade">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+        <h3 className="font-display font-bold text-lg text-ink flex items-center gap-2">
+          <span className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-jade-soft text-jade-deep"><IconTooth className="w-4.5 h-4.5" /></span>
+          مخطط العمل السريري
+          <span className="chip bg-mist text-soft !text-[9px]">
+            {mode === "child" ? "أسنان لبنية A–E" : "أسنان دائمة FDI"} · حسب العمر
+          </span>
+        </h3>
+        {session.workItems.length > 0 && (
+          <span className="chip bg-amber-soft text-[#a06410]">
+            <IconClock className="w-3.5 h-3.5" />
+            {session.workItems.length} عمل مخطط — يُثبَّت عند الخروج
+          </span>
+        )}
+      </div>
+
+      {/* الخريطة بالاختيار المتعدد — تعرض حالة المريض الحالية + الأعمال المعلقة */}
+      <DentalChart
+        teeth={baseTeeth}
+        mode={mode}
+        multiSelect
+        selection={selection}
+        onToggle={toggleTooth}
+        workBadges={workBadges}
+        onSet={onSetTooth}
+        editorNote="تغيير حالة السن يُعلَّق هنا ويُثبَّت في ملف المريض عند إنهاء الجلسة."
+      />
+
+      {/* شريط الاختيار + نوع العمل */}
+      <div className="mt-5 rounded-xl border border-line bg-mist/50 p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-3.5">
+          <div className="flex items-center gap-2.5">
+            <span className="inline-flex items-center justify-center w-9 h-9 rounded-lg bg-sky-soft text-sky stat-num text-lg font-bold">{selection.length}</span>
+            <div>
+              <p className="text-sm font-bold text-ink leading-tight">
+                {selection.length === 0 ? "لم تُحدد أسناناً" : selection.length === 1 ? "سن واحد محدد" : `${selection.length} أسنان محددة`}
+              </p>
+              {selection.length > 0 && (
+                <p className="text-[11px] font-semibold text-soft stat-num mt-0.5">{selection.map(label).join(" · ")}</p>
+              )}
+            </div>
+          </div>
+          <TSelect value={stageId} onChange={(e) => setStageId(e.target.value)} className="!w-44">
+            {session.stages.map((s) => (
+              <option key={s.id} value={s.id}>{s.name}</option>
+            ))}
+          </TSelect>
+        </div>
+
+        <div className="flex flex-wrap gap-2 mb-4">{WORK_KINDS.map(kindBtn)}</div>
+
+        {/* الحقول الديناميكية حسب نوع العمل */}
+        {kind && (
+          <div className="anim-pop rounded-xl border border-line bg-white p-4 space-y-3.5">
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-bold" style={{ color: WORK_META[kind].color }}>
+                تفاصيل «{kind}» — {WORK_META[kind].desc}
+              </p>
+              {kind !== "أطقم" && kind !== "تقويم" && (
+                <span className="chip bg-mist text-soft stat-num">عدد الأسنان: {selection.length}</span>
+              )}
+            </div>
+
+            {kind === "قلع" && (
+              <div className="flex flex-wrap items-end gap-3">
+                <div className="min-w-48 flex-1">
+                  <Field label="نوع القلع">
+                    <TSelect value={extractType} onChange={(e) => setExtractType(e.target.value)}>
+                      {EXTRACT_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+                      <option value="أخرى">أخرى…</option>
+                    </TSelect>
+                  </Field>
+                </div>
+                {extractType === "أخرى" && (
+                  <div className="min-w-48 flex-1">
+                    <Field label="حدّد النوع">
+                      <TInput value={note} onChange={(e) => setNote(e.target.value)} placeholder="مثال: قلع ضرس عقل منطمر" />
+                    </Field>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {kind === "حشوات" && (
+              <div className="min-w-48">
+                <Field label="نوع الحشوة">
+                  <TSelect value={fillType} onChange={(e) => setFillType(e.target.value)}>
+                    {FILL_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+                    <option value="أخرى">أخرى…</option>
+                  </TSelect>
+                </Field>
+                {fillType === "أخرى" && (
+                  <TInput value={note} onChange={(e) => setNote(e.target.value)} placeholder="اكتب نوع الحشوة…" className="!mt-2" />
+                )}
+              </div>
+            )}
+
+            {(kind === "سحب عصب" || (kind === "تركيب" && withRct)) && (
+              <div className="flex flex-wrap items-end gap-4">
+                <div className="min-w-48 flex-1">
+                  <Field label="نوع سحب العصب">
+                    <TSelect value={rctType} onChange={(e) => setRctType(e.target.value)}>
+                      {RCT_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+                    </TSelect>
+                  </Field>
+                </div>
+                <div>
+                  <Field label="عدد القنوات">
+                    <div className="flex items-center gap-2.5">
+                      <CanalMini n={channels} />
+                      <div className="flex items-center gap-1 bg-mist rounded-lg p-1" dir="ltr">
+                        <button onClick={() => setChannels((c) => Math.max(1, c - 1))} className="w-8 h-8 rounded-md bg-white border border-line font-bold cursor-pointer hover:border-jade">−</button>
+                        <span className="stat-num text-base w-8 text-center text-ink">{channels}</span>
+                        <button onClick={() => setChannels((c) => Math.min(4, c + 1))} className="w-8 h-8 rounded-md bg-white border border-line font-bold cursor-pointer hover:border-jade">+</button>
+                      </div>
+                    </div>
+                  </Field>
+                </div>
+                {kind === "سحب عصب" && (
+                  <div className="min-w-48 flex-1">
+                    <Field label="حشوة الجلسة الأولى">
+                      <TSelect value={rctFill} onChange={(e) => setRctFill(e.target.value)}>
+                        {RCT_FILLS.map((t) => <option key={t} value={t}>{t}</option>)}
+                      </TSelect>
+                    </Field>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {kind === "تركيب" && (
+              <div className="flex flex-wrap items-end gap-3">
+                <div className="min-w-48 flex-1">
+                  <Field label="نوع التركيب">
+                    <TSelect value={prosType} onChange={(e) => setProsType(e.target.value)}>
+                      {PROSTHETIC_KINDS.map((t) => <option key={t} value={t}>{t}</option>)}
+                    </TSelect>
+                  </Field>
+                </div>
+                <label className="flex items-center gap-2.5 cursor-pointer pb-2.5 select-none">
+                  <Switch on={withRct} onChange={setWithRct} />
+                  <span className="text-xs font-bold text-soft">يترافق مع سحب عصب</span>
+                </label>
+              </div>
+            )}
+
+            {kind === "أطقم" && (
+              <div className="min-w-48">
+                <Field label="نوع الطقم">
+                  <TSelect value={dentureType} onChange={(e) => setDentureType(e.target.value)}>
+                    {DENTURE_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+                  </TSelect>
+                </Field>
+              </div>
+            )}
+
+            {kind === "تقويم" && (
+              <div className="grid sm:grid-cols-3 gap-3">
+                <Field label="نوع السلك">
+                  <TSelect value={wireType} onChange={(e) => setWireType(e.target.value)}>
+                    {WIRE_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+                  </TSelect>
+                </Field>
+                <Field label="رقم السلك">
+                  <TInput value={wireNum} onChange={(e) => setWireNum(e.target.value)} placeholder="مثال: 014" />
+                </Field>
+                <Field label="نوع الربلات">
+                  <TSelect value={rubberType} onChange={(e) => setRubberType(e.target.value)}>
+                    {RUBBER_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+                  </TSelect>
+                </Field>
+              </div>
+            )}
+
+            <div className="flex items-center justify-between gap-3 pt-1">
+              <button className="btn-ghost !h-9 !text-xs" onClick={() => { setKind(null); setSelection([]); }}>إلغاء</button>
+              <button
+                onClick={addWork}
+                className="btn-primary !h-10"
+                style={{ background: WORK_META[kind].color, boxShadow: `0 8px 18px -6px ${WORK_META[kind].color}88` }}
+              >
+                <IconPlus className="w-4 h-4" />
+                إضافة إلى خطة العمل — {stageName(stageId)}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* خطة العمل المضافة */}
+      {session.workItems.length > 0 && (
+        <div className="mt-4">
+          <p className="label !mb-2">الأعمال المخططة ({session.workItems.length})</p>
+          <ul className="space-y-2">
+            {session.workItems.map((w) => {
+              const m = WORK_META[w.kind];
+              const detail =
+                w.kind === "قلع" ? w.extractType :
+                w.kind === "حشوات" ? w.fillType :
+                w.kind === "سحب عصب" ? `${w.rctType} · ${w.channels} قناة · ${w.rctFill}` :
+                w.kind === "تركيب" ? `${w.prosType}${w.withRct ? ` · عصب ${w.channels} قناة` : ""}` :
+                w.kind === "أطقم" ? w.dentureType :
+                `${w.wireType} · سلك ${w.wireNum} · ${w.rubberType}`;
+              return (
+                <li key={w.id} className="flex items-center gap-3 rounded-xl border border-line bg-white px-4 py-3 anim-fade" style={{ borderInlineStartWidth: 4, borderInlineStartColor: m.color }}>
+                  <span className="chip" style={{ background: `${m.color}14`, color: m.color }}>{w.kind}</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-bold text-ink truncate">{detail}</p>
+                    <p className="text-[11px] text-soft mt-0.5">
+                      {w.teeth.length > 0 ? <>الأسنان: <span className="stat-num font-bold">{w.teeth.map(label).join("، ")}</span> · </> : null}
+                      {stageName(w.stageId)}
+                      {w.note ? ` · ${w.note}` : ""}
+                    </p>
+                  </div>
+                  <button className="icon-btn !w-8 !h-8 hover:!bg-coral-soft hover:!text-coral" onClick={() => removeWork(w.id)} aria-label="حذف العمل">
+                    <IconTrash className="w-4 h-4" />
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
+
+      {/* جدول مراحل الجلسات */}
+      <div className="mt-5">
+        <div className="flex items-center justify-between mb-2.5">
+          <p className="label !mb-0">مراحل الجلسات — للعلاج متعدد الزيارات</p>
+          <button className="btn-soft !h-8 !px-3 !text-[11px]" onClick={addStage}>
+            <IconPlus className="w-3.5 h-3.5" />
+            مرحلة جديدة
+          </button>
+        </div>
+        <div className="rounded-xl border border-line overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm min-w-[640px]">
+              <thead className="bg-mist/70">
+                <tr>
+                  <th className="th !py-2.5">المرحلة</th>
+                  <th className="th !py-2.5">التاريخ المقرر</th>
+                  <th className="th !py-2.5">المتابعة</th>
+                  <th className="th !py-2.5">الأعمال</th>
+                  <th className="th !py-2.5">الحالة</th>
+                  <th className="th !py-2.5 text-end">إجراءات</th>
+                </tr>
+              </thead>
+              <tbody>
+                {session.stages.map((s) => {
+                  const items = session.workItems.filter((w) => w.stageId === s.id);
+                  return (
+                    <tr key={s.id} className={`border-t border-line/70 ${s.done ? "bg-mint-soft/30" : "bg-white"} transition-colors`}>
+                      <td className="td !py-2">
+                        <input
+                          value={s.name}
+                          onChange={(e) => updateStage(s.id, { name: e.target.value })}
+                          className="font-bold text-ink bg-transparent border border-transparent hover:border-line focus:border-jade focus:bg-white rounded-md px-2 py-1 outline-none w-36 transition-all"
+                          aria-label="اسم المرحلة"
+                        />
+                      </td>
+                      <td className="td !py-2">
+                        <input
+                          type="date"
+                          value={s.date}
+                          onChange={(e) => updateStage(s.id, { date: e.target.value })}
+                          className="text-soft stat-num bg-transparent border border-transparent hover:border-line focus:border-jade focus:bg-white rounded-md px-2 py-1 outline-none transition-all cursor-pointer"
+                          aria-label="التاريخ المقرر"
+                        />
+                      </td>
+                      <td className="td !py-2">
+                        {s.fuId ? (
+                          (() => {
+                            const fu = db.followUps.find((f) => f.id === s.fuId);
+                            if (!fu) return <span className="text-soft/50 text-xs">—</span>;
+                            const overdue = fu.status === "pending" && fu.dueDate < today(0);
+                            const chipCls = fu.status === "done" ? "bg-mint-soft text-[#1d6b47]" : fu.status === "booked" ? "bg-sky-soft text-sky" : overdue ? "bg-coral-soft text-coral" : "bg-jade-soft text-jade-deep";
+                            const chipLabel = fu.status === "done" ? "عودة مكتملة" : fu.status === "booked" ? "عودة محجوزة" : overdue ? "عودة متأخرة" : "عودة مسجلة ✓";
+                            const opts: { key: FollowUpStatus; label: string; dot: string }[] = [
+                              { key: "pending", label: "عودة معلقة (تنتظر المراجعة)", dot: "#0d8f83" },
+                              { key: "booked", label: "عودة محجوزة", dot: "#3a86c4" },
+                              { key: "done", label: "عودة مكتملة", dot: "#2c9c69" },
+                            ];
+                            return (
+                              <Drop
+                                align="start"
+                                button={
+                                  <span className={`chip !text-[10px] cursor-pointer hover:opacity-80 transition-opacity ${chipCls}`} title="انقر لتغيير حالة المتابعة">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-current" />
+                                    {chipLabel}
+                                    <IconChevronDown className="w-3 h-3" />
+                                  </span>
+                                }
+                              >
+                                {opts
+                                  .filter((o) => o.key !== fu.status)
+                                  .map((o) => (
+                                    <DropItem key={o.key}>
+                                      <span onClick={() => setFuStatus(fu.id, o.key)} className="flex items-center gap-2">
+                                        <span className="w-2 h-2 rounded-full shrink-0" style={{ background: o.dot }} />
+                                        {o.label}
+                                      </span>
+                                    </DropItem>
+                                  ))}
+                              </Drop>
+                            );
+                          })()
+                        ) : s.date >= today(0) ? (
+                          <button onClick={() => linkStageFollowUp(s.id)} className="chip !text-[10px] bg-white border border-dashed border-line text-soft hover:border-jade hover:text-jade-deep cursor-pointer transition-all">
+                            <IconPlus className="w-3 h-3" />
+                            ربط بعودة
+                          </button>
+                        ) : (
+                          <span className="text-soft/50 text-xs">—</span>
+                        )}
+                      </td>
+                      <td className="td !py-2">
+                        {items.length === 0 ? (
+                          <span className="text-soft/60 text-xs">—</span>
+                        ) : (
+                          <div className="flex flex-wrap gap-1">
+                            {items.map((w) => (
+                              <span key={w.id} className="chip !text-[9px]" style={{ background: `${WORK_META[w.kind].color}14`, color: WORK_META[w.kind].color }}>{w.kind}</span>
+                            ))}
+                          </div>
+                        )}
+                      </td>
+                      <td className="td !py-2">
+                        <button
+                          onClick={() => toggleStage(s.id)}
+                          className={`chip cursor-pointer transition-all ${s.done ? "bg-mint-soft text-[#1d6b47]" : "bg-mist text-soft hover:bg-sky-soft hover:text-sky"}`}
+                          title="تبديل الحالة"
+                        >
+                          {s.done ? <IconCheck className="w-3 h-3" /> : <IconClock className="w-3 h-3" />}
+                          {s.done ? "منجزة" : "قيد التنفيذ"}
+                        </button>
+                      </td>
+                      <td className="td !py-2 text-end">
+                        <div className="flex items-center justify-end gap-1">
+                          <button
+                            onClick={() => {
+                              const name = prompt("اسم المرحلة:", s.name);
+                              if (name?.trim()) updateStage(s.id, { name: name.trim() });
+                            }}
+                            className="icon-btn !w-7 !h-7"
+                            aria-label="تعديل"
+                            title="تعديل الاسم"
+                          >
+                            <IconPencil className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() => deleteStage(s.id)}
+                            className="icon-btn !w-7 !h-7 hover:!bg-coral-soft hover:!text-coral"
+                            aria-label="حذف"
+                            title="حذف المرحلة"
+                          >
+                            <IconTrash className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          {/* سطر الملاحظات لكل مرحلة */}
+          <div className="border-t border-line bg-mist/40 px-4 py-3 space-y-2">
+            <p className="label !mb-0">ملاحظات المراحل</p>
+            {session.stages.map((s) => (
+              <div key={s.id} className="flex items-center gap-2.5">
+                <span className="chip bg-white border border-line !text-[10px] shrink-0 stat-num">{s.name}</span>
+                <input
+                  value={s.notes ?? ""}
+                  onChange={(e) => updateStage(s.id, { notes: e.target.value })}
+                  placeholder={`ملاحظات ${s.name} — مثل: إحضار الأشعة، تخدير موضعي…`}
+                  className="flex-1 input !h-8 !text-xs"
+                  aria-label={`ملاحظات ${s.name}`}
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -824,26 +1471,8 @@ function TreatmentTab(props: {
         )}
       </section>
 
-      {/* خريطة الأسنان — قسم موسّع بعرض كامل */}
-      <section className="card p-5 anim-fade">
-        <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-          <h3 className="font-display font-bold text-lg text-ink flex items-center gap-2">
-            <span className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-jade-soft text-jade-deep"><IconTooth className="w-4.5 h-4.5" /></span>
-            خريطة الأسنان أثناء الجلسة
-          </h3>
-          {session.teethTreated.length > 0 && (
-            <span className="chip bg-amber-soft text-[#a06410]">
-              <IconClock className="w-3.5 h-3.5" />
-              {session.teethTreated.length} تغيير معلّق — يُثبَّت عند الخروج
-            </span>
-          )}
-        </div>
-        <DentalChart
-          teeth={props.mergedTeeth}
-          onSet={props.setTooth}
-          editorNote="التغيير هنا معلّق — يُثبَّت في ملف المريض نهائياً عند إنهاء الجلسة."
-        />
-      </section>
+      {/* مخطط العمل السريري — خريطة + اختيار متعدد + مراحل الجلسات */}
+      <WorkPlanSection session={session} patch={patch} age={p?.age ?? 30} baseTeeth={props.mergedTeeth} onSetTooth={props.setTooth} />
     </div>
   );
 }

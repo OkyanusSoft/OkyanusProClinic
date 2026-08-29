@@ -4,6 +4,7 @@ import {
   fmtDate,
   FU_META,
   TOOTH_META,
+  dentitionOf,
   invoiceStatus,
   invoiceTotal,
   INV_META,
@@ -52,14 +53,19 @@ export default function PatientsPage({ addSignal, onOpenPatient, onBook }: PageP
   const [showAdd, setShowAdd] = useState(false);
   const [printId, setPrintId] = useState<string | null>(null);
   const [cardId, setCardId] = useState<string | null>(null);
+  // مرضى أُضيفوا للتو — يُظهرون فورًا لمن أضافهم حتى لو كانوا خارج نطاق رؤيته المعتاد
+  const [justAdded, setJustAdded] = useState<string[]>([]);
 
   useEffect(() => {
     if (addSignal > 0) setShowAdd(true);
   }, [addSignal]);
 
   const scopedPatients = useMemo(
-    () => (patientScope ? db.patients.filter((p) => patientScope.has(p.id)) : db.patients),
-    [db.patients, patientScope]
+    () =>
+      patientScope
+        ? db.patients.filter((p) => patientScope.has(p.id) || justAdded.includes(p.id))
+        : db.patients,
+    [db.patients, patientScope, justAdded]
   );
 
   const list = useMemo(() => {
@@ -215,6 +221,7 @@ export default function PatientsPage({ addSignal, onOpenPatient, onBook }: PageP
         onClose={() => setShowAdd(false)}
         onSaved={(p) => {
           setShowAdd(false);
+          setJustAdded((prev) => [...prev, p.id]);
           push("success", "تمت إضافة المريض", `${p.name} أُضيف إلى السجل بنجاح.`);
           onOpenPatient(p.id);
         }}
@@ -269,11 +276,12 @@ function AddPatientModal({
 
   const save = () => {
     if (name.trim().length < 3) return setErr("أدخل الاسم الثلاثي على الأقل.");
-    if (!/^7\d{8}$/.test(phone.trim())) return setErr("رقم الجوال يجب أن يكون 9 أرقام يبدأ بـ 7 (مثل 77xxxxxxx).");
+    const cleanPhone = phone.replace(/[\s\-().]/g, "");
+    if (!/^7\d{8,14}$/.test(cleanPhone)) return setErr("رقم الجوال يجب أن يبدأ بـ 7 ويتكون من 9 أرقام على الأقل (مثل 771234567).");
     const p: Patient = {
       id: uid(),
       name: name.trim(),
-      phone: phone.trim(),
+      phone: cleanPhone,
       age: Number(age) || 25,
       gender,
       blood,
@@ -381,27 +389,31 @@ export function PatientDrawer({
     return () => window.removeEventListener("keydown", onKey);
   }, [id, onClose]);
 
-  if (!p) return null;
+  // لا إرجاع مبكر هنا — يجب تنفيذ كل الـ hooks بنفس الترتيب في كل عرض (قاعدة React)
+  const pid = p?.id ?? "";
 
   const visits = db.appointments
-    .filter((a) => a.patientId === p.id)
+    .filter((a) => a.patientId === pid)
     .sort((a, b) => (b.date + b.time).localeCompare(a.date + a.time));
-  const invoices = db.invoices.filter((i) => i.patientId === p.id);
-  const rxs = db.prescriptions.filter((r) => r.patientId === p.id);
+  const invoices = db.invoices.filter((i) => i.patientId === pid);
+  const rxs = db.prescriptions.filter((r) => r.patientId === pid);
   const fus = db.followUps
-    .filter((f) => f.patientId === p.id)
+    .filter((f) => f.patientId === pid)
     .sort((a, b) => (a.status === b.status ? a.dueDate.localeCompare(b.dueDate) : a.status === "pending" ? -1 : 1));
 
   /* سجل الأعمال: جلسات العلاج المكتملة (غنية) + الزيارات بدون جلسة */
   const workLog = useMemo(() => {
-    const sess = db.sessions.filter((s) => s.patientId === p.id && s.status === "done");
+    if (!pid) return [];
+    const sess = db.sessions.filter((s) => s.patientId === pid && s.status === "done");
     const sessAppts = new Set(sess.map((s) => s.apptId).filter(Boolean));
     const plain = visits.filter((a) => a.status === "done" && !sessAppts.has(a.id));
     return [
       ...sess.map((s) => ({ kind: "session" as const, id: s.id, date: s.date, sort: s.endedAt ?? s.startedAt, s })),
       ...plain.map((a) => ({ kind: "visit" as const, id: a.id, date: a.date, sort: a.date + "T" + a.time + ":00", a })),
     ].sort((x, y) => y.sort.localeCompare(x.sort));
-  }, [db.sessions, visits, p.id]);
+  }, [db.sessions, visits, pid]);
+
+  if (!p) return null;
 
   const fuChip = (fuId?: string) => {
     const fu = fuId ? db.followUps.find((f) => f.id === fuId) : undefined;
@@ -499,9 +511,14 @@ export function PatientDrawer({
           </div>
 
           <section className="card p-5">
-            <h3 className="font-display font-bold text-lg text-ink mb-4">خريطة الأسنان <span className="text-xs font-body font-medium text-soft">(ترقيم FDI)</span></h3>
+            <h3 className="font-display font-bold text-lg text-ink mb-1">خريطة الأسنان</h3>
+            <p className="text-xs font-body font-medium text-soft mb-4">
+              {dentitionOf(p.age) === "child" ? "أسنان لبنية (أطفال) — ترميز A إلى E" : "أسنان دائمة (بالغون) — ترقيم FDI"}
+              <span className="ms-2 text-soft/70">· تُحدَّد تلقائياً من عمر المريض ({p.age} سنة)</span>
+            </p>
             <DentalChart
               teeth={p.teeth}
+              age={p.age}
               onSet={(tooth, status) => {
                 dispatch({ type: "SET_TOOTH", patientId: p.id, tooth, status });
                 push("success", `تم تحديث السن ${tooth}`, status === "healthy" ? "عُدِّلت الحالة إلى سليم." : undefined);

@@ -135,6 +135,44 @@ CREATE TABLE IF NOT EXISTS currencies (
   rate   DECIMAL(14,4) DEFAULT 1
 );
 
+-- ============================ المخزون والمستهلكات ============================
+CREATE TABLE IF NOT EXISTS supplies (
+  id       VARCHAR(32) PRIMARY KEY,
+  name     VARCHAR(140) NOT NULL,
+  category VARCHAR(60),
+  unit     VARCHAR(40),
+  qty      DECIMAL(12,2) DEFAULT 0,
+  minQty   DECIMAL(12,2) DEFAULT 0,
+  cost     DECIMAL(12,2) DEFAULT 0,
+  expiry   DATE,
+  INDEX idx_supplies_cat (category)
+);
+
+CREATE TABLE IF NOT EXISTS supply_moves (
+  id     VARCHAR(32) PRIMARY KEY,
+  itemId VARCHAR(32),
+  delta  DECIMAL(12,2) DEFAULT 0,
+  note   VARCHAR(255),
+  date   DATETIME,
+  INDEX idx_sm_item (itemId)
+);
+
+-- ============================ الفئات (خدمات / أصناف / مصروفات) ============================
+CREATE TABLE IF NOT EXISTS service_cats (
+  name VARCHAR(80) PRIMARY KEY,
+  sort INT DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS item_cats (
+  name VARCHAR(80) PRIMARY KEY,
+  sort INT DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS expense_cats (
+  name VARCHAR(80) PRIMARY KEY,
+  sort INT DEFAULT 0
+);
+
 -- ============================ السجلات السريرية ============================
 -- الجلسات والإجراءات والروشتات والزراعة والتركيبات والتقويم والأشعة
 -- تُحفَظ كاملة داخل clinic_state.doc لضمان تطابق الواجهة،

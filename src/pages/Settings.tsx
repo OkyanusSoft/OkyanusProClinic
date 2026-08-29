@@ -7,9 +7,10 @@ import {
   useStore,
   type ClinicSettings,
 } from "../store";
-import { IconAlert, IconCalendar, IconCoins, IconReceipt, IconShield, IconSpark, IconTrash, IconWallet, Logo } from "../icons";
+import { IconAlert, IconBook, IconBox, IconCalendar, IconCheck, IconCoins, IconPulse, IconReceipt, IconShield, IconSpark, IconTrash, IconWallet, Logo } from "../icons";
 import { Field, Modal, TArea, TInput, TSelect, useToast } from "../components/ui";
 import { IconSettings } from "../icons";
+import { ping } from "../api";
 
 type SetTab = "identity" | "work" | "invoice" | "data";
 
@@ -20,8 +21,79 @@ const TABS: { key: SetTab; label: string; desc: string; icon: (c: string) => Rea
   { key: "data", label: "البيانات والنسخ", desc: "تصدير واستيراد وإعادة التعيين", icon: (c) => <IconShield className={c} /> },
 ];
 
+/* سجل التغييرات — تاريخ تطور النظام */
+const CHANGELOG: { v: string; date: string; current?: boolean; items: { tag: "جديد" | "تحسين" | "إصلاح"; text: string }[] }[] = [
+  {
+    v: "3.0",
+    date: "فبراير 2026",
+    current: true,
+    items: [
+      { tag: "جديد", text: "أنماط خلفيات القوائم: ٦ نقوش (خطوط متوازية، نظيف، نقاط، شبكة، موجات، أقطار) للقائمة الجانبية وشاشة الدخول" },
+      { tag: "جديد", text: "سجل التغييرات (Change Log) بخط زمني تفاعلي في الإعدادات العامة" },
+      { tag: "جديد", text: "تذييل حقوق شركة أوكيانوس سوفت مع رابط الموقع ورقم التواصل" },
+      { tag: "تحسين", text: "ترقية رقم الإصدار إلى 3.0" },
+    ],
+  },
+  {
+    v: "2.6",
+    date: "فبراير 2026",
+    items: [
+      { tag: "جديد", text: "شاشة تفضيلات المستخدم: مظهر داكن/فاتح/تلقائي، ٦ ألوان مميزة، حجم الخط، الترقيم العربي، مدة الإشعارات" },
+      { tag: "جديد", text: "إعدادات قاعدة البيانات MySQL: الاتصال المركزي، اختبار الاتصال، حالة التشغيل، خطوات التفعيل" },
+      { tag: "جديد", text: "شاشة فئات المصروفات مع الألوان وإعادة التوزيع التلقائي" },
+      { tag: "جديد", text: "عرض الجلسات المكتملة السابقة للقراءة فقط من محطة العمل" },
+      { tag: "تحسين", text: "تعديل حالة المتابعات المرتبطة بمراحل الجلسات من داخل الجدول" },
+    ],
+  },
+  {
+    v: "2.5",
+    date: "فبراير 2026",
+    items: [
+      { tag: "جديد", text: "محطة عمل الدكتور الكاملة: ٨ تبويبات، مخطط العمل السريري، جدول مراحل الجلسات متعدد الزيارات" },
+      { tag: "جديد", text: "خريطة أسنان ذكية: بالغون بترقيم FDI (٣٢ سنًا) وأطفال بترميز A–E (٢٠ سنًا) مع اختيار متعدد" },
+      { tag: "جديد", text: "نظام العودات والمتابعة المرتبط تلقائيًا بمراحل الجلسات" },
+      { tag: "جديد", text: "مؤشر صحة الفم، رسم قنوات العصب، رصد الأعراض الجانبية للأدوية" },
+    ],
+  },
+  {
+    v: "2.4",
+    date: "فبراير 2026",
+    items: [
+      { tag: "جديد", text: "منظومة البطاقات المطبوعة على A4: كرت المريض، كرت الموعد، كرت الرجوع" },
+      { tag: "جديد", text: "تقرير المرضى الشامل في مركز التقارير مع التصدير والطباعة" },
+      { tag: "جديد", text: "قائمة جانبية مجمعة: الإجراءات الطبية، المالية، المخازن، التقارير، إعدادات النظام" },
+      { tag: "جديد", text: "شاشات فئات الخدمات، فئات الأصناف، بيانات الأصناف، قائمة الأسعار" },
+    ],
+  },
+  {
+    v: "2.0",
+    date: "فبراير 2026",
+    items: [
+      { tag: "جديد", text: "قاعدة بيانات MySQL مركزية مع مزامنة حية وتخزين محلي احتياطي تلقائي" },
+      { tag: "جديد", text: "دليل المستخدم التفاعلي مع البحث الفوري والأسئلة الشائعة" },
+      { tag: "جديد", text: "تقرير العمل السريري المولّد تلقائيًا من بيانات الجلسة" },
+      { tag: "جديد", text: "منظومة الطباعة الموحدة على مقاس A4" },
+    ],
+  },
+  {
+    v: "1.0",
+    date: "فبراير 2026",
+    items: [
+      { tag: "جديد", text: "الإطلاق الأول: المرضى، المواعيد، الفواتير، الخدمات، الفريق الطبي، العملات" },
+      { tag: "جديد", text: "خريطة الأسنان التفاعلية، الروشتات الإلكترونية، المصروفات، التقارير" },
+      { tag: "جديد", text: "نظام صلاحيات متعدد الأدوار: مدير، طبيب، سكرتارية، مساعد" },
+    ],
+  },
+];
+
+const TAG_CLS: Record<string, string> = {
+  "جديد": "bg-jade-soft text-jade-deep",
+  "تحسين": "bg-sky-soft text-sky",
+  "إصلاح": "bg-amber-soft text-[#a06410]",
+};
+
 export default function SettingsPage() {
-  const { db, dispatch } = useStore();
+  const { db, dispatch, conn, syncing } = useStore();
   const { push } = useToast();
   const clinic = clinicOf(db);
   const [tab, setTab] = useState<SetTab>("identity");
@@ -40,7 +112,58 @@ export default function SettingsPage() {
   const invDirty = invForm.invoiceTitle !== clinic.invoiceTitle || invForm.invoicePrefix !== clinic.invoicePrefix || invForm.invoiceFooter !== clinic.invoiceFooter;
 
   const [confirmReset, setConfirmReset] = useState(false);
+  const [showChangelog, setShowChangelog] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  /* ====== قاعدة البيانات (MySQL) ====== */
+  const [mysql, setMysql] = useState(() => {
+    try {
+      const raw = localStorage.getItem("dental-mysql-config");
+      if (raw) return JSON.parse(raw);
+    } catch { /* تجاهل */ }
+    return {
+      apiUrl: "http://localhost:4000",
+      host: "localhost",
+      port: "3306",
+      user: "root",
+      password: "",
+      database: "sharafi_dental",
+    };
+  });
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState<"idle" | "ok" | "fail">("idle");
+  const [serverOnline, setServerOnline] = useState<"checking" | "online" | "offline">("checking");
+
+  // فحص حالة الخادم عند فتح التبويب
+  React.useEffect(() => {
+    if (tab !== "data") return;
+    setServerOnline("checking");
+    ping().then((ok) => setServerOnline(ok ? "online" : "offline"));
+  }, [tab]);
+
+  const testConnection = async () => {
+    setTesting(true);
+    setTestResult("idle");
+    try {
+      localStorage.setItem("dental-api-url", mysql.apiUrl.replace(/\/$/, ""));
+    } catch { /* تجاهل */ }
+    const ok = await ping();
+    setTestResult(ok ? "ok" : "fail");
+    setServerOnline(ok ? "online" : "offline");
+    setTesting(false);
+    if (ok) push("success", "تم الاتصال بنجاح", "الخادم المركزي يستجيب على " + mysql.apiUrl);
+    else push("error", "تعذّر الاتصال", "تأكد أن خادم Node يعمل على المنفذ المحدد.");
+  };
+
+  const saveMysql = () => {
+    try {
+      localStorage.setItem("dental-mysql-config", JSON.stringify(mysql));
+      localStorage.setItem("dental-api-url", mysql.apiUrl.replace(/\/$/, ""));
+    } catch { /* تجاهل */ }
+    push("success", "حُفظت إعدادات الاتصال", "ستُستخدم عند إعادة تحميل النظام.");
+  };
+
+  const envSnippet = `DB_HOST=${mysql.host}\nDB_PORT=${mysql.port}\nDB_USER=${mysql.user}\nDB_PASS=${mysql.password}\nDB_NAME=${mysql.database}`;
 
   const saveId = () => {
     if (idForm.clinicName.trim().length < 3) return push("error", "اسم العيادة قصير جداً");
@@ -285,6 +408,118 @@ export default function SettingsPage() {
                 </div>
               </div>
 
+              {/* ====== قاعدة البيانات ====== */}
+              <div className="card p-6 anim-pop" style={{ animationDelay: "40ms" }}>
+                <div className="flex items-center justify-between mb-1.5">
+                  <h2 className="font-display font-bold text-xl text-ink flex items-center gap-2"><IconBox className="w-5 h-5 text-jade-deep" /> قاعدة البيانات</h2>
+                  <span className={`chip ${serverOnline === "online" ? "bg-mint-soft text-[#1d6b47]" : serverOnline === "offline" ? "bg-coral-soft text-coral" : "bg-mist text-soft"}`}>
+                    <span className={`w-1.5 h-1.5 rounded-full ${serverOnline === "online" ? "bg-mint pulse-dot" : serverOnline === "offline" ? "bg-coral" : "bg-soft pulse-soft"}`} />
+                    {serverOnline === "online" ? "الخادم متصل" : serverOnline === "offline" ? "الخادم غير متاح" : "جارٍ الفحص…"}
+                  </span>
+                </div>
+                <p className="text-xs text-soft mb-5">الاتصال المركزي بقاعدة MySQL عبر خادم Node — عند توفره تتحول المزامنة من التخزين المحلي إلى قاعدة مشتركة بين كل الأجهزة.</p>
+
+                {/* (MYSQL) الاتصال المركزي */}
+                <div className="rounded-xl border border-line overflow-hidden mb-5">
+                  <div className="flex items-center gap-2 px-4 py-2.5 bg-pine sidebar-texture text-white">
+                    <IconPulse className="w-4 h-4 text-[#7fe0d4]" />
+                    <p className="text-sm font-bold">الاتصال المركزي (MYSQL)</p>
+                    <span className="ms-auto text-[10px] font-semibold text-white/60" dir="ltr">mysql2 · express</span>
+                  </div>
+                  <div className="p-4 grid sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
+                    <Field label="عنوان الخادم (API)"><TInput value={mysql.apiUrl} onChange={(e) => setMysql({ ...mysql, apiUrl: e.target.value })} dir="ltr" placeholder="http://localhost:4000" /></Field>
+                    <Field label="المضيف (Host)"><TInput value={mysql.host} onChange={(e) => setMysql({ ...mysql, host: e.target.value })} dir="ltr" placeholder="localhost" /></Field>
+                    <Field label="المنفذ (Port)"><TInput value={mysql.port} onChange={(e) => setMysql({ ...mysql, port: e.target.value })} dir="ltr" placeholder="3306" /></Field>
+                    <Field label="اسم المستخدم"><TInput value={mysql.user} onChange={(e) => setMysql({ ...mysql, user: e.target.value })} dir="ltr" placeholder="root" /></Field>
+                    <Field label="كلمة المرور"><TInput type="password" value={mysql.password} onChange={(e) => setMysql({ ...mysql, password: e.target.value })} dir="ltr" placeholder="••••••••" /></Field>
+                    <Field label="اسم قاعدة البيانات"><TInput value={mysql.database} onChange={(e) => setMysql({ ...mysql, database: e.target.value })} dir="ltr" placeholder="sharafi_dental" /></Field>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-3 px-4 pb-4">
+                    <button className="btn-soft" onClick={testConnection} disabled={testing}>
+                      {testing ? <span className="w-4 h-4 border-2 border-jade-deep border-t-transparent rounded-full animate-spin" /> : <IconPulse className="w-4 h-4" />}
+                      {testing ? "جارٍ الاختبار…" : "اختبار الاتصال"}
+                    </button>
+                    <button className="btn-primary" onClick={saveMysql}><IconCheck className="w-4 h-4" /> حفظ الإعدادات</button>
+                    {testResult === "ok" && <span className="chip bg-mint-soft text-[#1d6b47] anim-pop"><IconCheck className="w-3 h-3" /> الاتصال ناجح</span>}
+                    {testResult === "fail" && <span className="chip bg-coral-soft text-coral anim-pop"><IconAlert className="w-3 h-3" /> فشل الاتصال</span>}
+                  </div>
+                  <div className="border-t border-line bg-mist/50 px-4 py-3">
+                    <p className="text-[10px] font-bold text-soft mb-1.5">محتوى ملف <span dir="ltr" className="stat-num">.env</span> المقابل لهذه الإعدادات:</p>
+                    <pre className="text-[11px] stat-num text-jade-deep bg-white border border-line rounded-lg px-3 py-2 overflow-x-auto whitespace-pre" dir="ltr">{envSnippet}</pre>
+                  </div>
+                </div>
+
+                {/* حالة التشغيل */}
+                <div className="rounded-xl border border-line p-4 mb-5">
+                  <p className="text-sm font-bold text-ink mb-3 flex items-center gap-2"><IconPulse className="w-4 h-4 text-jade-deep" /> حالة التشغيل</p>
+                  <div className="grid sm:grid-cols-3 gap-3 text-xs">
+                    <div className="rounded-lg bg-mist/70 border border-line p-3">
+                      <p className="font-bold text-soft">وضع المزامنة الحالي</p>
+                      <p className={`font-bold mt-1 flex items-center gap-1.5 ${conn === "online" ? "text-[#1d6b47]" : "text-coral"}`}>
+                        <span className={`w-1.5 h-1.5 rounded-full ${conn === "online" ? "bg-mint pulse-dot" : "bg-coral"}`} />
+                        {conn === "online" ? "قاعدة MySQL مركزية" : "تخزين محلي (المتصفح)"}
+                      </p>
+                    </div>
+                    <div className="rounded-lg bg-mist/70 border border-line p-3">
+                      <p className="font-bold text-soft">المزامنة الفورية</p>
+                      <p className="font-bold text-ink mt-1 flex items-center gap-1.5">
+                        <span className={`w-1.5 h-1.5 rounded-full ${syncing ? "bg-amber pulse-soft" : "bg-soft/40"}`} />
+                        {syncing ? "جارٍ الحفظ…" : "خاملة — بانتظار تغيير"}
+                      </p>
+                    </div>
+                    <div className="rounded-lg bg-mist/70 border border-line p-3">
+                      <p className="font-bold text-soft">عنوان الخادم النشط</p>
+                      <p className="font-bold text-ink mt-1 stat-num text-[11px]" dir="ltr">{mysql.apiUrl}</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* خطوات التفعيل */}
+                <div className="rounded-xl border border-line p-4 mb-5">
+                  <p className="text-sm font-bold text-ink mb-3 flex items-center gap-2"><IconCheck className="w-4 h-4 text-jade-deep" /> خطوات التفعيل</p>
+                  <ol className="space-y-2.5">
+                    {[
+                      { t: "أنشئ قاعدة البيانات", d: <span>نفّذ <code dir="ltr" className="stat-num bg-mist rounded px-1.5 py-0.5 text-[10px]">mysql -u root -p &lt; server/schema.sql</code> لإنشاء الجداول.</span> },
+                      { t: "ثبّت اعتماديات الخادم", d: <span>من مجلد <code dir="ltr" className="stat-num bg-mist rounded px-1.5 py-0.5 text-[10px]">server</code> نفّذ <code dir="ltr" className="stat-num bg-mist rounded px-1.5 py-0.5 text-[10px]">npm install</code>.</span> },
+                      { t: "اضبط ملف .env", d: "انسخ الإعدادات أعلاه إلى server/.env لتطابق اتصالك.", },
+                      { t: "شغّل الخادم", d: <span>نفّذ <code dir="ltr" className="stat-num bg-mist rounded px-1.5 py-0.5 text-[10px]">npm start</code> — سيعمل على المنفذ 4000.</span> },
+                      { t: "اختبر الاتصال واحفظ", d: "اضغط «اختبار الاتصال» ثم «حفظ الإعدادات»، وأعد تحميل النظام لتفعيل المزامنة المركزية.", },
+                    ].map((s, i) => (
+                      <li key={i} className="flex gap-3 items-start">
+                        <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-jade-soft text-jade-deep text-[11px] font-bold shrink-0 stat-num">{i + 1}</span>
+                        <div>
+                          <p className="text-xs font-bold text-ink">{s.t}</p>
+                          <p className="text-[11px] text-soft mt-0.5 leading-relaxed">{s.d}</p>
+                        </div>
+                      </li>
+                    ))}
+                  </ol>
+                </div>
+
+                {/* ملفات الحزمة */}
+                <div className="rounded-xl border border-line p-4">
+                  <p className="text-sm font-bold text-ink mb-3 flex items-center gap-2"><IconBox className="w-4 h-4 text-jade-deep" /> ملفات الحزمة التالية</p>
+                  <div className="grid sm:grid-cols-2 gap-2.5">
+                    {[
+                      { f: "server/index.js", d: "خادم Express + واجهات REST للمزامنة" },
+                      { f: "server/schema.sql", d: "مخطط إنشاء جداول قاعدة MySQL" },
+                      { f: "server/package.json", d: "اعتماديات الخادم (mysql2, express, cors)" },
+                      { f: "server/.env.example", d: "قالب متغيرات الاتصال — انسخه إلى .env" },
+                      { f: "server/README.md", d: "دليل تشغيل الخادم وربط الواجهة" },
+                      { f: "src/api.ts", d: "عميل الاتصال داخل الواجهة (fetch + مهلة)" },
+                    ].map((x) => (
+                      <div key={x.f} className="flex items-center gap-2.5 rounded-lg bg-mist/70 border border-line px-3 py-2.5 hover:border-jade/40 transition-colors">
+                        <IconSpark className="w-4 h-4 text-jade-deep shrink-0" />
+                        <div className="min-w-0">
+                          <p className="text-[11px] font-bold text-ink stat-num truncate" dir="ltr">{x.f}</p>
+                          <p className="text-[10px] text-soft mt-0.5 truncate">{x.d}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
               <div className="card p-6 anim-pop !border-coral/30" style={{ animationDelay: "80ms" }}>
                 <h2 className="font-display font-bold text-xl text-coral mb-1.5 flex items-center gap-2"><IconTrash className="w-5 h-5" /> منطقة الخطر</h2>
                 <p className="text-xs text-soft mb-4 leading-relaxed">إعادة التعيين تمسح كل التغييرات وتُرجع البيانات التجريبية الأصلية — المرضى، المواعيد، الفواتير، الإعدادات والمستخدمين. صدِّر نسخة احتياطية أولاً إن كنت تريد الحفاظ على عملك.</p>
@@ -292,11 +527,17 @@ export default function SettingsPage() {
               </div>
 
               <div className="card p-6 anim-pop" style={{ animationDelay: "140ms" }}>
-                <h2 className="font-display font-bold text-xl text-ink mb-3">حول النظام</h2>
+                <div className="flex items-center justify-between mb-3">
+                  <h2 className="font-display font-bold text-xl text-ink">حول النظام</h2>
+                  <button onClick={() => setShowChangelog(true)} className="btn-soft !h-9 !px-3.5 !text-xs">
+                    <IconBook className="w-4 h-4" />
+                    سجل التغييرات (Change Log)
+                  </button>
+                </div>
                 <div className="grid sm:grid-cols-3 gap-3 text-xs">
                   <div className="rounded-lg bg-mist/70 border border-line p-3.5">
                     <p className="font-bold text-soft">الإصدار</p>
-                    <p className="stat-num text-lg text-ink mt-1">2.6</p>
+                    <p className="stat-num text-lg text-ink mt-1">3.0</p>
                   </div>
                   <div className="rounded-lg bg-mist/70 border border-line p-3.5">
                     <p className="font-bold text-soft">التخزين</p>
@@ -355,6 +596,37 @@ export default function SettingsPage() {
         <p className="text-sm text-soft leading-relaxed">
           سيُمسح كل ما أضفته أو عدّلته: <b className="text-ink">{db.patients.length} مريضاً</b>، <b className="text-ink">{db.appointments.length} موعداً</b>، <b className="text-ink">{db.invoices.length} فاتورة</b>، و<b className="text-ink">{db.sessions.length} جلسة علاج</b> — وتعود الإعدادات وهوية العيادة للافتراضي. هل صدّرت نسخة احتياطية؟
         </p>
+      </Modal>
+
+      {/* ====== سجل التغييرات ====== */}
+      <Modal open={showChangelog} onClose={() => setShowChangelog(false)} title="سجل التغييرات" subtitle="تاريخ تطور نظام عيادة د. عبدالله الشرفي" width="max-w-2xl">
+        <div className="relative ms-3">
+          <span className="absolute top-1 bottom-1 start-[9px] w-0.5 bg-gradient-to-b from-jade via-line to-transparent rounded-full" />
+          <div className="space-y-7">
+            {CHANGELOG.map((rel, ri) => (
+              <div key={rel.v} className="relative ps-8 anim-rise" style={{ animationDelay: `${ri * 80}ms` }}>
+                <span className={`absolute top-0.5 start-0 inline-flex items-center justify-center w-5 h-5 rounded-full border-2 ${rel.current ? "bg-jade border-jade text-white pulse-dot" : "bg-card border-line text-soft"}`}>
+                  {rel.current ? <IconSpark className="w-2.5 h-2.5" /> : <span className="w-1.5 h-1.5 rounded-full bg-soft/50" />}
+                </span>
+                <div className={`rounded-xl border p-4 ${rel.current ? "border-jade/40 bg-jade-soft/40" : "border-line bg-card"}`}>
+                  <div className="flex items-center gap-2.5 flex-wrap">
+                    <span className="font-display font-bold text-lg text-ink" dir="ltr">v{rel.v}</span>
+                    <span className="text-[11px] font-semibold text-soft">{rel.date}</span>
+                    {rel.current && <span className="chip bg-jade text-white !text-[9px] !py-1">الإصدار الحالي</span>}
+                  </div>
+                  <ul className="mt-3 space-y-2">
+                    {rel.items.map((it, i) => (
+                      <li key={i} className="flex items-start gap-2.5">
+                        <span className={`chip shrink-0 mt-0.5 !text-[9px] !py-0.5 !px-2 ${TAG_CLS[it.tag]}`}>{it.tag}</span>
+                        <p className="text-[12.5px] text-ink/85 leading-relaxed">{it.text}</p>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
       </Modal>
     </div>
   );

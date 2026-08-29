@@ -1,27 +1,72 @@
 @import "tailwindcss";
 
 @theme {
-  --font-display: "Changa", "Readex Pro", sans-serif;
-  --font-body: "Readex Pro", "Changa", sans-serif;
+  --font-display: "Cairo", sans-serif;
+  --font-body: "Cairo", sans-serif;
 
-  --color-pine: #0b2f2b;
-  --color-pine-2: #10403a;
-  --color-pine-3: #175248;
-  --color-jade: #0d8f83;
-  --color-jade-deep: #0a6158;
-  --color-jade-soft: #e3f2ef;
-  --color-mist: #f1f6f4;
-  --color-ink: #12251f;
-  --color-soft: #5b7370;
-  --color-line: #dbe7e3;
+  /* لوحة «المحيط» — كحلي عميق + أزرق كوبالت + سماوي مضيء */
+  --color-pine: #0a2b47;
+  --color-pine-2: #0e3a61;
+  --color-pine-3: #144a7a;
+  --color-jade: #1273c4;
+  --color-jade-deep: #0b518f;
+  --color-jade-soft: #e4f0fa;
+  --color-mist: #f2f7fb;
+  --color-ink: #132a40;
+  --color-soft: #5c7186;
+  --color-line: #dbe7f1;
   --color-amber: #e2952b;
   --color-amber-soft: #fbf0dd;
   --color-coral: #d9503a;
   --color-coral-soft: #f9e6e1;
   --color-mint: #2c9c69;
   --color-mint-soft: #e1f2e8;
-  --color-sky: #3a86c4;
-  --color-sky-soft: #e5eff8;
+  --color-sky: #2f9fe0;
+  --color-sky-soft: #e4f2fc;
+  /* توهّجات سماوية على الأسطح الداكنة */
+  --color-ice: #4fc9f7;
+  --color-frost: #9adcff;
+  /* سطح البطاقات — يتحول في الوضع الداكن */
+  --color-card: #ffffff;
+}
+
+/* ============================ الوضع الداكن ============================ */
+.dark {
+  color-scheme: dark;
+  --color-mist: #0b1a2d;
+  --color-ink: #e8f1fb;
+  --color-soft: #8ba3bd;
+  --color-line: #23405e;
+  --color-card: #122339;
+}
+/* تحويل كل الأسطح البيضاء إلى السطح الداكن دون المساس بالنصوص البيضاء */
+.dark .bg-white {
+  background-color: var(--color-card) !important;
+}
+.dark .from-white {
+  --tw-gradient-from: var(--color-card) !important;
+}
+.dark .bg-white\/70 {
+  background-color: color-mix(in srgb, var(--color-card) 72%, transparent) !important;
+}
+.dark .bg-white\/60 {
+  background-color: color-mix(in srgb, var(--color-card) 62%, transparent) !important;
+}
+.dark .bg-white\/80 {
+  background-color: color-mix(in srgb, var(--color-card) 82%, transparent) !important;
+}
+.dark .text-ink\/\[0\.05\] {
+  color: rgba(232, 241, 251, 0.06);
+}
+
+/* ============================ تقليل الحركة ============================ */
+.reduce-motion *,
+.reduce-motion *::before,
+.reduce-motion *::after {
+  animation-duration: 0.001s !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.001s !important;
+  scroll-behavior: auto !important;
 }
 
 html {
@@ -33,28 +78,28 @@ body {
   color: var(--color-ink);
   background-color: var(--color-mist);
   background-image:
-    radial-gradient(900px 480px at 85% -10%, rgba(13, 143, 131, 0.09), transparent 60%),
-    radial-gradient(700px 420px at -10% 100%, rgba(58, 134, 196, 0.07), transparent 60%),
-    radial-gradient(rgba(18, 37, 31, 0.045) 1px, transparent 1px);
+    radial-gradient(900px 480px at 85% -10%, rgba(18, 115, 196, 0.1), transparent 60%),
+    radial-gradient(700px 420px at -10% 100%, rgba(47, 159, 224, 0.08), transparent 60%),
+    radial-gradient(rgba(19, 42, 64, 0.05) 1px, transparent 1px);
   background-size: auto, auto, 22px 22px;
   -webkit-font-smoothing: antialiased;
 }
 
 ::selection {
-  background: rgba(13, 143, 131, 0.25);
+  background: rgba(18, 115, 196, 0.28);
 }
 
 /* ---------- scrollbars ---------- */
 * {
   scrollbar-width: thin;
-  scrollbar-color: #b9cdc7 transparent;
+  scrollbar-color: #b7cbe0 transparent;
 }
 *::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
 *::-webkit-scrollbar-thumb {
-  background: #b9cdc7;
+  background: #b7cbe0;
   border-radius: 8px;
 }
 
@@ -131,13 +176,13 @@ body {
 /* ---------- components ---------- */
 @layer components {
   .card {
-    @apply bg-white border border-line rounded-xl shadow-[0_1px_2px_rgba(18,37,31,0.05)];
+    @apply bg-card border border-line rounded-xl shadow-[0_1px_2px_rgba(19,42,64,0.06)];
     transition: box-shadow 0.25s ease, transform 0.25s ease, border-color 0.25s ease;
   }
   .card-hover:hover {
-    box-shadow: 0 10px 30px -12px rgba(11, 47, 43, 0.18);
+    box-shadow: 0 12px 32px -12px rgba(10, 43, 71, 0.22);
     transform: translateY(-2px);
-    border-color: #c4d9d3;
+    border-color: #c2d9ee;
   }
   .btn,
   .btn-primary,
@@ -154,17 +199,17 @@ body {
   .btn-danger:active { transform: scale(0.97); }
   .btn-primary {
     @apply bg-jade text-white;
-    box-shadow: 0 6px 16px -6px rgba(13, 143, 131, 0.55);
+    box-shadow: 0 8px 18px -6px rgba(18, 115, 196, 0.55);
   }
   .btn-primary:hover { background: var(--color-jade-deep); }
   .btn-soft {
     @apply bg-jade-soft text-jade-deep;
   }
-  .btn-soft:hover { background: #d2e9e4; }
+  .btn-soft:hover { background: #d3e6f8; }
   .btn-ghost {
     @apply bg-transparent text-soft border border-line;
   }
-  .btn-ghost:hover { background: #e9f1ee; color: var(--color-ink); }
+  .btn-ghost:hover { background: #e8f1f9; color: var(--color-ink); }
   .btn-danger {
     @apply bg-coral-soft text-coral;
   }
@@ -173,14 +218,14 @@ body {
     @apply inline-flex items-center justify-center w-9 h-9 rounded-lg text-soft cursor-pointer;
     transition: all 0.18s ease;
   }
-  .icon-btn:hover { background: #e9f1ee; color: var(--color-jade-deep); }
+  .icon-btn:hover { background: #e8f1f9; color: var(--color-jade-deep); }
   .input {
-    @apply w-full h-10 px-3 rounded-lg bg-white border border-line text-sm text-ink placeholder:text-soft/70 outline-none;
+    @apply w-full h-10 px-3 rounded-lg bg-card border border-line text-sm text-ink placeholder:text-soft/70 outline-none;
     transition: border-color 0.2s ease, box-shadow 0.2s ease;
   }
   .input:focus {
     border-color: var(--color-jade);
-    box-shadow: 0 0 0 3px rgba(13, 143, 131, 0.15);
+    box-shadow: 0 0 0 3px rgba(18, 115, 196, 0.16);
   }
   .label {
     @apply block text-xs font-semibold text-soft mb-1.5;
@@ -190,13 +235,13 @@ body {
   }
   .navlink {
     @apply relative flex items-center gap-3 w-full rounded-lg px-3.5 h-11 text-sm font-medium cursor-pointer;
-    color: rgba(226, 240, 236, 0.62);
+    color: rgba(214, 232, 248, 0.62);
     transition: all 0.2s ease;
   }
-  .navlink:hover { color: #fff; background: rgba(255, 255, 255, 0.06); }
+  .navlink:hover { color: #fff; background: rgba(255, 255, 255, 0.07); }
   .navlink.active {
     color: #fff;
-    background: linear-gradient(90deg, rgba(13, 143, 131, 0.55), rgba(13, 143, 131, 0.12));
+    background: linear-gradient(90deg, rgba(18, 115, 196, 0.6), rgba(47, 159, 224, 0.14));
   }
   .navlink.active::before {
     content: "";
@@ -206,7 +251,8 @@ body {
     bottom: 9px;
     width: 3.5px;
     border-radius: 99px;
-    background: #3fd0c0;
+    background: #4fc9f7;
+    box-shadow: 0 0 12px rgba(79, 201, 247, 0.8);
   }
   .stat-num {
     @apply font-display font-bold leading-none;
@@ -296,7 +342,7 @@ body {
   print-color-adjust: exact;
 }
 .cut-box {
-  border: 0.4mm dashed #b9cdc7;
+  border: 0.4mm dashed #b7cbe0;
   border-radius: 5mm;
   padding: 2.5mm;
   display: inline-block;
@@ -304,15 +350,54 @@ body {
 }
 @media print {
   .cut-box {
-    border-color: #c6d4cf;
+    border-color: #c6d6e8;
   }
 }
 
 /* ---------- misc ---------- */
 .sidebar-texture {
+  position: relative;
   background-image:
-    radial-gradient(420px 300px at 110% 0%, rgba(63, 208, 192, 0.14), transparent 60%),
-    repeating-linear-gradient(-45deg, rgba(255, 255, 255, 0.022) 0 2px, transparent 2px 14px);
+    radial-gradient(420px 300px at 110% 0%, rgba(79, 201, 247, 0.16), transparent 60%),
+    radial-gradient(300px 260px at -10% 100%, rgba(18, 115, 196, 0.22), transparent 60%);
+}
+/* طبقة النمط — تحمل خلفية القوائم (الشريط الجانبي وشاشة الدخول) وتتحكم بها تفضيلات المستخدم */
+.sidebar-texture::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image: var(--pat, none);
+  background-size: var(--pat-size, auto);
+}
+.style-lines { --pat: repeating-linear-gradient(-45deg, rgba(255, 255, 255, 0.028) 0 2px, transparent 2px 15px); }
+.style-clean { --pat: none; }
+.style-dots { --pat: radial-gradient(rgba(255, 255, 255, 0.09) 1.2px, transparent 1.4px); --pat-size: 18px 18px; }
+.style-grid {
+  --pat: linear-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+  --pat-size: 24px 24px;
+}
+.style-waves {
+  --pat: radial-gradient(circle at 15% 130%, transparent 34%, rgba(255, 255, 255, 0.045) 34.5%, transparent 36%),
+    radial-gradient(circle at 85% -30%, transparent 34%, rgba(255, 255, 255, 0.045) 34.5%, transparent 36%),
+    radial-gradient(circle at 15% 130%, transparent 52%, rgba(255, 255, 255, 0.035) 52.5%, transparent 54%),
+    radial-gradient(circle at 85% -30%, transparent 52%, rgba(255, 255, 255, 0.035) 52.5%, transparent 54%);
+}
+.style-diagonal { --pat: repeating-linear-gradient(-55deg, rgba(255, 255, 255, 0.05) 0 12px, transparent 12px 34px); }
+
+/* ---------- لمسات حيّة ---------- */
+/* عناوين العرض — وزن أسود وتبصر محكم لشخصية أقوى */
+.font-display {
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+
+/* توهّج سماوي للعناصر النابضة على الداكن */
+.pulse-glow { animation: pulseGlow 2s ease-out infinite; }
+@keyframes pulseGlow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(79, 201, 247, 0.5); }
+  60% { box-shadow: 0 0 0 8px rgba(79, 201, 247, 0); }
 }
 
 .tooth-btn { transform-box: fill-box; transform-origin: center; transition: transform 0.15s ease; cursor: pointer; }

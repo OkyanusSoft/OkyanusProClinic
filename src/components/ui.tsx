@@ -7,6 +7,7 @@ import React, {
   useState,
 } from "react";
 import { IconAlert, IconCheck, IconTrash, IconX } from "../icons";
+import { loadPrefs } from "../prefs";
 
 /* ============================ Toasts ============================ */
 
@@ -16,6 +17,7 @@ interface Toast {
   tone: ToastTone;
   title: string;
   desc?: string;
+  dur?: number;
 }
 const ToastCtx = createContext<{ push: (tone: ToastTone, title: string, desc?: string) => void } | null>(null);
 
@@ -30,8 +32,9 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
   const push = useCallback((tone: ToastTone, title: string, desc?: string) => {
     const id = Math.random().toString(36).slice(2);
-    setToasts((t) => [...t.slice(-3), { id, tone, title, desc }]);
-    setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 3600);
+    const dur = loadPrefs().toastDur;
+    setToasts((t) => [...t.slice(-3), { id, tone, title, desc, dur }]);
+    setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), dur);
   }, []);
   return (
     <ToastCtx.Provider value={{ push }}>
@@ -55,7 +58,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
               >
                 <IconX className="w-3.5 h-3.5" />
               </button>
-              <div className="absolute bottom-0 start-0 h-[3px]" style={{ background: m.bar, animation: "toastbar 3.6s linear forwards" }} />
+              <div className="absolute bottom-0 start-0 h-[3px]" style={{ background: m.bar, animation: `toastbar ${(t.dur ?? 3600)}ms linear forwards` }} />
             </div>
           );
         })}
@@ -173,7 +176,7 @@ export function Badge({ cls, children }: { cls: string; children: React.ReactNod
   return <span className={`chip ${cls}`}>{children}</span>;
 }
 
-const AV_COLORS = ["#0d8f83", "#3a86c4", "#e2952b", "#2c9c69", "#b23a48", "#0a6158"];
+const AV_COLORS = ["#1273c4", "#2f9fe0", "#e2952b", "#2c9c69", "#b23a48", "#0b518f"];
 export function Avatar({ name, size = "w-10 h-10 text-sm" }: { name: string; size?: string }) {
   const initials = name
     .replace("د. ", "")

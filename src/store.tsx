@@ -1,9 +1,10 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useRef, useState } from "react";
+import { arLocale } from "./prefs";
 import { fetchState, ping, saveState } from "./api";
 
 /* ============================== Types ============================== */
 
-export type ToothStatus = "healthy" | "caries" | "filled" | "root" | "crown" | "missing";
+export type ToothStatus = "healthy" | "caries" | "filled" | "root" | "prosthetic" | "ortho" | "crown" | "missing";
 export type ApptStatus = "confirmed" | "waiting" | "inprogress" | "done" | "cancelled" | "noshow";
 export type InvoiceStatus = "paid" | "partial" | "unpaid";
 
@@ -106,6 +107,8 @@ export interface Prescription {
 export interface SessionProc {
   serviceId: string;
   tooth?: number;
+  detail?: string;   // وصف نوع العمل: قلع جراحي، حشوة كمبوزيت…
+  channels?: number; // عدد قنوات العصب المنفَّذة
 }
 export interface ClinicalSession {
   id: string;
@@ -120,6 +123,8 @@ export interface ClinicalSession {
   diagnosis: string;
   procedures: SessionProc[];
   teethTreated: { tooth: number; status: ToothStatus }[];
+  workItems: WorkItem[]; // خطة العمل السريرية (قلع/حشوات/عصب/تركيب…)
+  stages: SessionStage[]; // مراحل الجلسات (الأولى/الثانية/الثالثة…)
   meds: RxItem[];
   medNotes: string;
   summary: string; // تقرير العمل السريري للجلسة
@@ -127,6 +132,60 @@ export interface ClinicalSession {
   rxId?: string;
   fuId?: string; // العودة المرتبطة بالجلسة
 }
+
+/* ============================== خطة العمل السريرية ============================== */
+
+export type WorkKind = "قلع" | "حشوات" | "سحب عصب" | "تركيب" | "أطقم" | "تقويم";
+
+export interface WorkItem {
+  id: string;
+  kind: WorkKind;
+  teeth: number[]; // رموز الأسنان (FDI) التي يسري عليها العمل
+  stageId: string; // المرحلة (الجلسة) المرتبطة
+  extractType?: string; // نوع القلع
+  fillType?: string; // نوع الحشوة
+  rctType?: string; // نوع سحب العصب
+  channels?: number; // عدد القنوات المعالجة
+  rctFill?: string; // حشوة الجلسة الأولى بعد العصب
+  prosType?: string; // نوع التركيب
+  withRct?: boolean; // هل يترافق التركيب مع سحب عصب
+  dentureType?: string; // نوع الطقم
+  wireType?: string; // نوع سلك التقويم
+  wireNum?: string; // رقم السلك
+  rubberType?: string; // نوع الربلات
+  note?: string;
+}
+
+export interface SessionStage {
+  id: string;
+  name: string; // الجلسة الأولى…
+  date: string; // التاريخ المقرر
+  done: boolean;
+  notes?: string; // ملاحظات المرحلة
+  fuId?: string; // معرّف العودة/المتابعة المرتبطة بهذه المرحلة
+}
+
+/* مرجعيات الأنواع — تُعرض كأزرار/قوائم في مخطط العمل */
+export const EXTRACT_TYPES = ["قلع عادي", "قلع جراحي"];
+export const FILL_TYPES = ["حشوة كمبوزيت (تجميلية)", "حشوة أملغم", "حشوة زجاجية (GIC)", "حشوة مؤقتة"];
+export const RCT_TYPES = ["سحب عصب كامل", "سحب عصب جزئي (بتر اللب)", "إعادة علاج عصب"];
+export const RCT_FILLS = ["حشوة مؤقتة", "حشوة كمبوزيت", "تاج مؤقت"];
+export const DENTURE_TYPES = ["طقم كامل علوي", "طقم كامل سفلي", "طقم جزئي متحرك", "طقم فوري"];
+export const WIRE_TYPES = ["NiTi حراري", "ستانلس ستيل", "TMA"];
+export const RUBBER_TYPES = ["ربلات عادية", "ربلات سلسلة (Chain)", "أربطة معدنية"];
+
+export const WORK_META: Record<WorkKind, { color: string; status: ToothStatus; desc: string }> = {
+  "قلع": { color: "#d9503a", status: "missing", desc: "إزالة السن — عادي أو جراحي" },
+  "حشوات": { color: "#1273c4", status: "filled", desc: "ترميم التسوس بحشوة" },
+  "سحب عصب": { color: "#e2952b", status: "root", desc: "علاج القنوات الجذرية" },
+  "تركيب": { color: "#2f9fe0", status: "crown", desc: "تاج أو جسر ثابت" },
+  "أطقم": { color: "#0b518f", status: "crown", desc: "أطقم متحركة كاملة/جزئية" },
+  "تقويم": { color: "#2c9c69", status: "filled", desc: "تقويم وأسلاك وربلات" },
+};
+
+/* فئة المريض حسب العمر: لبنية (أطفال) أو دائمة (بالغون) */
+export type DentitionMode = "adult" | "child";
+export const dentitionOf = (age: number): DentitionMode => (age > 0 && age < 12 ? "child" : "adult");
 
 /* ============================== العودات والمتابعة ============================== */
 
@@ -245,14 +304,21 @@ export const PERMISSIONS: { key: string; label: string; desc: string; scope?: bo
   { key: "appointments", label: "المواعيد", desc: "الحجوزات وجدول الأيام" },
   { key: "session", label: "محطة العمل", desc: "جلسات العلاج السريرية" },
   { key: "patients", label: "ملفات المرضى", desc: "السجل وخريطة الأسنان والروشتات" },
+  { key: "team", label: "الفريق الطبي", desc: "الأطباء والموظفون" },
+  { key: "serviceCats", label: "فئات الخدمات", desc: "تصنيفات الخدمات الطبية" },
+  { key: "services", label: "بيانات الخدمات", desc: "الخدمات وأسعارها ومددها" },
   { key: "invoices", label: "الفواتير", desc: "الإصدار والتحصيل والطباعة" },
   { key: "expenses", label: "المصروفات", desc: "تسجيل مصاريف العيادة" },
-  { key: "reports", label: "التقارير", desc: "الإيرادات وأداء الأطباء" },
-  { key: "services", label: "قائمة الأسعار", desc: "الخدمات وأسعارها" },
-  { key: "team", label: "الفريق الطبي", desc: "الأطباء والموظفون" },
+  { key: "priceList", label: "قائمة الأسعار", desc: "قائمة أسعار جاهزة للطباعة" },
   { key: "currencies", label: "العملات", desc: "العملات وأسعار الصرف" },
-  { key: "users", label: "المستخدمون والصلاحيات", desc: "إدارة الحسابات والأدوار" },
+  { key: "expenseCats", label: "فئات المصروفات", desc: "تصنيفات مصروفات العيادة" },
+  { key: "inventory", label: "المخزون والمستهلكات", desc: "لوحة المخزون والتنبيهات" },
+  { key: "itemCats", label: "فئات الأصناف", desc: "تصنيفات أصناف المخزون" },
+  { key: "itemsData", label: "بيانات الأصناف", desc: "أصناف المخزون وحركاتها" },
+  { key: "reports", label: "التقارير", desc: "الإيرادات وأداء الأطباء" },
   { key: "settings", label: "الإعدادات العامة", desc: "هوية العيادة والدوام والفوترة والبيانات" },
+  { key: "users", label: "المستخدمون والصلاحيات", desc: "إدارة الحسابات والأدوار" },
+  { key: "guide", label: "دليل المستخدم", desc: "شرح شاشات النظام" },
   { key: "scope_all_patients", label: "كل المرضى", desc: "رؤية جميع ملفات المرضى — بدونها يرى الطبيب مرضاه فقط", scope: true },
   { key: "scope_all_appointments", label: "كل المواعيد", desc: "رؤية جدول مواعيد كل الأطباء — بدونها يرى الطبيب مواعيده فقط", scope: true },
 ];
@@ -268,23 +334,23 @@ export const ROLE_META: Record<Role, { label: string; cls: string; color: string
   doctor: {
     label: "طبيب",
     cls: "bg-jade-soft text-jade-deep",
-    color: "#0d8f83",
+    color: "#1273c4",
     desc: "يرى مرضاه ومواعيده وجلسات علاجه فقط",
-    defaults: ["dashboard", "appointments", "session", "patients", "reports", "services"],
+    defaults: ["dashboard", "appointments", "session", "patients", "reports", "services", "serviceCats", "priceList", "guide"],
   },
   secretary: {
     label: "سكرتارية",
     cls: "bg-sky-soft text-sky",
-    color: "#3a86c4",
+    color: "#2f9fe0",
     desc: "الاستقبال والحجوزات والفواتير حسب الممنوح",
-    defaults: ["dashboard", "appointments", "patients", "invoices", "services", "scope_all_patients", "scope_all_appointments"],
+    defaults: ["dashboard", "appointments", "patients", "invoices", "services", "serviceCats", "priceList", "inventory", "itemCats", "itemsData", "expenses", "expenseCats", "reports", "guide", "scope_all_patients", "scope_all_appointments"],
   },
   assistant: {
     label: "مساعد طبيب",
     cls: "bg-amber-soft text-[#a06410]",
     color: "#e2952b",
     desc: "مساعدة الطبيب في الجلسات والملفات",
-    defaults: ["appointments", "session", "patients", "scope_all_patients", "scope_all_appointments"],
+    defaults: ["appointments", "session", "patients", "inventory", "itemCats", "itemsData", "guide", "scope_all_patients", "scope_all_appointments"],
   },
 };
 
@@ -308,6 +374,9 @@ export interface DB {
   followUps: FollowUp[];
   supplies: SupplyItem[];
   supplyMoves: SupplyMove[];
+  serviceCats: string[];
+  itemCats: string[];
+  expenseCats: string[];
   plans: TreatmentPlan[];
   users: User[];
   settings: ClinicSettings;
@@ -390,13 +459,18 @@ export const BASE_CURRENCY = "YER";
 /* ============================== Meta ============================== */
 
 export const TOOTH_META: Record<ToothStatus, { label: string; fill: string; stroke: string; dash?: boolean }> = {
-  healthy: { label: "سليم", fill: "#ffffff", stroke: "#9db8b1" },
+  healthy: { label: "سليم", fill: "#ffffff", stroke: "#93a9bd" },
   caries: { label: "تسوس", fill: "#f6d7d0", stroke: "#d9503a" },
-  filled: { label: "حشوة", fill: "#cfeae5", stroke: "#0d8f83" },
-  root: { label: "علاج عصب", fill: "#f7e5c4", stroke: "#e2952b" },
-  crown: { label: "تاج / زراعة", fill: "#d5e6f5", stroke: "#3a86c4" },
-  missing: { label: "مفقود", fill: "#eef2f0", stroke: "#a7bab4", dash: true },
+  filled: { label: "حشوة", fill: "#d3e8fa", stroke: "#1273c4" },
+  root: { label: "سحب عصب", fill: "#f7e5c4", stroke: "#e2952b" },
+  prosthetic: { label: "تركيب", fill: "#d6e6f5", stroke: "#0b518f" },
+  ortho: { label: "تقويم", fill: "#e6dcf7", stroke: "#8e5ac8" },
+  crown: { label: "تاج / زراعة", fill: "#d5e6f5", stroke: "#2f9fe0" },
+  missing: { label: "مفقود", fill: "#eef2f5", stroke: "#a7bac7", dash: true },
 };
+
+/* ترتيب الحالات الثماني في واجهات حالة السن */
+export const TOOTH_STATUS_ORDER: ToothStatus[] = ["healthy", "caries", "filled", "root", "prosthetic", "ortho", "crown", "missing"];
 
 export const APPT_META: Record<ApptStatus, { label: string; cls: string; dot: string }> = {
   confirmed: { label: "مؤكد", cls: "bg-sky-soft text-sky", dot: "#3a86c4" },
@@ -423,7 +497,14 @@ export const EXPENSE_CATS: { name: string; color: string }[] = [
   { name: "فواتير خدمات", color: "#3a86c4" },
   { name: "أخرى", color: "#5b7370" },
 ];
-export const expCatColor = (name: string) => EXPENSE_CATS.find((c) => c.name === name)?.color ?? "#5b7370";
+const EXP_FALLBACK = ["#1273c4", "#2c9c69", "#e2952b", "#d9503a", "#b23a48", "#3a86c4", "#0b518f", "#8e5ac8"];
+export const expCatColor = (name: string) => {
+  const known = EXPENSE_CATS.find((c) => c.name === name)?.color;
+  if (known) return known;
+  let h = 0;
+  for (const ch of name) h = (h + ch.charCodeAt(0)) % 997;
+  return EXP_FALLBACK[h % EXP_FALLBACK.length];
+};
 
 export const YEMEN_CITIES = ["صنعاء", "عدن", "تعز", "الحديدة", "إب", "المكلا", "ذمار", "سيئون", "مأرب", "عمران", "لحج", "الضالع"];
 
@@ -440,16 +521,15 @@ export const today = (offset = 0) => {
   return dstr(d);
 };
 export const fmtMoney = (n: number) => `${Math.round(n).toLocaleString("en-US")} ر.ي`;
-const AR = "ar-EG-u-nu-latn";
 export const fmtDate = (ds: string) =>
-  new Intl.DateTimeFormat(AR, { day: "numeric", month: "long" }).format(new Date(ds + "T12:00:00"));
+  new Intl.DateTimeFormat(arLocale(), { day: "numeric", month: "long" }).format(new Date(ds + "T12:00:00"));
 export const fmtDateFull = (ds: string) =>
-  new Intl.DateTimeFormat(AR, { weekday: "long", day: "numeric", month: "long", year: "numeric" }).format(
+  new Intl.DateTimeFormat(arLocale(), { weekday: "long", day: "numeric", month: "long", year: "numeric" }).format(
     new Date(ds + "T12:00:00")
   );
 export const dayName = (ds: string) =>
-  new Intl.DateTimeFormat(AR, { weekday: "short" }).format(new Date(ds + "T12:00:00"));
-export const monthName = () => new Intl.DateTimeFormat(AR, { month: "long", year: "numeric" }).format(new Date());
+  new Intl.DateTimeFormat(arLocale(), { weekday: "short" }).format(new Date(ds + "T12:00:00"));
+export const monthName = () => new Intl.DateTimeFormat(arLocale(), { month: "long", year: "numeric" }).format(new Date());
 export const relTime = (iso: string) => {
   const diff = Math.max(0, Date.now() - new Date(iso).getTime());
   const m = Math.floor(diff / 60000);
@@ -651,6 +731,8 @@ function seed(): DB {
     diagnosis,
     procedures,
     teethTreated,
+    workItems: [],
+    stages: [],
     meds,
     medNotes,
     summary,
@@ -793,7 +875,11 @@ function seed(): DB {
     },
   ];
 
-  return { patients, doctors, staff, currencies, defaultCurrency: "YER", services, appointments, invoices, activity, expenses, prescriptions, sessions, implants, prosthetics, orthoCases, xrays, followUps, supplies, supplyMoves, plans, users, settings: DEFAULT_CLINIC_SETTINGS, nextInv: 1043 };
+  const serviceCats: string[] = ["تشخيص", "وقاية", "علاج", "تجميل", "جراحة", "تعويضات", "تقويم"];
+  const itemCats: string[] = ["تخدير", "حشوات", "علاج عصب", "جراحة", "وقاية", "تعقيم", "مختبر", "استهلاكي عام"];
+  const expenseCats: string[] = EXPENSE_CATS.map((c) => c.name);
+
+  return { patients, doctors, staff, currencies, defaultCurrency: "YER", services, appointments, invoices, activity, expenses, prescriptions, sessions, implants, prosthetics, orthoCases, xrays, followUps, supplies, supplyMoves, serviceCats, itemCats, expenseCats, plans, users, settings: DEFAULT_CLINIC_SETTINGS, nextInv: 1043 };
 }
 
 /* ============================== Store ============================== */
@@ -852,6 +938,15 @@ export type Action =
   | { type: "ADD_PLAN"; plan: TreatmentPlan }
   | { type: "UPDATE_PLAN"; plan: TreatmentPlan }
   | { type: "DELETE_PLAN"; id: string }
+  | { type: "ADD_SERVICE_CAT"; name: string }
+  | { type: "RENAME_SERVICE_CAT"; from: string; to: string }
+  | { type: "DELETE_SERVICE_CAT"; name: string }
+  | { type: "ADD_ITEM_CAT"; name: string }
+  | { type: "RENAME_ITEM_CAT"; from: string; to: string }
+  | { type: "DELETE_ITEM_CAT"; name: string }
+  | { type: "ADD_EXPENSE_CAT"; name: string }
+  | { type: "RENAME_EXPENSE_CAT"; from: string; to: string }
+  | { type: "DELETE_EXPENSE_CAT"; name: string }
   | { type: "RESET" };
 
 const nowIso = () => new Date().toISOString();
@@ -1002,6 +1097,8 @@ function reducer(db: DB, action: Action): DB {
         diagnosis: "",
         procedures: [],
         teethTreated: [],
+        workItems: [],
+        stages: [{ id: uid(), name: "الجلسة الأولى", date: today(0), done: false }],
         meds: [],
         medNotes: "",
         summary: "",
@@ -1180,6 +1277,67 @@ function reducer(db: DB, action: Action): DB {
     case "DELETE_PLAN":
       return { ...db, plans: db.plans.filter((p) => p.id !== action.id) };
 
+    /* ---------- فئات الخدمات ---------- */
+    case "ADD_SERVICE_CAT":
+      if (!action.name.trim() || db.serviceCats.includes(action.name.trim())) return db;
+      return { ...db, serviceCats: [...db.serviceCats, action.name.trim()] };
+    case "RENAME_SERVICE_CAT":
+      return {
+        ...db,
+        serviceCats: db.serviceCats.map((c) => (c === action.from ? action.to.trim() : c)),
+        services: db.services.map((s) => (s.category === action.from ? { ...s, category: action.to.trim() } : s)),
+      };
+    case "DELETE_SERVICE_CAT": {
+      const rest = db.serviceCats.filter((c) => c !== action.name);
+      const fallback = rest[0] ?? "علاج";
+      return {
+        ...db,
+        serviceCats: rest,
+        services: db.services.map((s) => (s.category === action.name ? { ...s, category: fallback } : s)),
+      };
+    }
+
+    /* ---------- فئات الأصناف ---------- */
+    case "ADD_ITEM_CAT":
+      if (!action.name.trim() || db.itemCats.includes(action.name.trim())) return db;
+      return { ...db, itemCats: [...db.itemCats, action.name.trim()] };
+    case "RENAME_ITEM_CAT":
+      return {
+        ...db,
+        itemCats: db.itemCats.map((c) => (c === action.from ? action.to.trim() : c)),
+        supplies: db.supplies.map((s) => (s.category === action.from ? { ...s, category: action.to.trim() } : s)),
+      };
+    case "DELETE_ITEM_CAT": {
+      const rest = db.itemCats.filter((c) => c !== action.name);
+      const fallback = rest[0] ?? "استهلاكي عام";
+      return {
+        ...db,
+        itemCats: rest,
+        supplies: db.supplies.map((s) => (s.category === action.name ? { ...s, category: fallback } : s)),
+      };
+    }
+
+    /* ---------- فئات المصروفات ---------- */
+    case "ADD_EXPENSE_CAT":
+      if (!action.name.trim() || db.expenseCats.includes(action.name.trim())) return db;
+      return { ...db, expenseCats: [...db.expenseCats, action.name.trim()] };
+    case "RENAME_EXPENSE_CAT":
+      return {
+        ...db,
+        expenseCats: db.expenseCats.map((c) => (c === action.from ? action.to.trim() : c)),
+        expenses: db.expenses.map((e) => (e.category === action.from ? { ...e, category: action.to.trim() } : e)),
+      };
+    case "DELETE_EXPENSE_CAT": {
+      let rest = db.expenseCats.filter((c) => c !== action.name);
+      if (rest.length === 0) rest = ["أخرى"];
+      const fallback = rest[0];
+      return {
+        ...db,
+        expenseCats: rest,
+        expenses: db.expenses.map((e) => (e.category === action.name ? { ...e, category: fallback } : e)),
+      };
+    }
+
     case "RESET":
       return seed();
     default:
@@ -1196,7 +1354,12 @@ export function normalizeDB(raw: DB): DB {
     ...db,
     expenses: db.expenses ?? [],
     prescriptions: db.prescriptions ?? [],
-    sessions: (db.sessions ?? []).map((s) => ({ ...s, summary: s.summary ?? "" })),
+    sessions: (db.sessions ?? []).map((s) => ({
+      ...s,
+      summary: s.summary ?? "",
+      workItems: s.workItems ?? [],
+      stages: s.stages ?? [],
+    })),
     staff: db.staff ?? [],
     activity: db.activity ?? [],
     implants: db.implants ?? [],
@@ -1207,6 +1370,9 @@ export function normalizeDB(raw: DB): DB {
     supplies: db.supplies ?? [],
     supplyMoves: db.supplyMoves ?? [],
     plans: db.plans ?? [],
+    serviceCats: db.serviceCats?.length ? db.serviceCats : seed().serviceCats,
+    itemCats: db.itemCats?.length ? db.itemCats : seed().itemCats,
+    expenseCats: db.expenseCats?.length ? db.expenseCats : seed().expenseCats,
     settings: { ...DEFAULT_CLINIC_SETTINGS, ...(db.settings ?? {}) },
     users: (db.users?.length ? db.users : seed().users).map((u) =>
       // طاقم الاستقبال والمساعدة يرى السجل والجدول كاملين دائماً

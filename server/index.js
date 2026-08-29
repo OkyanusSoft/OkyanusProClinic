@@ -27,6 +27,7 @@ async function syncNormalized(conn, db) {
   const clear = [
     "invoice_items", "invoices", "appointments", "patients",
     "services", "doctors", "expenses", "follow_ups", "users", "currencies",
+    "supplies", "supply_moves", "service_cats", "item_cats", "expense_cats",
   ];
   for (const t of clear) await conn.query(`DELETE FROM ${t}`);
 
@@ -80,6 +81,22 @@ async function syncNormalized(conn, db) {
 
   for (const c of db.currencies || [])
     await conn.query("INSERT INTO currencies (code,name,symbol,rate) VALUES (?,?,?,?)", [c.code, c.name, c.symbol, c.rate ?? 1]);
+
+  for (const s of db.supplies || [])
+    await conn.query(
+      "INSERT INTO supplies (id,name,category,unit,qty,minQty,cost,expiry) VALUES (?,?,?,?,?,?,?,?)",
+      [s.id, s.name, s.category ?? null, s.unit ?? null, s.qty ?? 0, s.minQty ?? 0, s.cost ?? 0, s.expiry ?? null]
+    );
+
+  for (const m of db.supplyMoves || [])
+    await conn.query("INSERT INTO supply_moves (id,itemId,delta,note,date) VALUES (?,?,?,?,?)", [m.id, m.itemId, m.delta ?? 0, m.note ?? null, m.date ?? null]);
+
+  for (const [i, name] of (db.serviceCats || []).entries())
+    await conn.query("INSERT INTO service_cats (name,sort) VALUES (?,?)", [name, i]);
+  for (const [i, name] of (db.itemCats || []).entries())
+    await conn.query("INSERT INTO item_cats (name,sort) VALUES (?,?)", [name, i]);
+  for (const [i, name] of (db.expenseCats || []).entries())
+    await conn.query("INSERT INTO expense_cats (name,sort) VALUES (?,?)", [name, i]);
 }
 
 /* ============================ الواجهات ============================ */

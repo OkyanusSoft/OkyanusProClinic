@@ -133,6 +133,14 @@ export const IconTrash = (p: P) =>
   );
 export const IconChevronDown = (p: P) => base(p, <path d="m6 9.5 6 6 6-6" />);
 export const IconArrowLeft = (p: P) => base(p, <path d="M19 12H5m6-6-6 6 6 6" />);
+export const IconEye = (p: P) =>
+  base(
+    p,
+    <>
+      <path d="M2.5 12s3.5-6.5 9.5-6.5S21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12Z" />
+      <circle cx="12" cy="12" r="3" />
+    </>
+  );
 export const IconAlert = (p: P) =>
   base(
     p,
@@ -299,6 +307,38 @@ export const IconBox = (p: P) =>
     </>
   );
 
+export const IconGlobe = (p: P) =>
+  base(
+    p,
+    <>
+      <circle cx="12" cy="12" r="8.5" />
+      <path d="M3.5 12h17M12 3.5c2.5 2.3 3.8 5.2 3.8 8.5s-1.3 6.2-3.8 8.5c-2.5-2.3-3.8-5.2-3.8-8.5s1.3-6.2 3.8-8.5Z" />
+    </>
+  );
+
+export const IconSun = (p: P) =>
+  base(
+    p,
+    <>
+      <circle cx="12" cy="12" r="4" />
+      <path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M18.4 5.6 17 7M7 17l-1.4 1.4" />
+    </>
+  );
+
+export const IconMoon = (p: P) =>
+  base(p, <path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5Z" />);
+
+export const IconSliders = (p: P) =>
+  base(
+    p,
+    <>
+      <path d="M5 4v6M5 14v6M12 4v2M12 10v10M19 4v10M19 18v2" />
+      <circle cx="5" cy="12" r="2" />
+      <circle cx="12" cy="8" r="2" />
+      <circle cx="19" cy="16" r="2" />
+    </>
+  );
+
 export const IconCopy = (p: P) =>
   base(
     p,
@@ -312,17 +352,17 @@ export const IconCopy = (p: P) =>
 export function Logo({ className = "w-10 h-10" }: P) {
   return (
     <svg className={className} viewBox="0 0 64 64" fill="none" aria-hidden="true">
-      <rect width="64" height="64" rx="16" fill="#0d8f83" />
+      <rect width="64" height="64" rx="16" fill="#1273c4" />
       <rect width="64" height="64" rx="16" fill="url(#lg)" />
       <path
         d="M32 13c-4.6-2.9-11-3.8-15.4-.4-4.8 3.7-5.7 9.6-3.9 14.8 1.7 4.6 2.9 8.9 3.7 13.4.5 3.8 1.2 11.8 5.8 11.8 4.6 0 3.6-7.7 5.1-13.2.7-2.7 2.2-4.6 4.7-4.6s4 1.9 4.7 4.6c1.5 5.5.5 13.2 5.1 13.2 4.6 0 5.3-8 5.8-11.8.8-4.5 2-8.8 3.7-13.4 1.8-5.2.9-11.1-3.9-14.8C43 9.2 36.6 10.1 32 13Z"
         fill="#fff"
       />
-      <path d="M14 36h8l3-6 4 9 3.5-6H50" stroke="#0d8f83" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M14 36h8l3-6 4 9 3.5-6H50" stroke="#0b518f" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" />
       <defs>
         <linearGradient id="lg" x1="0" y1="0" x2="64" y2="64">
-          <stop stopColor="#12a594" />
-          <stop offset="1" stopColor="#0a6158" />
+          <stop stopColor="#2f9fe0" />
+          <stop offset="1" stopColor="#0b518f" />
         </linearGradient>
       </defs>
     </svg>
