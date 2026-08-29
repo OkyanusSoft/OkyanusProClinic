@@ -225,7 +225,7 @@ function Shell() {
           setTab(t as Tab);
           setMobileNav(false);
         }}
-        className="hidden lg:flex sticky top-0 h-screen w-64 shrink-0"
+        className="hidden lg:flex fixed inset-y-0 start-0 w-64 z-40 shadow-[8px_0_30px_-12px_rgba(10,43,71,0.25)]"
       />
       {mobileNav && (
         <div className="fixed inset-0 z-[65] lg:hidden">
@@ -246,8 +246,8 @@ function Shell() {
         </div>
       )}
 
-      {/* ====== المحتوى ====== */}
-      <div className="flex-1 min-w-0 flex flex-col">
+      {/* ====== المحتوى — الجزء المتحرك ====== */}
+      <div className="flex-1 min-w-0 flex flex-col lg:ps-64">
         <Topbar
           tab={tab}
           onMenu={() => setMobileNav(true)}
@@ -364,7 +364,7 @@ function SidebarContent({
         )}
       </div>
 
-      <nav className="px-4 pb-4 space-y-4 overflow-y-auto flex-1">
+      <nav className="px-4 pb-4 space-y-4 overflow-y-auto flex-1 min-h-0">
         {/* لوحة التحكم — عنصر رئيسي مستقل */}
         {showDashboard && (
           <div>
