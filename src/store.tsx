@@ -160,6 +160,7 @@ export interface SessionStage {
   name: string; // الجلسة الأولى…
   date: string; // التاريخ المقرر
   done: boolean;
+  notes?: string; // ملاحظات المرحلة
 }
 
 /* مرجعيات الأنواع — تُعرض كأزرار/قوائم في مخطط العمل */

@@ -667,11 +667,13 @@ function WorkPlanSection({
   patch,
   age,
   baseTeeth,
+  onSetTooth,
 }: {
   session: ClinicalSession;
   patch: (pp: Partial<ClinicalSession>) => void;
   age: number;
   baseTeeth: Partial<Record<number, ToothStatus>>;
+  onSetTooth?: (tooth: number, status: ToothStatus) => void;
 }) {
   const { db, serviceById } = useStore();
   const { push } = useToast();
@@ -763,6 +765,19 @@ function WorkPlanSection({
   const toggleStage = (id: string) =>
     patch({ stages: session.stages.map((s) => (s.id === id ? { ...s, done: !s.done } : s)) });
 
+  const updateStage = (id: string, p: Partial<SessionStage>) =>
+    patch({ stages: session.stages.map((s) => (s.id === id ? { ...s, ...p } : s)) });
+
+  const deleteStage = (id: string) => {
+    if (session.stages.length <= 1) return push("warn", "لا يمكن حذف المرحلة الوحيدة");
+    const st = session.stages.find((s) => s.id === id);
+    patch({
+      stages: session.stages.filter((s) => s.id !== id),
+      workItems: session.workItems.map((w) => (w.stageId === id ? { ...w, stageId: session.stages.find((s) => s.id !== id)!.id } : w)),
+    });
+    if (st) push("info", `حُذفت مرحلة «${st.name}»`, "نُقلت أعمالها إلى مرحلة أخرى.");
+  };
+
   const label = (n: number) => (mode === "child" ? "ABCDE"[(n % 10) - 1] : String(n));
 
   const kindBtn = (k: WorkKind) => {
@@ -809,6 +824,8 @@ function WorkPlanSection({
         selection={selection}
         onToggle={toggleTooth}
         workBadges={workBadges}
+        onSet={onSetTooth}
+        editorNote="تغيير حالة السن يُعلَّق هنا ويُثبَّت في ملف المريض عند إنهاء الجلسة."
       />
 
       {/* شريط الاختيار + نوع العمل */}
@@ -1017,47 +1034,105 @@ function WorkPlanSection({
           </button>
         </div>
         <div className="rounded-xl border border-line overflow-hidden">
-          <table className="w-full text-sm">
-            <thead className="bg-mist/70">
-              <tr>
-                <th className="th !py-2.5">المرحلة</th>
-                <th className="th !py-2.5">التاريخ المقرر</th>
-                <th className="th !py-2.5">الأعمال</th>
-                <th className="th !py-2.5">الحالة</th>
-              </tr>
-            </thead>
-            <tbody>
-              {session.stages.map((s) => {
-                const items = session.workItems.filter((w) => w.stageId === s.id);
-                return (
-                  <tr key={s.id} className={`border-t border-line/70 ${s.done ? "bg-mint-soft/30" : "bg-white"}`}>
-                    <td className="td !py-2.5 font-bold text-ink">{s.name}</td>
-                    <td className="td !py-2.5 text-soft stat-num">{fmtDate(s.date)}</td>
-                    <td className="td !py-2.5">
-                      {items.length === 0 ? (
-                        <span className="text-soft/60 text-xs">—</span>
-                      ) : (
-                        <div className="flex flex-wrap gap-1">
-                          {items.map((w) => (
-                            <span key={w.id} className="chip !text-[9px]" style={{ background: `${WORK_META[w.kind].color}14`, color: WORK_META[w.kind].color }}>{w.kind}</span>
-                          ))}
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm min-w-[640px]">
+              <thead className="bg-mist/70">
+                <tr>
+                  <th className="th !py-2.5">المرحلة</th>
+                  <th className="th !py-2.5">التاريخ المقرر</th>
+                  <th className="th !py-2.5">الأعمال</th>
+                  <th className="th !py-2.5">الحالة</th>
+                  <th className="th !py-2.5 text-end">إجراءات</th>
+                </tr>
+              </thead>
+              <tbody>
+                {session.stages.map((s) => {
+                  const items = session.workItems.filter((w) => w.stageId === s.id);
+                  return (
+                    <tr key={s.id} className={`border-t border-line/70 ${s.done ? "bg-mint-soft/30" : "bg-white"} transition-colors`}>
+                      <td className="td !py-2">
+                        <input
+                          value={s.name}
+                          onChange={(e) => updateStage(s.id, { name: e.target.value })}
+                          className="font-bold text-ink bg-transparent border border-transparent hover:border-line focus:border-jade focus:bg-white rounded-md px-2 py-1 outline-none w-36 transition-all"
+                          aria-label="اسم المرحلة"
+                        />
+                      </td>
+                      <td className="td !py-2">
+                        <input
+                          type="date"
+                          value={s.date}
+                          onChange={(e) => updateStage(s.id, { date: e.target.value })}
+                          className="text-soft stat-num bg-transparent border border-transparent hover:border-line focus:border-jade focus:bg-white rounded-md px-2 py-1 outline-none transition-all cursor-pointer"
+                          aria-label="التاريخ المقرر"
+                        />
+                      </td>
+                      <td className="td !py-2">
+                        {items.length === 0 ? (
+                          <span className="text-soft/60 text-xs">—</span>
+                        ) : (
+                          <div className="flex flex-wrap gap-1">
+                            {items.map((w) => (
+                              <span key={w.id} className="chip !text-[9px]" style={{ background: `${WORK_META[w.kind].color}14`, color: WORK_META[w.kind].color }}>{w.kind}</span>
+                            ))}
+                          </div>
+                        )}
+                      </td>
+                      <td className="td !py-2">
+                        <button
+                          onClick={() => toggleStage(s.id)}
+                          className={`chip cursor-pointer transition-all ${s.done ? "bg-mint-soft text-[#1d6b47]" : "bg-mist text-soft hover:bg-sky-soft hover:text-sky"}`}
+                          title="تبديل الحالة"
+                        >
+                          {s.done ? <IconCheck className="w-3 h-3" /> : <IconClock className="w-3 h-3" />}
+                          {s.done ? "منجزة" : "قيد التنفيذ"}
+                        </button>
+                      </td>
+                      <td className="td !py-2 text-end">
+                        <div className="flex items-center justify-end gap-1">
+                          <button
+                            onClick={() => {
+                              const name = prompt("اسم المرحلة:", s.name);
+                              if (name?.trim()) updateStage(s.id, { name: name.trim() });
+                            }}
+                            className="icon-btn !w-7 !h-7"
+                            aria-label="تعديل"
+                            title="تعديل الاسم"
+                          >
+                            <IconPencil className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() => deleteStage(s.id)}
+                            className="icon-btn !w-7 !h-7 hover:!bg-coral-soft hover:!text-coral"
+                            aria-label="حذف"
+                            title="حذف المرحلة"
+                          >
+                            <IconTrash className="w-3.5 h-3.5" />
+                          </button>
                         </div>
-                      )}
-                    </td>
-                    <td className="td !py-2.5">
-                      <button
-                        onClick={() => toggleStage(s.id)}
-                        className={`chip cursor-pointer transition-all ${s.done ? "bg-mint-soft text-[#1d6b47]" : "bg-mist text-soft hover:bg-sky-soft hover:text-sky"}`}
-                      >
-                        {s.done ? <IconCheck className="w-3 h-3" /> : <IconClock className="w-3 h-3" />}
-                        {s.done ? "منجزة" : "قيد التنفيذ"}
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          {/* سطر الملاحظات لكل مرحلة */}
+          <div className="border-t border-line bg-mist/40 px-4 py-3 space-y-2">
+            <p className="label !mb-0">ملاحظات المراحل</p>
+            {session.stages.map((s) => (
+              <div key={s.id} className="flex items-center gap-2.5">
+                <span className="chip bg-white border border-line !text-[10px] shrink-0 stat-num">{s.name}</span>
+                <input
+                  value={s.notes ?? ""}
+                  onChange={(e) => updateStage(s.id, { notes: e.target.value })}
+                  placeholder={`ملاحظات ${s.name} — مثل: إحضار الأشعة، تخدير موضعي…`}
+                  className="flex-1 input !h-8 !text-xs"
+                  aria-label={`ملاحظات ${s.name}`}
+                />
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     </section>
@@ -1256,7 +1331,7 @@ function TreatmentTab(props: {
       </section>
 
       {/* مخطط العمل السريري — خريطة + اختيار متعدد + مراحل الجلسات */}
-      <WorkPlanSection session={session} patch={patch} age={p?.age ?? 30} baseTeeth={props.mergedTeeth} />
+      <WorkPlanSection session={session} patch={patch} age={p?.age ?? 30} baseTeeth={props.mergedTeeth} onSetTooth={props.setTooth} />
     </div>
   );
 }

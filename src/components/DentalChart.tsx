@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from "react";
 import {
   TOOTH_META,
+  TOOTH_STATUS_ORDER,
   WORK_META,
   dentitionOf,
   type DentitionMode,
@@ -69,6 +70,8 @@ const STYLE: Record<ToothStatus, { fill: string; stroke: string; rootFill: strin
   caries: { fill: "#f4ac9d", stroke: "#d9503a", rootFill: "#fdf1ed", num: "#c0392b" },
   filled: { fill: "#97c9ec", stroke: "#1273c4", rootFill: "#eef6fd", num: "#0b518f" },
   root: { fill: "#f6c988", stroke: "#e2952b", rootFill: "#fdf4e2", num: "#a06410" },
+  prosthetic: { fill: "#a8c3e8", stroke: "#0b518f", rootFill: "#eef4fc", num: "#0b518f" },
+  ortho: { fill: "#d3c2ee", stroke: "#8e5ac8", rootFill: "#f6f1fc", num: "#7a44bd" },
   crown: { fill: "#a8cdef", stroke: "#2f9fe0", rootFill: "#f2f8fd", num: "#2b6cb0" },
   missing: { fill: "none", stroke: "#a7bac7", rootFill: "none", num: "#93a5b3" },
 };
@@ -186,6 +189,20 @@ function Tooth({
         {!missing && st === "crown" && (
           <path d={crown} fill="none" stroke="#2b6cb0" strokeWidth={1.4} strokeOpacity={0.55} transform={`translate(${w / 2} ${CH / 2}) scale(0.84) translate(${-w / 2} ${-CH / 2})`} />
         )}
+        {/* تركيب: جسر/دعامة — شريط أفقي */}
+        {!missing && st === "prosthetic" && (
+          <>
+            <rect x={w * 0.22} y={CH * 0.42} width={w * 0.56} height={CH * 0.18} rx={CH * 0.09} fill="#0b518f" opacity={0.8} />
+            <rect x={w * 0.22} y={CH * 0.42} width={w * 0.56} height={CH * 0.18} rx={CH * 0.09} fill="none" stroke="#ffffff" strokeWidth={1} strokeOpacity={0.7} />
+          </>
+        )}
+        {/* تقويم: حاصرة (براكت) مع سلك */}
+        {!missing && st === "ortho" && (
+          <>
+            <path d={`M ${w * 0.12} ${CH * 0.5} L ${w * 0.88} ${CH * 0.5}`} stroke="#8e5ac8" strokeWidth={1.6} strokeLinecap="round" />
+            <rect x={w / 2 - w * 0.11} y={CH * 0.5 - w * 0.11} width={w * 0.22} height={w * 0.22} rx={2} fill="#8e5ac8" stroke="#ffffff" strokeWidth={1} />
+          </>
+        )}
         {missing && (
           <path d={`M ${w * 0.28} ${CH * 0.28} L ${w * 0.72} ${CH * 0.75} M ${w * 0.72} ${CH * 0.28} L ${w * 0.28} ${CH * 0.75}`} stroke="#8fa3b3" strokeWidth={2.4} strokeLinecap="round" />
         )}
@@ -230,6 +247,13 @@ function Glyph({ s, size = "w-5 h-5" }: { s: ToothStatus; size?: string }) {
       {!missing && s === "filled" && <rect x={10.6} y={7.6} width={2.8} height={2.8} rx={0.7} fill="#1273c4" opacity={0.85} transform="rotate(45 12 9)" />}
       {!missing && s === "root" && <path d="M12 7 L12 18" stroke="#b9791f" strokeWidth={1.8} strokeLinecap="round" />}
       {!missing && s === "crown" && <path d="M9.2 11.8 Q8.9 8.4 10 6.4 Q10.8 5 12 5.6 Q13.2 5 14 6.4 Q15.1 8.4 14.8 11.8 Q12 13.4 9.2 11.8 Z" fill="none" stroke="#2b6cb0" strokeWidth={1.2} strokeOpacity={0.6} />}
+      {!missing && s === "prosthetic" && <rect x={9} y={8.2} width={6} height={2} rx={1} fill="#0b518f" opacity={0.85} />}
+      {!missing && s === "ortho" && (
+        <>
+          <path d="M8.5 9.2 L15.5 9.2" stroke="#8e5ac8" strokeWidth={1.3} strokeLinecap="round" />
+          <rect x={10.9} y={8.1} width={2.2} height={2.2} rx={0.5} fill="#8e5ac8" stroke="#fff" strokeWidth={0.7} />
+        </>
+      )}
       {missing && <path d="M9.5 7 L14.5 11.5 M14.5 7 L9.5 11.5" stroke="#8fa3b3" strokeWidth={1.8} strokeLinecap="round" />}
     </svg>
   );
@@ -284,19 +308,22 @@ export default function DentalChart({
 
   const totalTeeth = mode === "child" ? 20 : 32;
   const counts = useMemo(() => {
-    const c: Record<string, number> = { caries: 0, filled: 0, root: 0, crown: 0, missing: 0 };
-    Object.values(teeth).forEach((s) => s && s !== "healthy" && c[s]++);
+    const c: Record<string, number> = { caries: 0, filled: 0, root: 0, prosthetic: 0, ortho: 0, crown: 0, missing: 0 };
+    Object.values(teeth).forEach((s) => s && s !== "healthy" && (c[s] = (c[s] ?? 0) + 1));
     return c;
   }, [teeth]);
   const issues = Object.values(counts).reduce((a, b) => a + b, 0);
   const health = Math.round(((totalTeeth - issues) / totalTeeth) * 100);
   const healthColor = health >= 80 ? "#2c9c69" : health >= 60 ? "#e2952b" : "#d9503a";
 
-  const focus = hovered ?? selected;
+  const [active, setActive] = useState<number | null>(null);
+  const focus = hovered ?? selected ?? active;
   const focusStatus: ToothStatus = focus ? teeth[focus] ?? "healthy" : "healthy";
-  const selStatus: ToothStatus = selected ? teeth[selected] ?? "healthy" : "healthy";
+  const statusTarget = multiSelect ? active : selected;
+  const selStatus: ToothStatus = statusTarget ? teeth[statusTarget] ?? "healthy" : "healthy";
 
   const handleClick = (n: number) => {
+    setActive(n);
     if (multiSelect && onToggle) onToggle(n);
     else setSelected(n);
   };
@@ -370,7 +397,7 @@ export default function DentalChart({
         </div>
 
         <div className="px-4 py-3 border-t border-line bg-white/70 flex flex-wrap items-center gap-x-4 gap-y-2">
-          {(Object.keys(TOOTH_META) as ToothStatus[]).map((s) => (
+          {TOOTH_STATUS_ORDER.map((s) => (
             <span key={s} className="inline-flex items-center gap-1.5 text-[11px] font-bold text-soft">
               <Glyph s={s} />
               {TOOTH_META[s].label}
@@ -379,9 +406,56 @@ export default function DentalChart({
         </div>
       </div>
 
-      {/* اللوحة الجانبية */}
+      {/* اللوحة الجانبية: حالة السن ← الأسنان المحددة ← مؤشر الصحة */}
       <div className="space-y-4 min-w-0">
-        {multiSelect ? (
+        {/* 1) حالة السن */}
+        <div className="rounded-xl border border-line bg-white overflow-hidden">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-line bg-mist/50">
+            <p className="font-display font-bold text-sm text-ink">حالة السن</p>
+            {statusTarget && (
+              <span className="chip" style={{ background: STYLE[selStatus].fill === "none" ? "#eef2f5" : STYLE[selStatus].fill, color: STYLE[selStatus].stroke }}>
+                <span className="w-2 h-2 rounded-full" style={{ background: STYLE[selStatus].stroke }} />
+                {TOOTH_META[selStatus].label}
+              </span>
+            )}
+          </div>
+          <div className="p-4">
+            {statusTarget ? (
+              <>
+                <p className="font-display font-bold text-2xl text-ink leading-none">
+                  السن <span className="text-jade-deep stat-num">{mode === "child" ? M.label(statusTarget) : statusTarget}</span>
+                </p>
+                <p className="text-xs font-semibold text-soft mt-1.5">{M.name(statusTarget)}</p>
+                <div className="grid grid-cols-2 gap-2 mt-4">
+                  {TOOTH_STATUS_ORDER.map((s) => {
+                    const isActive = s === selStatus;
+                    return (
+                      <button
+                        key={s}
+                        onClick={() => onSet?.(statusTarget, s)}
+                        className={`flex items-center gap-2 rounded-lg border px-2.5 py-2.5 text-xs font-bold cursor-pointer transition-all ${
+                          isActive ? "border-jade bg-jade-soft text-jade-deep shadow-sm ring-1 ring-jade/40" : "border-line bg-white text-soft hover:border-jade/50 hover:bg-mist hover:-translate-y-px"
+                        }`}
+                      >
+                        <Glyph s={s} />
+                        {TOOTH_META[s].label}
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className="text-[10px] font-semibold text-soft mt-3.5 bg-mist rounded-lg px-3 py-2.5 leading-relaxed">{editorNote}</p>
+              </>
+            ) : (
+              <div className="text-center py-4">
+                <p className="font-display font-bold text-sm text-ink">لم يُحدد سن بعد</p>
+                <p className="text-[11px] text-soft mt-1.5 leading-relaxed">اضغط على أي سن في المخطط لعرض حالته وتحديثها.</p>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* 2) الأسنان المحددة — في وضع الاختيار المتعدد */}
+        {multiSelect && (
           <div className="rounded-xl border border-line bg-white overflow-hidden">
             <div className="flex items-center justify-between px-4 py-3 border-b border-line bg-mist/50">
               <p className="font-display font-bold text-sm text-ink">الأسنان المحددة</p>
@@ -401,53 +475,9 @@ export default function DentalChart({
               )}
             </div>
           </div>
-        ) : (
-          <div className="rounded-xl border border-line bg-white overflow-hidden">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-line bg-mist/50">
-              <p className="font-display font-bold text-sm text-ink">حالة السن</p>
-              {selected && (
-                <span className="chip" style={{ background: STYLE[selStatus].fill === "none" ? "#eef2f5" : STYLE[selStatus].fill, color: STYLE[selStatus].stroke }}>
-                  <span className="w-2 h-2 rounded-full" style={{ background: STYLE[selStatus].stroke }} />
-                  {TOOTH_META[selStatus].label}
-                </span>
-              )}
-            </div>
-            <div className="p-4">
-              {selected ? (
-                <>
-                  <p className="font-display font-bold text-2xl text-ink leading-none">
-                    السن <span className="text-jade-deep stat-num">{mode === "child" ? M.label(selected) : selected}</span>
-                  </p>
-                  <p className="text-xs font-semibold text-soft mt-1.5">{M.name(selected)}</p>
-                  <div className="grid grid-cols-2 gap-2 mt-4">
-                    {(Object.keys(TOOTH_META) as ToothStatus[]).map((s) => {
-                      const active = s === selStatus;
-                      return (
-                        <button
-                          key={s}
-                          onClick={() => onSet?.(selected, s)}
-                          className={`flex items-center gap-2 rounded-lg border px-2.5 py-2.5 text-xs font-bold cursor-pointer transition-all ${
-                            active ? "border-jade bg-jade-soft text-jade-deep shadow-sm" : "border-line bg-white text-soft hover:border-jade/50 hover:bg-mist"
-                          }`}
-                        >
-                          <Glyph s={s} />
-                          {TOOTH_META[s].label}
-                        </button>
-                      );
-                    })}
-                  </div>
-                  <p className="text-[10px] font-semibold text-soft mt-3.5 bg-mist rounded-lg px-3 py-2.5 leading-relaxed">{editorNote}</p>
-                </>
-              ) : (
-                <div className="text-center py-4">
-                  <p className="font-display font-bold text-sm text-ink">لم يُحدد سن بعد</p>
-                  <p className="text-[11px] text-soft mt-1.5 leading-relaxed">اضغط على أي سن في المخطط لعرض حالته وتحديثها.</p>
-                </div>
-              )}
-            </div>
-          </div>
         )}
 
+        {/* 3) مؤشر صحة الفم */}
         <div className="rounded-xl border border-line bg-white p-4">
           <div className="flex items-center justify-between">
             <p className="font-display font-bold text-sm text-ink">مؤشر صحة الفم</p>
@@ -460,13 +490,13 @@ export default function DentalChart({
             <span className="stat-num">{totalTeeth - issues}</span> سناً سليماً من أصل <span className="stat-num">{totalTeeth}</span>
           </p>
           <div className="mt-4 pt-3.5 border-t border-line space-y-2.5">
-            {(["caries", "filled", "root", "crown", "missing"] as ToothStatus[]).map((s) => (
+            {TOOTH_STATUS_ORDER.filter((s) => s !== "healthy").map((s) => (
               <div key={s} className="flex items-center justify-between text-xs font-semibold">
                 <span className="flex items-center gap-2 text-soft">
                   <Glyph s={s} />
                   {TOOTH_META[s].label}
                 </span>
-                <span className={`stat-num text-sm ${counts[s] > 0 ? "text-ink" : "text-soft/50"}`}>{counts[s]}</span>
+                <span className={`stat-num text-sm ${counts[s] > 0 ? "text-ink" : "text-soft/50"}`}>{counts[s] ?? 0}</span>
               </div>
             ))}
           </div>
