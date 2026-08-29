@@ -248,8 +248,8 @@ function Shell() {
 
       {/* ====== المحتوى — الجزء المتحرك ====== */}
       <div className="flex-1 min-w-0 flex flex-col lg:ps-64">
-        {/* عمود المحتوى المتمركز — يضم الشريط العلوي والمحتوى ككتلة واحدة */}
-        <div className="flex-1 flex flex-col w-full max-w-[1320px] mx-auto min-w-0">
+        {/* عمود المحتوى — محاذٍ لجانب الشريط الجانبي (يمين القسم الأيسر) */}
+        <div className="flex-1 flex flex-col w-full max-w-[1400px] min-w-0">
         <Topbar
           tab={tab}
           onMenu={() => setMobileNav(true)}
