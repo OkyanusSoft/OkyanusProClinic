@@ -29,6 +29,7 @@ import {
   WORK_META,
   XRAY_KINDS,
   type ClinicalSession,
+  type FollowUpStatus,
   type Implant,
   type OrthoCase,
   type Prosthetic,
@@ -40,11 +41,14 @@ import {
 } from "../store";
 import {
   IconAlert,
+  IconArrowLeft,
   IconBraces,
   IconCalendar,
+  IconEye,
   IconCopy,
   IconPencil,
   IconCheck,
+  IconChevronDown,
   IconClock,
   IconCrown,
   IconImplant,
@@ -60,7 +64,7 @@ import {
   IconWallet,
   IconXray,
 } from "../icons";
-import { Avatar, Badge, EmptyState, Field, Modal, Switch, TArea, TInput, TSelect, TwoStepDelete, useToast } from "../components/ui";
+import { Avatar, Badge, Drop, DropItem, EmptyState, Field, Modal, Switch, TArea, TInput, TSelect, TwoStepDelete, useToast } from "../components/ui";
 import DentalChart from "../components/DentalChart";
 import { InvoicePrint, PrintModal, RxPrint } from "../components/PrintSheet";
 
@@ -106,6 +110,9 @@ export default function SessionPage() {
   const [doctorId, setDoctorId] = useState(db.doctors[0]?.id ?? "d1");
   const [adHoc, setAdHoc] = useState(false);
   const [adHocPatient, setAdHocPatient] = useState("");
+  // جلسة سابقة تُعرض للقراءة فقط بعد إنهائها
+  const [viewId, setViewId] = useState<string | null>(null);
+  const viewSession = viewId ? db.sessions.find((s) => s.id === viewId && s.status === "done") : undefined;
 
   // الطبيب المقيَّد يعمل على كرسيّه فقط
   useEffect(() => {
@@ -170,15 +177,20 @@ export default function SessionPage() {
         </div>
       </div>
 
-      {/* الجلسة المفتوحة */}
-      {open ? (
-        <Workstation key={open.id} session={open} />
+      {/* عرض جلسة سابقة للقراءة فقط */}
+      {viewSession ? (
+        <Workstation key={viewSession.id} session={viewSession} readonly onExit={() => setViewId(null)} />
       ) : (
-        <div className="card p-4 flex items-center gap-3 bg-jade-soft/60 !border-jade/30 anim-fade">
-          <span className="inline-flex items-center justify-center w-9 h-9 rounded-lg bg-jade text-white shrink-0"><IconPulse className="w-5 h-5" /></span>
-          <p className="text-sm text-jade-deep font-semibold">الغرفة جاهزة — اختر مريضاً من قائمة الانتظار أدناه لبدء جلسة العلاج.</p>
-        </div>
-      )}
+        <>
+          {/* الجلسة المفتوحة */}
+          {open ? (
+            <Workstation key={open.id} session={open} />
+          ) : (
+            <div className="card p-4 flex items-center gap-3 bg-jade-soft/60 !border-jade/30 anim-fade">
+              <span className="inline-flex items-center justify-center w-9 h-9 rounded-lg bg-jade text-white shrink-0"><IconPulse className="w-5 h-5" /></span>
+              <p className="text-sm text-jade-deep font-semibold">الغرفة جاهزة — اختر مريضاً من قائمة الانتظار أدناه لبدء جلسة العلاج.</p>
+            </div>
+          )}
 
       {/* قائمة الانتظار */}
       <section className="anim-rise" style={{ animationDelay: "120ms" }}>
@@ -285,6 +297,14 @@ export default function SessionPage() {
                       {val > 0 && <Money v={val} />}
                       <p className="text-[10px] text-soft mt-0.5">{d?.name}</p>
                     </div>
+                    <button
+                      onClick={() => setViewId(s.id)}
+                      className="btn-soft !h-9 !px-3.5 !text-xs shrink-0"
+                      title="إعادة فتح المحطة لعرض ما تم إنجازه"
+                    >
+                      <IconEye className="w-4 h-4" />
+                      عرض الجلسة
+                    </button>
                   </div>
                 </li>
               );
@@ -292,6 +312,8 @@ export default function SessionPage() {
           </ul>
         )}
       </section>
+        </>
+      )}
 
       {/* مريض غير مجدول */}
       <Modal
@@ -351,7 +373,7 @@ const TABS: { key: WTab; label: string; icon: (c: string) => React.ReactNode }[]
 
 /* ============================ محطة الجلسة ============================ */
 
-function Workstation({ session }: { session: ClinicalSession }) {
+function Workstation({ session, readonly = false, onExit }: { session: ClinicalSession; readonly?: boolean; onExit?: () => void }) {
   const { db, dispatch, patientById, serviceById, doctorById } = useStore();
   const money = useMoney();
   const { push } = useToast();
@@ -365,8 +387,10 @@ function Workstation({ session }: { session: ClinicalSession }) {
   const [procTooth, setProcTooth] = useState("");
   const [armCancel, setArmCancel] = useState(false);
 
-  const now = useNowTick(1000);
-  const elapsed = Math.max(0, now - new Date(session.startedAt).getTime());
+  const now = useNowTick(readonly ? 0 : 1000);
+  const elapsed = readonly
+    ? Math.max(0, new Date(session.endedAt ?? session.startedAt).getTime() - new Date(session.startedAt).getTime())
+    : Math.max(0, now - new Date(session.startedAt).getTime());
   const mm = Math.floor(elapsed / 60000);
   const ss = Math.floor((elapsed % 60000) / 1000);
   const hh = Math.floor(mm / 60);
@@ -378,7 +402,10 @@ function Workstation({ session }: { session: ClinicalSession }) {
     return () => clearTimeout(t);
   }, [armCancel]);
 
-  const patch = (pp: Partial<ClinicalSession>) => dispatch({ type: "PATCH_SESSION", id: session.id, patch: pp });
+  const patch = (pp: Partial<ClinicalSession>) => {
+    if (readonly) return push("info", "هذه الجلسة للقراءة فقط", "انقر «عودة لمحطة العمل» لبدء جلسة جديدة.");
+    dispatch({ type: "PATCH_SESSION", id: session.id, patch: pp });
+  };
 
   const pendingTeeth = useMemo(
     () => Object.fromEntries(session.teethTreated.map((t) => [t.tooth, t.status])) as Record<number, ToothStatus>,
@@ -484,7 +511,25 @@ function Workstation({ session }: { session: ClinicalSession }) {
   const hasAllergy = p.allergies && p.allergies !== "لا يوجد";
 
   return (
-    <div className="card !rounded-2xl overflow-hidden anim-pop !border-jade/40 shadow-[0_20px_50px_-20px_rgba(11,47,43,0.35)]">
+    <div className={`card !rounded-2xl overflow-hidden anim-pop shadow-[0_20px_50px_-20px_rgba(11,47,43,0.35)] ${readonly ? "!border-amber/50" : "!border-jade/40"}`}>
+      {/* شريط القراءة فقط */}
+      {readonly && (
+        <div className="bg-gradient-to-l from-amber-soft to-amber-soft/40 border-b border-amber/30 px-5 py-2.5 flex flex-wrap items-center gap-3">
+          <span className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-amber text-white shrink-0"><IconEye className="w-4 h-4" /></span>
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-bold text-[#7a4c08]">عرض جلسة سابقة — للقراءة فقط</p>
+            <p className="text-[10px] text-[#a06410]/80 mt-0.5">
+              انتهت {session.endedAt ? fmtDate(session.endedAt.slice(0, 10)) : ""} · المدة {fmtDur(elapsed)} · لا يمكن تعديل البيانات
+            </p>
+          </div>
+          {onExit && (
+            <button onClick={onExit} className="btn-ghost !h-8 !px-3 !text-[11px] !bg-white">
+              <IconArrowLeft className="w-3.5 h-3.5" />
+              عودة لمحطة العمل
+            </button>
+          )}
+        </div>
+      )}
       {/* شريط الجلسة */}
       <div className="bg-pine sidebar-texture text-white px-5 py-4">
         <div className="flex flex-wrap items-center gap-5">
@@ -590,6 +635,7 @@ function Workstation({ session }: { session: ClinicalSession }) {
       </div>
 
       {/* شريط الخروج الدائم */}
+      {!readonly && (
       <div className="border-t border-line bg-white px-5 py-4">
         <div className="flex flex-wrap items-center gap-4">
           <div className="flex items-center gap-5">
@@ -641,6 +687,7 @@ function Workstation({ session }: { session: ClinicalSession }) {
           </div>
         </div>
       </div>
+      )}
     </div>
   );
 }
@@ -802,6 +849,15 @@ function WorkPlanSection({
       f: { id: fuId, patientId: session.patientId, doctorId: session.doctorId, reason: stageReason(st.name), dueDate: st.date, status: "pending", createdAt: new Date().toISOString() },
     });
     push("success", "رُبطت المرحلة بعودة", "ظهرت الآن في نظام المتابعات.");
+  };
+
+  /* تغيير حالة العودة المرتبطة بالمرحلة (إرجاعها لمعلقة/محجوزة/مكتملة) */
+  const setFuStatus = (fuId: string, status: FollowUpStatus) => {
+    const fu = db.followUps.find((f) => f.id === fuId);
+    if (!fu) return;
+    dispatch({ type: "UPDATE_FOLLOWUP", f: { ...fu, status } });
+    const labels: Record<FollowUpStatus, string> = { pending: "عودة معلقة (تنتظر المراجعة)", booked: "عودة محجوزة", done: "عودة مكتملة" };
+    push("success", "تغيّرت حالة المتابعة", labels[status]);
   };
 
   const deleteStage = (id: string) => {
@@ -1112,16 +1168,35 @@ function WorkPlanSection({
                             const fu = db.followUps.find((f) => f.id === s.fuId);
                             if (!fu) return <span className="text-soft/50 text-xs">—</span>;
                             const overdue = fu.status === "pending" && fu.dueDate < today(0);
+                            const chipCls = fu.status === "done" ? "bg-mint-soft text-[#1d6b47]" : fu.status === "booked" ? "bg-sky-soft text-sky" : overdue ? "bg-coral-soft text-coral" : "bg-jade-soft text-jade-deep";
+                            const chipLabel = fu.status === "done" ? "عودة مكتملة" : fu.status === "booked" ? "عودة محجوزة" : overdue ? "عودة متأخرة" : "عودة مسجلة ✓";
+                            const opts: { key: FollowUpStatus; label: string; dot: string }[] = [
+                              { key: "pending", label: "عودة معلقة (تنتظر المراجعة)", dot: "#0d8f83" },
+                              { key: "booked", label: "عودة محجوزة", dot: "#3a86c4" },
+                              { key: "done", label: "عودة مكتملة", dot: "#2c9c69" },
+                            ];
                             return (
-                              <span
-                                className={`chip !text-[10px] ${
-                                  fu.status === "done" ? "bg-mint-soft text-[#1d6b47]" : fu.status === "booked" ? "bg-sky-soft text-sky" : overdue ? "bg-coral-soft text-coral" : "bg-jade-soft text-jade-deep"
-                                }`}
-                                title="عودة/متابعة مسجلة في نظام المتابعات"
+                              <Drop
+                                align="start"
+                                button={
+                                  <span className={`chip !text-[10px] cursor-pointer hover:opacity-80 transition-opacity ${chipCls}`} title="انقر لتغيير حالة المتابعة">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-current" />
+                                    {chipLabel}
+                                    <IconChevronDown className="w-3 h-3" />
+                                  </span>
+                                }
                               >
-                                <span className="w-1.5 h-1.5 rounded-full bg-current" />
-                                {fu.status === "done" ? "عودة مكتملة" : fu.status === "booked" ? "عودة محجوزة" : overdue ? "عودة متأخرة" : "عودة مسجلة ✓"}
-                              </span>
+                                {opts
+                                  .filter((o) => o.key !== fu.status)
+                                  .map((o) => (
+                                    <DropItem key={o.key}>
+                                      <span onClick={() => setFuStatus(fu.id, o.key)} className="flex items-center gap-2">
+                                        <span className="w-2 h-2 rounded-full shrink-0" style={{ background: o.dot }} />
+                                        {o.label}
+                                      </span>
+                                    </DropItem>
+                                  ))}
+                              </Drop>
                             );
                           })()
                         ) : s.date >= today(0) ? (

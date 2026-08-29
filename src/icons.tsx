@@ -133,6 +133,14 @@ export const IconTrash = (p: P) =>
   );
 export const IconChevronDown = (p: P) => base(p, <path d="m6 9.5 6 6 6-6" />);
 export const IconArrowLeft = (p: P) => base(p, <path d="M19 12H5m6-6-6 6 6 6" />);
+export const IconEye = (p: P) =>
+  base(
+    p,
+    <>
+      <path d="M2.5 12s3.5-6.5 9.5-6.5S21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12Z" />
+      <circle cx="12" cy="12" r="3" />
+    </>
+  );
 export const IconAlert = (p: P) =>
   base(
     p,
