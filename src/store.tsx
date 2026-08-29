@@ -1,4 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useRef, useState } from "react";
+import { arLocale } from "./prefs";
 import { fetchState, ping, saveState } from "./api";
 
 /* ============================== Types ============================== */
@@ -520,16 +521,15 @@ export const today = (offset = 0) => {
   return dstr(d);
 };
 export const fmtMoney = (n: number) => `${Math.round(n).toLocaleString("en-US")} ر.ي`;
-const AR = "ar-EG-u-nu-latn";
 export const fmtDate = (ds: string) =>
-  new Intl.DateTimeFormat(AR, { day: "numeric", month: "long" }).format(new Date(ds + "T12:00:00"));
+  new Intl.DateTimeFormat(arLocale(), { day: "numeric", month: "long" }).format(new Date(ds + "T12:00:00"));
 export const fmtDateFull = (ds: string) =>
-  new Intl.DateTimeFormat(AR, { weekday: "long", day: "numeric", month: "long", year: "numeric" }).format(
+  new Intl.DateTimeFormat(arLocale(), { weekday: "long", day: "numeric", month: "long", year: "numeric" }).format(
     new Date(ds + "T12:00:00")
   );
 export const dayName = (ds: string) =>
-  new Intl.DateTimeFormat(AR, { weekday: "short" }).format(new Date(ds + "T12:00:00"));
-export const monthName = () => new Intl.DateTimeFormat(AR, { month: "long", year: "numeric" }).format(new Date());
+  new Intl.DateTimeFormat(arLocale(), { weekday: "short" }).format(new Date(ds + "T12:00:00"));
+export const monthName = () => new Intl.DateTimeFormat(arLocale(), { month: "long", year: "numeric" }).format(new Date());
 export const relTime = (iso: string) => {
   const diff = Math.max(0, Date.now() - new Date(iso).getTime());
   const m = Math.floor(diff / 60000);

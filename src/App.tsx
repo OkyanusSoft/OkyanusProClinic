@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { APPT_META, AuthProvider, clinicOf, invoiceTotal, ROLE_META, StoreProvider, today, useAuth, useStore } from "./store";
+import { loadPrefs } from "./prefs";
 import {
   IconBell,
   IconBook,
@@ -14,6 +15,7 @@ import {
   IconSearch,
   IconSettings,
   IconShield,
+  IconSliders,
   IconSpark,
   IconStetho,
   IconTooth,
@@ -43,6 +45,7 @@ import ItemCatsPage from "./pages/ItemCats";
 import PriceListPage from "./pages/PriceList";
 import ItemsDataPage from "./pages/ItemsData";
 import ExpenseCatsPage from "./pages/ExpenseCats";
+import PreferencesPage from "./pages/Preferences";
 import Login from "./pages/Login";
 
 type Tab =
@@ -51,7 +54,7 @@ type Tab =
   | "invoices" | "expenses" | "priceList" | "currencies" | "expenseCats"
   | "inventory" | "itemCats" | "itemsData"
   | "reports"
-  | "settings" | "users"
+  | "settings" | "users" | "preferences"
   | "guide";
 
 type NavItem = { key: Tab; label: string; icon: (c: string) => React.ReactNode };
@@ -96,6 +99,7 @@ const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
     items: [
       { key: "settings", label: "الإعدادات العامة", icon: (c) => <IconSettings className={c} /> },
       { key: "users", label: "المستخدمون والصلاحيات", icon: (c) => <IconShield className={c} /> },
+      { key: "preferences", label: "التفضيلات", icon: (c) => <IconSliders className={c} /> },
     ],
   },
 ];
@@ -126,6 +130,7 @@ const TITLES: Record<Tab, string> = {
   reports: "تقارير العيادة",
   settings: "الإعدادات العامة",
   users: "المستخدمون والصلاحيات",
+  preferences: "التفضيلات",
   guide: "دليل المستخدم",
 };
 
@@ -140,11 +145,12 @@ function Shell() {
   const [book, setBook] = useState<{ open: boolean; patientId?: string; time?: string; date?: string }>({ open: false });
   const [guideFocus, setGuideFocus] = useState<string | null>(null);
 
-  // تصفية القائمة حسب الصلاحيات — دليل المستخدم متاح لكل الأدوار
-  const allowedNav = NAV.filter((n) => n.key === "guide" || can(n.key));
+  // تصفية القائمة حسب الصلاحيات — الدليل والتفضيلات متاحان لكل الأدوار
+  const openForAll = (k: Tab) => k === "guide" || k === "preferences";
+  const allowedNav = NAV.filter((n) => openForAll(n.key) || can(n.key));
 
   // القائمة المجمّعة بعد التصفية — تُعرض في الشريط الجانبي بأقسامها
-  const allowedGroups = NAV_GROUPS.map((g) => ({ ...g, items: g.items.filter((n) => can(n.key)) })).filter(
+  const allowedGroups = NAV_GROUPS.map((g) => ({ ...g, items: g.items.filter((n) => openForAll(n.key) || can(n.key)) })).filter(
     (g) => g.items.length > 0
   );
   const showDashboard = can("dashboard");
@@ -152,11 +158,19 @@ function Shell() {
 
   // عند تغيّر المستخدم أو صلاحياته: اضمن أن التبويب الحالي مسموح
   useEffect(() => {
-    if (user && !can(tab)) {
+    if (user && !openForAll(tab) && !can(tab)) {
       setTab(allowedNav[0]?.key ?? "dashboard");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id, allowedNav.length]);
+
+  // الشاشة الافتراضية من تفضيلات المستخدم — تُطبَّق عند الدخول
+  useEffect(() => {
+    if (!user) return;
+    const def = loadPrefs().defaultTab as Tab;
+    if (def && def !== "guide" && (can(def) || def === "preferences")) setTab(def);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
 
   // رسالة تأكيد المزامنة فور الدخول — مرة واحدة لكل جلسة دخول
   const welcomeRef = useRef<string | null>(null);
@@ -267,6 +281,7 @@ function Shell() {
           {tab === "expenseCats" && <ExpenseCatsPage />}
           {tab === "users" && <UsersPage />}
           {tab === "settings" && <SettingsPage />}
+          {tab === "preferences" && <PreferencesPage />}
           {tab === "guide" && <GuidePage focus={guideFocus} />}
 
           <footer className="mt-10 pb-4 flex flex-wrap items-center justify-between gap-2 text-[11px] text-soft/80 font-medium">

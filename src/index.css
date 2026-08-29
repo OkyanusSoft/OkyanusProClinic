@@ -26,6 +26,47 @@
   /* توهّجات سماوية على الأسطح الداكنة */
   --color-ice: #4fc9f7;
   --color-frost: #9adcff;
+  /* سطح البطاقات — يتحول في الوضع الداكن */
+  --color-card: #ffffff;
+}
+
+/* ============================ الوضع الداكن ============================ */
+.dark {
+  color-scheme: dark;
+  --color-mist: #0b1a2d;
+  --color-ink: #e8f1fb;
+  --color-soft: #8ba3bd;
+  --color-line: #23405e;
+  --color-card: #122339;
+}
+/* تحويل كل الأسطح البيضاء إلى السطح الداكن دون المساس بالنصوص البيضاء */
+.dark .bg-white {
+  background-color: var(--color-card) !important;
+}
+.dark .from-white {
+  --tw-gradient-from: var(--color-card) !important;
+}
+.dark .bg-white\/70 {
+  background-color: color-mix(in srgb, var(--color-card) 72%, transparent) !important;
+}
+.dark .bg-white\/60 {
+  background-color: color-mix(in srgb, var(--color-card) 62%, transparent) !important;
+}
+.dark .bg-white\/80 {
+  background-color: color-mix(in srgb, var(--color-card) 82%, transparent) !important;
+}
+.dark .text-ink\/\[0\.05\] {
+  color: rgba(232, 241, 251, 0.06);
+}
+
+/* ============================ تقليل الحركة ============================ */
+.reduce-motion *,
+.reduce-motion *::before,
+.reduce-motion *::after {
+  animation-duration: 0.001s !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.001s !important;
+  scroll-behavior: auto !important;
 }
 
 html {
@@ -135,7 +176,7 @@ body {
 /* ---------- components ---------- */
 @layer components {
   .card {
-    @apply bg-white border border-line rounded-xl shadow-[0_1px_2px_rgba(19,42,64,0.06)];
+    @apply bg-card border border-line rounded-xl shadow-[0_1px_2px_rgba(19,42,64,0.06)];
     transition: box-shadow 0.25s ease, transform 0.25s ease, border-color 0.25s ease;
   }
   .card-hover:hover {
@@ -179,7 +220,7 @@ body {
   }
   .icon-btn:hover { background: #e8f1f9; color: var(--color-jade-deep); }
   .input {
-    @apply w-full h-10 px-3 rounded-lg bg-white border border-line text-sm text-ink placeholder:text-soft/70 outline-none;
+    @apply w-full h-10 px-3 rounded-lg bg-card border border-line text-sm text-ink placeholder:text-soft/70 outline-none;
     transition: border-color 0.2s ease, box-shadow 0.2s ease;
   }
   .input:focus {
