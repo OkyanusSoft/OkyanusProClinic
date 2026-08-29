@@ -225,7 +225,7 @@ function Shell() {
           setTab(t as Tab);
           setMobileNav(false);
         }}
-        className="hidden lg:flex fixed inset-y-0 start-0 w-64 z-40 shadow-[8px_0_30px_-12px_rgba(10,43,71,0.25)]"
+        className="hidden lg:flex sticky top-0 h-dvh w-64 shrink-0 z-30 shadow-[8px_0_30px_-12px_rgba(10,43,71,0.25)]"
       />
       {mobileNav && (
         <div className="fixed inset-0 z-[65] lg:hidden">
@@ -247,7 +247,7 @@ function Shell() {
       )}
 
       {/* ====== المحتوى — عمود ملاصق للشريط الجانبي يمتد حتى أسفل الصفحة ====== */}
-      <div className="flex-1 min-w-0 flex flex-col lg:ps-64 min-h-dvh">
+      <div className="flex-1 min-w-0 flex flex-col min-h-dvh">
         <Topbar
           tab={tab}
           onMenu={() => setMobileNav(true)}
