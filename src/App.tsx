@@ -258,7 +258,7 @@ function Shell() {
           }}
         />
         <main className="flex-1 w-full">
-          <div className="w-full max-w-[1400px] px-4 sm:px-6 lg:px-8 py-6">
+          <div className="w-full max-w-[1400px] ps-2 pe-4 sm:pe-6 lg:pe-8 py-6">
           {tab === "dashboard" && (
             <Dashboard
               onOpenPatient={setDrawerId}
@@ -519,7 +519,7 @@ function Topbar({ tab, onMenu, onOpenPatient, onHelp }: { tab: Tab; onMenu: () =
 
   return (
     <header className="shrink-0 z-40 bg-card/80 backdrop-blur-md border-b border-line">
-      <div className="flex items-center gap-3 px-4 sm:px-6 lg:px-8 h-16">
+      <div className="flex items-center gap-3 ps-2 pe-4 sm:pe-6 lg:pe-8 h-16">
         <button className="icon-btn lg:hidden" onClick={onMenu} aria-label="القائمة">
           <IconMenu />
         </button>
