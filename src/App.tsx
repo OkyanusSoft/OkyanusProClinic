@@ -246,12 +246,8 @@ function Shell() {
         </div>
       )}
 
-      {/* ====== المحتوى — لوحة العمل العائمة ====== */}
-      <div className="flex-1 min-w-0 lg:ps-64">
-        {/* فجوة محيطية تحتضن لوحة العمل المرتفعة */}
-        <div className="h-dvh p-2.5 sm:p-3.5 lg:p-4">
-          {/* لوحة العمل — سطح واحد مرتفع يحتضن الشريط العلوي والمحتوى */}
-          <div className="workspace-panel h-full flex flex-col rounded-2xl overflow-hidden">
+      {/* ====== المحتوى — عمود ملاصق للشريط الجانبي يمتد حتى أسفل الصفحة ====== */}
+      <div className="flex-1 min-w-0 flex flex-col lg:ps-64 min-h-dvh">
         <Topbar
           tab={tab}
           onMenu={() => setMobileNav(true)}
@@ -261,7 +257,8 @@ function Shell() {
             setTab("guide");
           }}
         />
-        <main className="flex-1 overflow-y-auto px-4 sm:px-6 lg:px-8 py-6 w-full">
+        <main className="flex-1 w-full">
+          <div className="w-full max-w-[1400px] px-4 sm:px-6 lg:px-8 py-6">
           {tab === "dashboard" && (
             <Dashboard
               onOpenPatient={setDrawerId}
@@ -289,8 +286,10 @@ function Shell() {
           {tab === "settings" && <SettingsPage />}
           {tab === "preferences" && <PreferencesPage />}
           {tab === "guide" && <GuidePage focus={guideFocus} />}
+          </div>
+        </main>
 
-          <footer className="mt-12 border-t border-line pt-5 pb-4">
+        <footer className="border-t border-line pt-5 pb-4 px-4 sm:px-6 lg:px-8">
             <div className="text-center space-y-2.5">
               <p className="text-xs font-bold text-soft">
                 © {new Date().getFullYear()} جميع الحقوق محفوظة — <span className="text-jade-deep">شركة أوكيانوس سوفت</span>
@@ -312,10 +311,7 @@ function Shell() {
               </div>
               <p className="text-[10px] text-soft/60">نظام {clinicOf(db).clinicName} · الإصدار 3.0</p>
             </div>
-          </footer>
-        </main>
-          </div>
-        </div>
+        </footer>
       </div>
 
       {/* ====== طبقات عامة ====== */}
