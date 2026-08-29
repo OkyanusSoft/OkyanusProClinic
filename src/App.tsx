@@ -246,10 +246,12 @@ function Shell() {
         </div>
       )}
 
-      {/* ====== المحتوى — الجزء المتحرك ====== */}
-      <div className="flex-1 min-w-0 flex flex-col lg:ps-64">
-        {/* عمود المحتوى — محاذٍ لجانب الشريط الجانبي (يمين القسم الأيسر) */}
-        <div className="flex-1 flex flex-col w-full max-w-[1400px] min-w-0">
+      {/* ====== المحتوى — لوحة العمل العائمة ====== */}
+      <div className="flex-1 min-w-0 lg:ps-64">
+        {/* فجوة محيطية تحتضن لوحة العمل المرتفعة */}
+        <div className="h-dvh p-2.5 sm:p-3.5 lg:p-4">
+          {/* لوحة العمل — سطح واحد مرتفع يحتضن الشريط العلوي والمحتوى */}
+          <div className="workspace-panel h-full flex flex-col rounded-2xl overflow-hidden">
         <Topbar
           tab={tab}
           onMenu={() => setMobileNav(true)}
@@ -259,7 +261,7 @@ function Shell() {
             setTab("guide");
           }}
         />
-        <main className="flex-1 px-4 sm:px-6 lg:px-8 py-6 w-full">
+        <main className="flex-1 overflow-y-auto px-4 sm:px-6 lg:px-8 py-6 w-full">
           {tab === "dashboard" && (
             <Dashboard
               onOpenPatient={setDrawerId}
@@ -312,6 +314,7 @@ function Shell() {
             </div>
           </footer>
         </main>
+          </div>
         </div>
       </div>
 
@@ -353,7 +356,8 @@ function SidebarContent({
   const clinic = clinicOf(db);
   const doc = db.doctors[0];
   return (
-    <aside className={`${className} flex-col bg-pine sidebar-texture text-white`}>
+    <aside className={`${className} flex-col bg-pine sidebar-texture text-white relative`}>
+      <span className="sidebar-edge" aria-hidden="true" />
       <div className="flex items-center gap-3 px-5 pt-6 pb-5">
         <Logo className="w-11 h-11 shrink-0" />
         <div className="min-w-0">
@@ -518,7 +522,7 @@ function Topbar({ tab, onMenu, onOpenPatient, onHelp }: { tab: Tab; onMenu: () =
   const clock = new Intl.DateTimeFormat("ar-EG-u-nu-latn", { hour: "2-digit", minute: "2-digit", second: "2-digit" }).format(now);
 
   return (
-    <header className="sticky top-0 z-40 bg-mist/85 backdrop-blur-md border-b border-line">
+    <header className="shrink-0 z-40 bg-card/80 backdrop-blur-md border-b border-line">
       <div className="flex items-center gap-3 px-4 sm:px-6 lg:px-8 h-16">
         <button className="icon-btn lg:hidden" onClick={onMenu} aria-label="القائمة">
           <IconMenu />
