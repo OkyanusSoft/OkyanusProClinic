@@ -6,6 +6,7 @@ import React, {
   useRef,
   useState,
 } from "react";
+import { createPortal } from "react-dom";
 import { IconAlert, IconCheck, IconTrash, IconX } from "../icons";
 import { loadPrefs } from "../prefs";
 
@@ -130,33 +131,85 @@ export function Drop({
   children,
   align = "end",
   panelCls = "",
+  direction = "down",
+  fixed = false,
 }: {
   button: React.ReactNode;
   children: React.ReactNode;
   align?: "start" | "end";
   panelCls?: string;
+  /** اتجاه الفتح: لأعلى فوق الزر أو لأسفل تحته */
+  direction?: "up" | "down";
+  /** عند التفعيل تُعرض اللوحة بموضع fixed محسوب — تهرب من أي قصّ سببه overflow في الأسلاف (مثل الجداول) */
+  fixed?: boolean;
 }) {
   const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState<{ top?: number; bottom?: number; left?: number; right?: number }>({});
   const ref = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+
+  const compute = useCallback(() => {
+    const r = ref.current?.getBoundingClientRect();
+    if (!r) return;
+    const gap = 8;
+    const p: { top?: number; bottom?: number; left?: number; right?: number } = {};
+    if (direction === "up") p.bottom = window.innerHeight - r.top + gap;
+    else p.top = r.bottom + gap;
+    if (align === "end") p.right = window.innerWidth - r.right;
+    else p.left = r.left;
+    setPos(p);
+  }, [direction, align]);
+
+  const toggle = useCallback(() => {
+    setOpen((o) => {
+      if (!o) compute();
+      return !o;
+    });
+  }, [compute]);
+
   useEffect(() => {
     if (!open) return;
     const onDoc = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      if (
+        ref.current && !ref.current.contains(e.target as Node) &&
+        panelRef.current && !panelRef.current.contains(e.target as Node)
+      ) setOpen(false);
     };
+    // أي تمرير أو تغيير حجم أثناء الفتح يغلق اللوحة كي لا تظل عائمة في موضع قديم
+    const onMove = () => setOpen(false);
     document.addEventListener("mousedown", onDoc);
-    return () => document.removeEventListener("mousedown", onDoc);
+    window.addEventListener("scroll", onMove, true);
+    window.addEventListener("resize", onMove);
+    return () => {
+      document.removeEventListener("mousedown", onDoc);
+      window.removeEventListener("scroll", onMove, true);
+      window.removeEventListener("resize", onMove);
+    };
   }, [open]);
+
+  const panelBase = `anim-pop z-[80] card !rounded-xl p-1.5 min-w-48 shadow-[0_18px_44px_-12px_rgba(11,47,43,0.35)] ${panelCls}`;
+
   return (
-    <div ref={ref} className="relative">
-      <div onClick={() => setOpen((o) => !o)} className="cursor-pointer">{button}</div>
-      {open && (
-        <div
-          className={`anim-pop absolute z-50 mt-2 ${align === "end" ? "end-0" : "start-0"} card !rounded-xl p-1.5 min-w-48 shadow-[0_18px_44px_-12px_rgba(11,47,43,0.3)] ${panelCls}`}
-          onClick={() => setOpen(false)}
-        >
-          {children}
-        </div>
-      )}
+    <div ref={ref} className="relative inline-block">
+      <div onClick={toggle} className="cursor-pointer">{button}</div>
+      {open &&
+        (fixed
+          ? /* تُعرض عبر بوابة إلى body — تهرب من أي قصّ (overflow) أو تحويل (transform) في الأسلاف */
+            createPortal(
+              <div ref={panelRef} className={`${panelBase} fixed`} style={pos} onClick={() => setOpen(false)}>
+                {children}
+              </div>,
+              document.body
+            )
+          : (
+          <div
+            ref={panelRef}
+            className={`${panelBase} absolute ${direction === "up" ? "bottom-full mb-2" : "mt-2"} ${align === "end" ? "end-0" : "start-0"}`}
+            onClick={() => setOpen(false)}
+          >
+            {children}
+          </div>
+        ))}
     </div>
   );
 }
