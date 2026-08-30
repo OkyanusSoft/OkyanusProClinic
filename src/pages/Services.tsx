@@ -42,7 +42,12 @@ export default function ServicesPage() {
   const [priceEdit, setPriceEdit] = useState<string | null>(null);
   const [priceVal, setPriceVal] = useState("");
 
-  const cats = useMemo(() => ["all", ...new Set(db.services.map((s) => s.category))], [db.services]);
+  /* الفئات الحية: المصدر المعتمد (فئات الخدمات) + أي فئات موجودة فعلياً في الخدمات القديمة */
+  const cats = useMemo(() => {
+    const fromServices = new Set(db.services.map((s) => s.category));
+    const merged = [...new Set([...db.serviceCats, ...fromServices])];
+    return ["all", ...merged];
+  }, [db.services, db.serviceCats]);
   const list = useMemo(
     () => db.services.filter((s) => cat === "all" || s.category === cat).sort((a, b) => a.category.localeCompare(b.category, "ar")),
     [db.services, cat]
@@ -279,10 +284,10 @@ export default function ServicesPage() {
 }
 
 function ServiceModal({ initial, onClose }: { initial?: Service; onClose: () => void }) {
-  const { dispatch } = useStore();
+  const { db, dispatch } = useStore();
   const { push } = useToast();
   const [name, setName] = useState(initial?.name ?? "");
-  const [category, setCategory] = useState(initial?.category ?? "علاج");
+  const [category, setCategory] = useState(initial?.category ?? db.serviceCats[0] ?? "علاج");
   const [price, setPrice] = useState(String(initial?.price ?? ""));
   const [duration, setDuration] = useState(String(initial?.duration ?? 30));
   const [color, setColor] = useState(initial?.color ?? COLORS[0]);
@@ -326,7 +331,7 @@ function ServiceModal({ initial, onClose }: { initial?: Service; onClose: () => 
         </div>
         <Field label="الفئة">
           <TSelect value={category} onChange={(e) => setCategory(e.target.value)}>
-            {CATS.map((c) => (
+            {(db.serviceCats.length ? db.serviceCats : CATS).map((c) => (
               <option key={c} value={c}>{c}</option>
             ))}
           </TSelect>
