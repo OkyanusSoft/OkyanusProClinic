@@ -557,7 +557,62 @@ export const invoiceStatus = (inv: Invoice): InvoiceStatus => {
   return "unpaid";
 };
 
-/* ============================== Seed ============================== */
+/* ============================== Bootstrap ============================== */
+
+/**
+ * حالة البداية الفارغة — لا بيانات افتراضية إطلاقاً.
+ * تحتوي فقط على البنية التحتية اللازمة للتشغيل:
+ *   حساب المدير (للدخول) · العملات (الريال اليمني أساساً) · فئات التصنيف · الإعدادات.
+ * كل بيانات العمل (مرضى، مواعيد، فواتير…) تبدأ فارغة وتُحفظ في قاعدة البيانات.
+ */
+function bootstrap(): DB {
+  const adminUser: User = {
+    id: "u-admin",
+    name: "عبدالله الشرفي",
+    username: "abdullah",
+    pin: "0000",
+    role: "admin",
+    linkId: undefined,
+    active: true,
+    permissions: ROLE_META.admin.defaults,
+  };
+  const baseCurrencies: Currency[] = [
+    { code: "YER", name: "ريال يمني", symbol: "ر.ي", rate: 1 },
+    { code: "SAR", name: "ريال سعودي", symbol: "ر.س", rate: 141 },
+    { code: "USD", name: "دولار أمريكي", symbol: "$", rate: 530 },
+    { code: "AED", name: "درهم إماراتي", symbol: "د.إ", rate: 144 },
+  ];
+  return {
+    patients: [],
+    doctors: [],
+    staff: [],
+    currencies: baseCurrencies,
+    defaultCurrency: "YER",
+    services: [],
+    appointments: [],
+    invoices: [],
+    activity: [],
+    expenses: [],
+    prescriptions: [],
+    sessions: [],
+    implants: [],
+    prosthetics: [],
+    orthoCases: [],
+    xrays: [],
+    followUps: [],
+    supplies: [],
+    supplyMoves: [],
+    serviceCats: ["تشخيص", "وقاية", "علاج", "تجميل", "جراحة", "تعويضات", "تقويم"],
+    itemCats: ["تخدير", "حشوات", "علاج عصب", "جراحة", "وقاية", "تعقيم", "مختبر", "استهلاكي عام"],
+    expenseCats: EXPENSE_CATS.map((c) => c.name),
+    plans: [],
+    users: [adminUser],
+    settings: DEFAULT_CLINIC_SETTINGS,
+    nextInv: 1001,
+  };
+}
+
+/* ============================== Seed (بيانات تجريبية — غير مستخدمة) ============================== */
 
 function seed(): DB {
   const doctors: Doctor[] = [
@@ -1213,7 +1268,7 @@ function reducer(db: DB, action: Action): DB {
     case "IMPORT":
       return action.db;
     case "HYDRATE":
-      return ensureToday(normalizeDB(action.db));
+      return normalizeDB(action.db);
     case "ADD_USER":
       return { ...db, users: [...db.users, action.u] };
     case "UPDATE_USER":
@@ -1339,7 +1394,7 @@ function reducer(db: DB, action: Action): DB {
     }
 
     case "RESET":
-      return seed();
+      return bootstrap();
     default:
       return db;
   }
@@ -1370,11 +1425,11 @@ export function normalizeDB(raw: DB): DB {
     supplies: db.supplies ?? [],
     supplyMoves: db.supplyMoves ?? [],
     plans: db.plans ?? [],
-    serviceCats: db.serviceCats?.length ? db.serviceCats : seed().serviceCats,
-    itemCats: db.itemCats?.length ? db.itemCats : seed().itemCats,
-    expenseCats: db.expenseCats?.length ? db.expenseCats : seed().expenseCats,
+    serviceCats: db.serviceCats?.length ? db.serviceCats : bootstrap().serviceCats,
+    itemCats: db.itemCats?.length ? db.itemCats : bootstrap().itemCats,
+    expenseCats: db.expenseCats?.length ? db.expenseCats : bootstrap().expenseCats,
     settings: { ...DEFAULT_CLINIC_SETTINGS, ...(db.settings ?? {}) },
-    users: (db.users?.length ? db.users : seed().users).map((u) =>
+    users: (db.users?.length ? db.users : bootstrap().users).map((u) =>
       // طاقم الاستقبال والمساعدة يرى السجل والجدول كاملين دائماً
       u.role === "secretary" || u.role === "assistant"
         ? { ...u, permissions: [...new Set([...u.permissions, "scope_all_patients", "scope_all_appointments"])] }
@@ -1383,33 +1438,16 @@ export function normalizeDB(raw: DB): DB {
   };
 }
 
-/** ضمان وجود مواعيد لليوم حتى تبقى اللوحة حيّة */
-function ensureToday(db: DB): DB {
-  if (!db.appointments.some((a) => a.date === today(0) && a.status !== "cancelled")) {
-    return {
-      ...db,
-      appointments: [
-        ...db.appointments,
-        { id: uid(), patientId: "p4", serviceId: "s1", doctorId: "d1", date: today(0), time: "09:30", status: "confirmed" },
-        { id: uid(), patientId: "p6", serviceId: "s11", doctorId: "d2", date: today(0), time: "12:00", status: "waiting" },
-        { id: uid(), patientId: "p9", serviceId: "s4", doctorId: "d1", date: today(0), time: "16:30", status: "confirmed" },
-        { id: uid(), patientId: "p10", serviceId: "s2", doctorId: "d2", date: today(0), time: "18:00", status: "confirmed" },
-      ],
-    };
-  }
-  return db;
-}
-
 function load(): DB {
   let db: DB;
   try {
     const raw = localStorage.getItem(KEY);
-    db = raw ? normalizeDB(JSON.parse(raw) as DB) : seed();
-    if (!db.patients?.length || !db.currencies?.length) db = seed();
+    // لا بيانات محلية → نبدأ بالحالة الفارغة (بدون أي بيانات افتراضية)
+    db = raw ? normalizeDB(JSON.parse(raw) as DB) : bootstrap();
   } catch {
-    db = seed();
+    db = bootstrap();
   }
-  return ensureToday(db);
+  return db;
 }
 
 export type ConnStatus = "checking" | "online" | "offline";
@@ -1445,15 +1483,17 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       const remote = await fetchState();
       if (cancelled) return;
       const r = remote as unknown as DB | null;
-      const hasData = !!r && Array.isArray(r.patients) && r.patients.length > 0;
-      if (hasData) {
+      // القاعدة المركزية هي مصدر الحقيقة: إن وُجدت حالة محفوظة في MySQL نعتمدها
+      // (حتى لو كانت فارغة) — فلا نعيد حقن أي بيانات محلية قديمة فوقها.
+      const hasRemote = !!r && Array.isArray(r.patients);
+      if (hasRemote) {
         dispatch({ type: "HYDRATE", db: r });
         setConn("online");
       } else {
         const ok = await ping();
         if (!cancelled) {
           setConn(ok ? "online" : "offline");
-          // خادم متصل بقاعدة فارغة → نرفع البيانات المحلية لتعميرها
+          // خادم متصل بقاعدة لم تُهيأ بعد → نرفع الحالة الفارغة لتعميرها أول مرة
           if (ok) saveState(dbRef.current).catch(() => undefined);
         }
       }

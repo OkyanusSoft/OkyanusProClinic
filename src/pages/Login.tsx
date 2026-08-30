@@ -276,17 +276,24 @@ export default function Login() {
               className="inline-flex items-center gap-2 text-[11px] font-bold text-soft hover:text-jade-deep transition-colors cursor-pointer"
             >
               <IconShield className="w-4 h-4" />
-              رموز الدخول التجريبية {showHint ? "▲" : "▼"}
+              حسابات الدخول المتاحة {showHint ? "▲" : "▼"}
             </button>
             {showHint && (
-              <div className="anim-pop mt-3 card !rounded-xl p-4 grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-2.5">
-                {db.users.map((u) => (
-                  <div key={u.id} className="flex items-center gap-2 text-[11px]">
-                    <span className="w-2 h-2 rounded-full shrink-0" style={{ background: ROLE_META[u.role].color }} />
-                    <span className="font-semibold text-ink truncate">{u.name}</span>
-                    <span className="stat-num ms-auto font-bold text-jade-deep" dir="ltr">{u.pin}</span>
-                  </div>
-                ))}
+              <div className="anim-pop mt-3 card !rounded-xl p-4">
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-2.5">
+                  {db.users.map((u) => (
+                    <div key={u.id} className="flex items-center gap-2 text-[11px]">
+                      <span className="w-2 h-2 rounded-full shrink-0" style={{ background: ROLE_META[u.role].color }} />
+                      <span className="font-semibold text-ink truncate">{u.name}</span>
+                      <span className="stat-num ms-auto font-bold text-jade-deep" dir="ltr">{u.pin}</span>
+                    </div>
+                  ))}
+                </div>
+                {db.users.length <= 1 && (
+                  <p className="mt-3 pt-3 border-t border-line text-[10px] text-soft leading-relaxed">
+                    النظام جديد — ادخل بحساب المدير ثم أنشئ حسابات الأطباء والسكرتارية من «المستخدمون والصلاحيات».
+                  </p>
+                )}
               </div>
             )}
           </div>

@@ -522,8 +522,8 @@ export default function SettingsPage() {
 
               <div className="card p-6 anim-pop !border-coral/30" style={{ animationDelay: "80ms" }}>
                 <h2 className="font-display font-bold text-xl text-coral mb-1.5 flex items-center gap-2"><IconTrash className="w-5 h-5" /> منطقة الخطر</h2>
-                <p className="text-xs text-soft mb-4 leading-relaxed">إعادة التعيين تمسح كل التغييرات وتُرجع البيانات التجريبية الأصلية — المرضى، المواعيد، الفواتير، الإعدادات والمستخدمين. صدِّر نسخة احتياطية أولاً إن كنت تريد الحفاظ على عملك.</p>
-                <button className="btn-danger" onClick={() => setConfirmReset(true)}>إعادة تعيين البيانات التجريبية…</button>
+                <p className="text-xs text-soft mb-4 leading-relaxed">حذف كل البيانات يمسح جميع السجلات نهائياً — المرضى، المواعيد، الفواتير، الجلسات، المصروفات، المستخدمين (عدا حساب المدير) — ويعيد القاعدة فارغة تماماً لتبدأ الإدخال من جديد. صدِّر نسخة احتياطية أولاً إن كنت تريد الحفاظ على عملك.</p>
+                <button className="btn-danger" onClick={() => setConfirmReset(true)}>حذف كل البيانات والبدء من الصفر…</button>
               </div>
 
               <div className="card p-6 anim-pop" style={{ animationDelay: "140ms" }}>
@@ -570,7 +570,7 @@ export default function SettingsPage() {
       <Modal
         open={confirmReset}
         onClose={() => setConfirmReset(false)}
-        title="إعادة تعيين كل البيانات؟"
+        title="حذف كل البيانات والبدء من الصفر؟"
         subtitle="لا يمكن التراجع عن هذه الخطوة"
         footer={
           <>
@@ -584,17 +584,17 @@ export default function SettingsPage() {
                 setIdForm(c);
                 setWorkForm({ workStart: c.workStart, workEnd: c.workEnd, followUpAlertDays: c.followUpAlertDays });
                 setInvForm({ invoiceTitle: c.invoiceTitle, invoicePrefix: c.invoicePrefix, invoiceFooter: c.invoiceFooter });
-                push("warn", "أُعيدت البيانات التجريبية", "عادت العيادة إلى حالتها الأولى.");
+                push("warn", "حُذفت كل البيانات", "القاعدة الآن فارغة — ابدأ الإدخال من جديد.");
               }}
             >
               <IconAlert className="w-4.5 h-4.5" />
-              نعم، امسح وأعد التعيين
+              نعم، احذف كل البيانات
             </button>
           </>
         }
       >
         <p className="text-sm text-soft leading-relaxed">
-          سيُمسح كل ما أضفته أو عدّلته: <b className="text-ink">{db.patients.length} مريضاً</b>، <b className="text-ink">{db.appointments.length} موعداً</b>، <b className="text-ink">{db.invoices.length} فاتورة</b>، و<b className="text-ink">{db.sessions.length} جلسة علاج</b> — وتعود الإعدادات وهوية العيادة للافتراضي. هل صدّرت نسخة احتياطية؟
+          سيُمسح كل ما أضفته أو عدّلته نهائياً: <b className="text-ink">{db.patients.length} مريضاً</b>، <b className="text-ink">{db.appointments.length} موعداً</b>، <b className="text-ink">{db.invoices.length} فاتورة</b>، <b className="text-ink">{db.sessions.length} جلسة علاج</b>، وكل الأطباء والموظفين والمستخدمين (عدا حساب المدير) — وتُحفظ القاعدة فارغة في MySQL لتبدأ الإدخال من جديد. هل صدّرت نسخة احتياطية؟
         </p>
       </Modal>
 
