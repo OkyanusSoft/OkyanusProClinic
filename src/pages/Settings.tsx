@@ -10,7 +10,7 @@ import {
 import { IconAlert, IconBook, IconBox, IconCalendar, IconCheck, IconCoins, IconPulse, IconReceipt, IconShield, IconSpark, IconTrash, IconWallet, Logo } from "../icons";
 import { Field, Modal, TArea, TInput, TSelect, useToast } from "../components/ui";
 import { IconSettings } from "../icons";
-import { ping, saveState } from "../api";
+import { checkDb, ping, saveState } from "../api";
 
 type SetTab = "identity" | "work" | "invoice" | "data";
 
@@ -135,26 +135,55 @@ export default function SettingsPage() {
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<"idle" | "ok" | "fail">("idle");
   const [serverOnline, setServerOnline] = useState<"checking" | "online" | "offline">("checking");
+  const [dbError, setDbError] = useState<string | null>(null);
+  const [dbRecords, setDbRecords] = useState<number | null>(null);
 
-  // فحص حالة الخادم عند فتح التبويب
+  // فحص حالة الخادم وقاعدة البيانات عند فتح التبويب
   React.useEffect(() => {
     if (tab !== "data") return;
     setServerOnline("checking");
-    ping().then((ok) => setServerOnline(ok ? "online" : "offline"));
+    (async () => {
+      const alive = await ping();
+      if (!alive) {
+        setServerOnline("offline");
+        setDbError(null);
+        return;
+      }
+      const chk = await checkDb();
+      setServerOnline("online");
+      setDbError(chk.ok ? null : chk.error ?? "خطأ غير معروف في قاعدة البيانات.");
+      setDbRecords(chk.ok ? chk.records ?? 0 : null);
+    })();
   }, [tab]);
 
   const testConnection = async () => {
     setTesting(true);
     setTestResult("idle");
+    setDbError(null);
     try {
       localStorage.setItem("dental-api-url", mysql.apiUrl.replace(/\/$/, ""));
     } catch { /* تجاهل */ }
-    const ok = await ping();
-    setTestResult(ok ? "ok" : "fail");
-    setServerOnline(ok ? "online" : "offline");
+    const alive = await ping();
+    if (!alive) {
+      setTestResult("fail");
+      setServerOnline("offline");
+      setTesting(false);
+      push("error", "تعذّر الاتصال بالخادم", "تأكد أن خادم Node يعمل (npm start) على المنفذ المحدد.");
+      return;
+    }
+    // الخادم يعمل — الآن نفحص قاعدة البيانات الفعلية
+    const chk = await checkDb();
+    setServerOnline("online");
     setTesting(false);
-    if (ok) push("success", "تم الاتصال بنجاح", "الخادم المركزي يستجيب على " + mysql.apiUrl);
-    else push("error", "تعذّر الاتصال", "تأكد أن خادم Node يعمل على المنفذ المحدد.");
+    if (chk.ok) {
+      setTestResult("ok");
+      setDbRecords(chk.records ?? 0);
+      push("success", "تم الاتصال بنجاح", `الخادم يستجيب وقاعدة «${mysql.database}» جاهزة (${chk.records ?? 0} حفظاً مخزناً).`);
+    } else {
+      setTestResult("fail");
+      setDbError(chk.error ?? "خطأ غير معروف.");
+      push("error", "الخادم يعمل لكن قاعدة البيانات ترفض الاتصال", chk.error ?? "راجع بيانات الاتصال في .env");
+    }
   };
 
   /* مزامنة فورية: دفع الحالة الحالية إلى MySQL والتحقق من نجاح الحفظ */
@@ -162,13 +191,16 @@ export default function SettingsPage() {
   const syncNow = async () => {
     setPushing(true);
     const stamped = { ...db, savedAt: Date.now() };
-    const ok = await saveState(stamped);
+    const res = await saveState(stamped);
     setPushing(false);
-    if (ok) {
+    if (res.ok) {
       setServerOnline("online");
+      setDbError(null);
+      setDbRecords(1);
       push("success", "تمت المزامنة مع MySQL", `${db.patients.length} مريضاً و ${db.appointments.length} موعداً و ${db.invoices.length} فاتورة حُفظت في القاعدة المركزية.`);
     } else {
-      push("error", "فشلت المزامنة", "تعذّر الحفظ في MySQL — تحقق من تشغيل الخادم والاتصال.");
+      setDbError(res.error ?? "فشل غير معروف.");
+      push("error", "فشلت المزامنة", res.error ?? "تحقق من تشغيل الخادم والاتصال.");
     }
   };
 

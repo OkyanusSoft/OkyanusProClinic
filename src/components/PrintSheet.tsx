@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 
 /**
@@ -47,6 +47,7 @@ import {
   useMoney,
   useStore,
   type Appointment,
+  type ClinicalSession,
   type FollowUp,
   type Invoice,
   type Patient,
@@ -75,6 +76,7 @@ function DocHeader() {
       <div className="text-end text-[10px] text-soft leading-relaxed">
         <p>{clinic.address}</p>
         <p dir="ltr">{clinic.phone}</p>
+        {clinic.email && <p dir="ltr">{clinic.email}</p>}
       </div>
     </div>
   );
@@ -678,7 +680,7 @@ export function CardPrintModal({
   title: string;
   render: (count: number) => React.ReactNode;
 }) {
-  const [count, setCount] = useState(2);
+  const count = 1;
   const { portalRef, doPrint } = usePrintTrigger();
   return (
     <>
@@ -686,26 +688,14 @@ export function CardPrintModal({
         open={open}
         onClose={onClose}
         title={title}
-        subtitle="بطاقة بحجم قياسي 85.6×54 مم على ورقة A4 — قصّ على الخط المتقطع"
+        subtitle="بطاقة واحدة مكبّرة لكل صفحة A4 — قصّ على الخط المتقطع"
         width="max-w-3xl"
         footer={
           <>
-            <div className="me-auto flex items-center gap-2">
-              <span className="text-[11px] font-bold text-soft">نسخ في الورقة:</span>
-              <div className="flex items-center gap-1 bg-mist rounded-lg p-1">
-                {[1, 2, 4].map((n) => (
-                  <button
-                    key={n}
-                    onClick={() => setCount(n)}
-                    className={`w-8 h-8 rounded-md text-xs font-bold cursor-pointer transition-all stat-num ${
-                      count === n ? "bg-pine text-white shadow-sm" : "bg-white border border-line text-soft hover:border-jade"
-                    }`}
-                  >
-                    {n}
-                  </button>
-                ))}
-              </div>
-            </div>
+            <span className="me-auto chip bg-mist text-soft !py-2">
+              <span className="w-1.5 h-1.5 rounded-full bg-mint pulse-dot" />
+              بطاقة واحدة لكل صفحة
+            </span>
             <button className="btn-ghost" onClick={onClose}>إغلاق</button>
             <button className="btn-primary" onClick={doPrint}>
               <IconPrinter className="w-4.5 h-4.5" />
@@ -734,21 +724,31 @@ export function CardPrintModal({
 }
 
 /** شبكة بطاقات على الورقة مع خطوط القص */
-export function CardSheet({ units, cols = 2, caption }: { units: React.ReactNode[]; cols?: 1 | 2; caption?: string }) {
+export function CardSheet({ units, cols = 2, caption, scale = 1 }: { units: React.ReactNode[]; cols?: 1 | 2; caption?: string; scale?: number }) {
+  const single = units.length === 1 && cols === 1;
   return (
-    <div>
-      <div className="flex items-center justify-center gap-3 mb-5">
+    <div className={single ? "flex flex-col items-center" : ""}>
+      <div className="flex items-center justify-center gap-3 mb-5 w-full">
         <span className="h-px flex-1 max-w-24 bg-line" />
         <p className="text-[10px] font-bold text-soft tracking-widest">{caption}</p>
         <span className="h-px flex-1 max-w-24 bg-line" />
       </div>
-      <div className={`grid gap-7 justify-items-center ${cols === 2 ? "grid-cols-2" : "grid-cols-1"}`}>
-        {units.map((u, i) => (
-          <div key={i} className="cut-box">
-            {u}
-          </div>
-        ))}
-      </div>
+      {single ? (
+        <div
+          className="cut-box"
+          style={{ transform: `scale(${scale})`, transformOrigin: "top center", marginBottom: `${Math.round(54 * (scale - 1))}mm` }}
+        >
+          {units[0]}
+        </div>
+      ) : (
+        <div className={`grid gap-7 justify-items-center ${cols === 2 ? "grid-cols-2" : "grid-cols-1"}`}>
+          {units.map((u, i) => (
+            <div key={i} className="cut-box">
+              {u}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -833,8 +833,8 @@ export function PatientCardSheet({ p, count }: { p: Patient; count: number }) {
   const backs = Array.from({ length: count }, (_, i) => <PatientCardBack key={`b${i}`} p={p} />);
   return (
     <div className="space-y-9">
-      <CardSheet units={fronts} cols={count === 1 ? 1 : 2} caption={`الوجه — ${p.name}`} />
-      <CardSheet units={backs} cols={count === 1 ? 1 : 2} caption="الظهر — بيانات العيادة" />
+      <CardSheet units={fronts} cols={count === 1 ? 1 : 2} caption={`الوجه — ${p.name}`} scale={count === 1 ? 1.6 : 1} />
+      <CardSheet units={backs} cols={count === 1 ? 1 : 2} caption="الظهر — بيانات العيادة" scale={count === 1 ? 1.6 : 1} />
     </div>
   );
 }
@@ -915,6 +915,119 @@ export function FollowUpCardPrint({ f }: { f: FollowUp }) {
         <span>أحضر هذا الكرت معك يوم المراجعة</span>
         <span dir="ltr" className="stat-num font-bold text-ink">{clinic.phone}</span>
       </p>
+    </div>
+  );
+}
+
+/* ============================ جلسة علاج مكتملة ============================ */
+
+export function SessionPrint({ session }: { session: ClinicalSession }) {
+  const { db, patientById, serviceById, doctorById } = useStore();
+  const money = useMoney();
+  const p = patientById(session.patientId);
+  const d = doctorById(session.doctorId);
+  const inv = session.invoiceId ? db.invoices.find((i) => i.id === session.invoiceId) : undefined;
+  const invTotal = inv ? invoiceTotal(inv) : 0;
+  const procTotal = session.procedures.reduce((s, pr) => s + (serviceById(pr.serviceId)?.price ?? 0), 0);
+  const duration =
+    session.endedAt && session.startedAt
+      ? Math.max(1, Math.round((new Date(session.endedAt).getTime() - new Date(session.startedAt).getTime()) / 60000))
+      : null;
+
+  const Row = ({ label, value }: { label: string; value: React.ReactNode }) => (
+    <div className="flex gap-2 py-1.5 border-b border-line/60 last:border-0">
+      <span className="w-32 shrink-0 text-[11px] font-bold text-soft">{label}</span>
+      <span className="text-[12px] text-ink flex-1">{value || "—"}</span>
+    </div>
+  );
+
+  return (
+    <div className="text-ink">
+      <div className="flex items-center justify-between py-4">
+        <div>
+          <p className="font-display font-bold text-xl">تقرير جلسة علاج مكتملة</p>
+          <p className="text-xs text-soft mt-1">
+            التاريخ: {fmtDate(session.date)} · رقم الجلسة: <b className="stat-num" dir="ltr">{session.id.slice(0, 6).toUpperCase()}</b>
+          </p>
+        </div>
+        <div className="text-end text-xs leading-relaxed">
+          <p>
+            المريض: <b className="text-sm">{p?.name ?? "—"}</b>
+          </p>
+          <p className="text-soft">
+            الطبيب: <b>{d?.name}</b>
+          </p>
+        </div>
+      </div>
+
+      <div className="grid sm:grid-cols-2 gap-x-6">
+        <Row label="الشكوى الرئيسية" value={session.complaint} />
+        <Row label="التشخيص السريري" value={session.diagnosis} />
+        <Row label="مدة الجلسة" value={duration ? `${duration} دقيقة` : "—"} />
+        <Row label="الأسنان المعالجة" value={session.teethTreated.length ? session.teethTreated.map((t) => `${t.tooth} (${TOOTH_META[t.status].label})`).join("، ") : "—"} />
+      </div>
+
+      <p className="text-[11px] font-bold text-soft mt-4 mb-1.5">الإجراءات المنفذة ({session.procedures.length})</p>
+      {session.procedures.length === 0 ? (
+        <p className="text-[12px] text-soft">لا إجراءات مسجلة.</p>
+      ) : (
+        <table className="w-full text-sm border-collapse">
+          <thead>
+            <tr className="bg-mist text-[11px]">
+              <th className="border border-line px-3 py-2 text-start">#</th>
+              <th className="border border-line px-3 py-2 text-start">الإجراء</th>
+              <th className="border border-line px-3 py-2">السن</th>
+              <th className="border border-line px-3 py-2">السعر</th>
+            </tr>
+          </thead>
+          <tbody>
+            {session.procedures.map((pr, i) => {
+              const s = serviceById(pr.serviceId);
+              return (
+                <tr key={i}>
+                  <td className="border border-line px-3 py-2 stat-num text-xs text-soft">{i + 1}</td>
+                  <td className="border border-line px-3 py-2 font-semibold">{s?.name ?? "إجراء"}</td>
+                  <td className="border border-line px-3 py-2 text-center stat-num">{pr.tooth ?? "—"}</td>
+                  <td className="border border-line px-3 py-2 text-center stat-num">{money(s?.price ?? 0)}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      )}
+
+      {session.meds.length > 0 && (
+        <>
+          <p className="text-[11px] font-bold text-soft mt-4 mb-1.5">الأدوية الموصوفة ({session.meds.length})</p>
+          <ul className="space-y-1">
+            {session.meds.map((m, i) => (
+              <li key={i} className="text-[12px] text-ink">
+                <b>{m.name}</b> — {m.dose} · {m.freq} · {m.duration}
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+
+      {session.summary && (
+        <>
+          <p className="text-[11px] font-bold text-soft mt-4 mb-1.5">تقرير العمل السريري</p>
+          <p className="text-[12px] text-ink leading-relaxed bg-mist/50 border border-line rounded-lg px-3.5 py-2.5">{session.summary}</p>
+        </>
+      )}
+
+      <div className="flex justify-end mt-4">
+        <div className="w-72 text-sm space-y-1.5">
+          <div className="flex justify-between"><span className="text-soft">قيمة الإجراءات:</span><b className="stat-num">{money(procTotal)}</b></div>
+          {inv && (
+            <>
+              <div className="flex justify-between"><span className="text-soft">الفاتورة ({inv.number}):</span><b className="stat-num">{money(invTotal)}</b></div>
+              <div className="flex justify-between text-mint"><span className="text-soft">المدفوع:</span><b className="stat-num">{money(inv.paid)}</b></div>
+              <div className="flex justify-between border-t-2 border-pine pt-1.5 text-base"><span className="font-bold">المتبقي:</span><b className="stat-num text-coral">{money(Math.max(0, invTotal - inv.paid))}</b></div>
+            </>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
