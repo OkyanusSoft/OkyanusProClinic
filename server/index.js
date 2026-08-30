@@ -156,6 +156,17 @@ async function ensureSchema() {
   for (const sql of SCHEMA) await pool.query(sql);
 }
 
+/**
+ * تحويل أي قيمة تاريخ/وقت (نص ISO مثل 2026-08-29T01:10:19.651Z أو كائن Date)
+ * إلى الصيغة التي يقبلها عمود DATETIME في MySQL: YYYY-MM-DD HH:MM:SS
+ */
+function toMySqlDateTime(v) {
+  if (v === null || v === undefined || v === "") return null;
+  const d = v instanceof Date ? v : new Date(v);
+  if (isNaN(d.getTime())) return null;
+  return d.toISOString().slice(0, 19).replace("T", " ");
+}
+
 /* ============================ مزامنة الجداول العلائقية ============================ */
 async function syncNormalized(conn, db) {
   // تحديث كامل (delete + insert) ضمن معاملة واحدة — كافٍ وموثوق بهذا الحجم
@@ -205,13 +216,13 @@ async function syncNormalized(conn, db) {
   for (const f of db.followUps || [])
     await conn.query(
       "INSERT INTO follow_ups (id,patientId,doctorId,reason,dueDate,status,createdAt,apptId,notes) VALUES (?,?,?,?,?,?,?,?,?)",
-      [f.id, f.patientId, f.doctorId ?? null, f.reason ?? null, f.dueDate, f.status ?? "pending", f.createdAt ? new Date(f.createdAt) : null, f.apptId ?? null, f.notes ?? null]
+      [f.id, f.patientId, f.doctorId ?? null, f.reason ?? null, f.dueDate, f.status ?? "pending", toMySqlDateTime(f.createdAt), f.apptId ?? null, f.notes ?? null]
     );
 
   for (const u of db.users || [])
     await conn.query(
       "INSERT INTO users (id,name,username,pin,role,linkId,active,permissions,lastLogin) VALUES (?,?,?,?,?,?,?,?,?)",
-      [u.id, u.name, u.username, u.pin, u.role, u.linkId ?? null, u.active ? 1 : 0, JSON.stringify(u.permissions ?? []), u.lastLogin ? new Date(u.lastLogin) : null]
+      [u.id, u.name, u.username, u.pin, u.role, u.linkId ?? null, u.active ? 1 : 0, JSON.stringify(u.permissions ?? []), toMySqlDateTime(u.lastLogin)]
     );
 
   for (const c of db.currencies || [])
@@ -224,7 +235,7 @@ async function syncNormalized(conn, db) {
     );
 
   for (const m of db.supplyMoves || [])
-    await conn.query("INSERT INTO supply_moves (id,itemId,delta,note,date) VALUES (?,?,?,?,?)", [m.id, m.itemId, m.delta ?? 0, m.note ?? null, m.date ?? null]);
+    await conn.query("INSERT INTO supply_moves (id,itemId,delta,note,date) VALUES (?,?,?,?,?)", [m.id, m.itemId, m.delta ?? 0, m.note ?? null, toMySqlDateTime(m.date)]);
 
   for (const [i, name] of (db.serviceCats || []).entries())
     await conn.query("INSERT INTO service_cats (name,sort) VALUES (?,?)", [name, i]);
