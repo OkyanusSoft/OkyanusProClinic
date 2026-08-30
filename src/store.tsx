@@ -381,6 +381,8 @@ export interface DB {
   users: User[];
   settings: ClinicSettings;
   nextInv: number;
+  /** طابع زمن آخر حفظ — للمقارنة بين localStorage و MySQL واختيار الأحدث */
+  savedAt?: number;
 }
 
 export const CLINIC_NAME = "عيادة د. عبدالله الشرفي";
@@ -1402,52 +1404,62 @@ function reducer(db: DB, action: Action): DB {
 
 const KEY = "sharafi-dental-v1";
 
-/** تطبيع أي نسخة خام (من localStorage أو من MySQL) إلى بنية DB مكتملة */
-export function normalizeDB(raw: DB): DB {
-  const db = raw ?? ({} as DB);
+const arr = <T,>(v: unknown): T[] => (Array.isArray(v) ? (v as T[]) : []);
+
+/** تطبيع أي نسخة خام (من localStorage أو من MySQL) إلى بنية DB مكتملة ومضمونة */
+export function normalizeDB(raw: Partial<DB> | null | undefined): DB {
+  const base = bootstrap();
+  const db = (raw ?? {}) as Partial<DB>;
   return {
-    ...db,
-    expenses: db.expenses ?? [],
-    prescriptions: db.prescriptions ?? [],
-    sessions: (db.sessions ?? []).map((s) => ({
+    patients: arr<Patient>(db.patients),
+    doctors: arr<Doctor>(db.doctors).length ? arr<Doctor>(db.doctors) : base.doctors,
+    staff: arr<Staff>(db.staff),
+    currencies: arr<Currency>(db.currencies).length ? arr<Currency>(db.currencies) : base.currencies,
+    defaultCurrency: db.defaultCurrency ?? base.defaultCurrency,
+    services: arr<Service>(db.services),
+    appointments: arr<Appointment>(db.appointments),
+    invoices: arr<Invoice>(db.invoices),
+    activity: arr<Activity>(db.activity),
+    expenses: arr<Expense>(db.expenses),
+    prescriptions: arr<Prescription>(db.prescriptions),
+    sessions: arr<ClinicalSession>(db.sessions).map((s) => ({
       ...s,
       summary: s.summary ?? "",
       workItems: s.workItems ?? [],
       stages: s.stages ?? [],
     })),
-    staff: db.staff ?? [],
-    activity: db.activity ?? [],
-    implants: db.implants ?? [],
-    prosthetics: db.prosthetics ?? [],
-    orthoCases: db.orthoCases ?? [],
-    xrays: db.xrays ?? [],
-    followUps: db.followUps ?? [],
-    supplies: db.supplies ?? [],
-    supplyMoves: db.supplyMoves ?? [],
-    plans: db.plans ?? [],
-    serviceCats: db.serviceCats?.length ? db.serviceCats : bootstrap().serviceCats,
-    itemCats: db.itemCats?.length ? db.itemCats : bootstrap().itemCats,
-    expenseCats: db.expenseCats?.length ? db.expenseCats : bootstrap().expenseCats,
+    implants: arr<Implant>(db.implants),
+    prosthetics: arr<Prosthetic>(db.prosthetics),
+    orthoCases: arr<OrthoCase>(db.orthoCases),
+    xrays: arr<XrayRec>(db.xrays),
+    followUps: arr<FollowUp>(db.followUps),
+    supplies: arr<SupplyItem>(db.supplies),
+    supplyMoves: arr<SupplyMove>(db.supplyMoves),
+    plans: arr<TreatmentPlan>(db.plans),
+    serviceCats: arr<string>(db.serviceCats).length ? arr<string>(db.serviceCats) : base.serviceCats,
+    itemCats: arr<string>(db.itemCats).length ? arr<string>(db.itemCats) : base.itemCats,
+    expenseCats: arr<string>(db.expenseCats).length ? arr<string>(db.expenseCats) : base.expenseCats,
     settings: { ...DEFAULT_CLINIC_SETTINGS, ...(db.settings ?? {}) },
-    users: (db.users?.length ? db.users : bootstrap().users).map((u) =>
-      // طاقم الاستقبال والمساعدة يرى السجل والجدول كاملين دائماً
+    users: (arr<User>(db.users).length ? arr<User>(db.users) : base.users).map((u) =>
       u.role === "secretary" || u.role === "assistant"
         ? { ...u, permissions: [...new Set([...u.permissions, "scope_all_patients", "scope_all_appointments"])] }
         : u
     ),
+    nextInv: typeof db.nextInv === "number" ? db.nextInv : base.nextInv,
+    savedAt: typeof db.savedAt === "number" ? db.savedAt : 0,
   };
 }
 
-function load(): DB {
-  let db: DB;
+/** قراءة الحالة المحلية + طابع آخر حفظ */
+function loadLocal(): { db: DB; savedAt: number } {
   try {
     const raw = localStorage.getItem(KEY);
-    // لا بيانات محلية → نبدأ بالحالة الفارغة (بدون أي بيانات افتراضية)
-    db = raw ? normalizeDB(JSON.parse(raw) as DB) : bootstrap();
+    if (!raw) return { db: bootstrap(), savedAt: 0 };
+    const parsed = JSON.parse(raw) as Partial<DB>;
+    return { db: normalizeDB(parsed), savedAt: typeof parsed.savedAt === "number" ? parsed.savedAt : 0 };
   } catch {
-    db = bootstrap();
+    return { db: bootstrap(), savedAt: 0 };
   }
-  return db;
 }
 
 export type ConnStatus = "checking" | "online" | "offline";
@@ -1467,7 +1479,7 @@ interface Ctx {
 const StoreCtx = createContext<Ctx | null>(null);
 
 export function StoreProvider({ children }: { children: React.ReactNode }) {
-  const [db, dispatch] = useReducer(reducer, undefined as unknown as DB, load);
+  const [db, dispatch] = useReducer(reducer, undefined as unknown as DB, () => loadLocal().db);
   const [conn, setConn] = useState<ConnStatus>("checking");
   const [syncing, setSyncing] = useState(false);
   const connRef = useRef<ConnStatus>("checking");
@@ -1476,26 +1488,35 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   connRef.current = conn;
   dbRef.current = db;
 
-  /* عند الإقلاع: محاولة جلب الحالة المركزية من MySQL */
+  /* عند الإقلاع: مزامنة المصدرين واختيار الأحدث — القاعدة المركزية هي الأصل عند التساوي */
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const remote = await fetchState();
+      const { db: local, savedAt: localTime } = loadLocal();
+      const remote = (await fetchState()) as unknown as (DB & { savedAt?: number }) | null;
+
       if (cancelled) return;
-      const r = remote as unknown as DB | null;
-      // القاعدة المركزية هي مصدر الحقيقة: إن وُجدت حالة محفوظة في MySQL نعتمدها
-      // (حتى لو كانت فارغة) — فلا نعيد حقن أي بيانات محلية قديمة فوقها.
-      const hasRemote = !!r && Array.isArray(r.patients);
-      if (hasRemote) {
-        dispatch({ type: "HYDRATE", db: r });
+
+      if (remote && typeof remote === "object" && Array.isArray(remote.patients)) {
+        // MySQL متاح ويحتوي حالة → قارن الطابع الزمني
+        const remoteTime = typeof remote.savedAt === "number" ? remote.savedAt : 0;
         setConn("online");
-      } else {
-        const ok = await ping();
-        if (!cancelled) {
-          setConn(ok ? "online" : "offline");
-          // خادم متصل بقاعدة لم تُهيأ بعد → نرفع الحالة الفارغة لتعميرها أول مرة
-          if (ok) saveState(dbRef.current).catch(() => undefined);
+        if (remoteTime >= localTime) {
+          // MySQL أحدث أو مساوٍ → اعتمده كمصدر وحيد
+          dispatch({ type: "HYDRATE", db: remote });
+        } else {
+          // localStorage أحدث (إدخال لم يُزامَن بعد) → اعتمده وارفعه للقاعدة
+          dispatch({ type: "HYDRATE", db: local });
+          saveState(local).catch(() => undefined);
         }
+      } else {
+        // لا حالة في MySQL بعد → تحقق من الخادم نفسه
+        const ok = await ping();
+        if (cancelled) return;
+        setConn(ok ? "online" : "offline");
+        dispatch({ type: "HYDRATE", db: local });
+        // خادم متصل بقاعدة لم تُعمَّر بعد → ارفع الحالة المحلية لتأسيسها
+        if (ok) saveState(local).catch(() => undefined);
       }
       bootedRef.current = true;
     })();
@@ -1504,17 +1525,18 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
-  /* حفظ محلي دائم + دفع إلى MySQL عند الاتصال (مع تجميع التغييرات) */
+  /* حفظ محلي دائم (مع طابع زمني) + دفع إلى MySQL عند الاتصال */
   useEffect(() => {
+    const stamped = { ...db, savedAt: Date.now() };
     try {
-      localStorage.setItem(KEY, JSON.stringify(db));
+      localStorage.setItem(KEY, JSON.stringify(stamped));
     } catch {
       /* تجاهل */
     }
     if (!bootedRef.current || connRef.current !== "online") return;
     const t = setTimeout(() => {
       setSyncing(true);
-      saveState(db).finally(() => setSyncing(false));
+      saveState(stamped).finally(() => setSyncing(false));
     }, 700);
     return () => clearTimeout(t);
   }, [db]);
