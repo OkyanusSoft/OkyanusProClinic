@@ -25,6 +25,9 @@ const pool = mysql.createPool({
   charset: "utf8mb4_unicode_ci",
 });
 
+/* نوع عمود updated_at الفعلي في القاعدة: DATETIME (قواعد schema.sql القديمة) أو BIGINT (جديدة) */
+let updatedAtIsDatetime = false;
+
 /* ============================ ترميم ذاتي للجداول عند الإقلاع ============================ */
 async function ensureSchema() {
   const c = await pool.getConnection();
@@ -38,6 +41,12 @@ async function ensureSchema() {
     await c.query(
       "ALTER TABLE clinic_state ADD COLUMN IF NOT EXISTS gen INT DEFAULT 0"
     ).catch(() => {});
+    // كشف نوع العمود الموجود فعلياً — القواعد المنشأة من schema.sql القديم عمودها DATETIME
+    try {
+      const [cols] = await c.query("SHOW COLUMNS FROM clinic_state LIKE 'updated_at'");
+      updatedAtIsDatetime = !!cols.length && /^datetime|timestamp/i.test(cols[0].Type);
+      console.log(`   عمود updated_at: ${updatedAtIsDatetime ? "DATETIME (قاعدة قديمة)" : "BIGINT"}`);
+    } catch { /* تجاهل */ }
     await c.query(
       "CREATE TABLE IF NOT EXISTS activity_log (id BIGINT AUTO_INCREMENT PRIMARY KEY, at BIGINT, device_id VARCHAR(64), device_label VARCHAR(120), user_name VARCHAR(120), user_role VARCHAR(30), action VARCHAR(60), cat VARCHAR(30), entity VARCHAR(30), record_id VARCHAR(32), description TEXT, INDEX idx_at (at))"
     );
@@ -94,6 +103,18 @@ function applyTombstones(doc, tombs = []) {
     if (Array.isArray(coll)) doc[t.entity] = coll.filter((r) => r.id !== t.record_id);
   }
   return doc;
+}
+
+/**
+ * يحوّل مللي ثانية إلى قيمة تطابق نوع عمود updated_at الفعلي:
+ * DATETIME (قواعد schema.sql القديمة) ← نص بتاريخ صالح — BIGINT (الجديدة) ← الرقم مباشرة
+ */
+function updatedAtValue(ms) {
+  const v = Number(ms) || Date.now();
+  if (!updatedAtIsDatetime) return v;
+  const d = new Date(v);
+  const p = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
 }
 
 async function loadDoc() {
@@ -171,7 +192,9 @@ app.get("/api/db-check", async (_req, res) => {
 app.get("/api/poll", async (req, res) => {
   try {
     const since = Number(req.query.since || 0);
-    const { at, gen } = await loadDoc();
+    // كشف التغيير من savedAt الدقيق داخل الوثيقة (مللي ثانية) — لا يتأثر بدقة عمود DATETIME
+    const { doc, gen } = await loadDoc();
+    const at = Number(doc?.savedAt || 0);
     res.json({ changed: at > since, at, gen });
   } catch (err) {
     res.status(500).json({ error: String(err.message) });
@@ -230,7 +253,7 @@ app.put("/api/state", async (req, res) => {
 
     await conn.query(
       "INSERT INTO clinic_state (id,doc,updated_at,gen) VALUES (1,?,?,?) ON DUPLICATE KEY UPDATE doc = VALUES(doc), updated_at = VALUES(updated_at), gen = VALUES(gen)",
-      [JSON.stringify(merged), merged.savedAt, newGen]
+      [JSON.stringify(merged), updatedAtValue(merged.savedAt), newGen]
     );
     await syncNormalized(conn, merged);
     await conn.commit();
@@ -260,7 +283,7 @@ app.post("/api/events", async (req, res) => {
         const { doc, at } = await loadDoc();
         if (doc && Array.isArray(doc[ev.entity])) {
           doc[ev.entity] = doc[ev.entity].filter((r) => r.id !== ev.recordId);
-          await pool.query("UPDATE clinic_state SET doc = ?, updated_at = ? WHERE id = 1", [JSON.stringify(doc), Date.now()]);
+          await pool.query("UPDATE clinic_state SET doc = ?, updated_at = ? WHERE id = 1", [JSON.stringify(doc), updatedAtValue(Date.now())]);
         }
       }
     }
