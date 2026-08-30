@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { APPT_META, AuthProvider, clinicOf, invoiceTotal, ROLE_META, StoreProvider, today, useAuth, useStore } from "./store";
+import { APPT_META, AuthProvider, clinicOf, drainPendingEvents, getDeviceId, getDeviceLabel, invoiceTotal, ROLE_META, StoreProvider, today, useAuth, useStore } from "./store";
+import { postEvents } from "./api";
 import { loadPrefs } from "./prefs";
 import {
   IconBell,
@@ -48,6 +49,7 @@ import PriceListPage from "./pages/PriceList";
 import ItemsDataPage from "./pages/ItemsData";
 import ExpenseCatsPage from "./pages/ExpenseCats";
 import PreferencesPage from "./pages/Preferences";
+import ActivityMonitor from "./pages/ActivityMonitor";
 import Login from "./pages/Login";
 
 type Tab =
@@ -56,7 +58,7 @@ type Tab =
   | "invoices" | "expenses" | "priceList" | "currencies" | "expenseCats"
   | "inventory" | "itemCats" | "itemsData"
   | "reports"
-  | "settings" | "users" | "preferences"
+  | "settings" | "users" | "monitor" | "preferences"
   | "guide";
 
 type NavItem = { key: Tab; label: string; icon: (c: string) => React.ReactNode };
@@ -101,6 +103,7 @@ const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
     items: [
       { key: "settings", label: "الإعدادات العامة", icon: (c) => <IconSettings className={c} /> },
       { key: "users", label: "المستخدمون والصلاحيات", icon: (c) => <IconShield className={c} /> },
+      { key: "monitor", label: "مراقبة النشاط", icon: (c) => <IconPulse className={c} /> },
       { key: "preferences", label: "التفضيلات", icon: (c) => <IconSliders className={c} /> },
     ],
   },
@@ -132,6 +135,7 @@ const TITLES: Record<Tab, string> = {
   reports: "تقارير العيادة",
   settings: "الإعدادات العامة",
   users: "المستخدمون والصلاحيات",
+  monitor: "مراقبة النشاط",
   preferences: "التفضيلات",
   guide: "دليل المستخدم",
 };
@@ -140,6 +144,22 @@ function Shell() {
   const { db, dispatch, patientById, serviceById, conn } = useStore();
   const { user, can, apptScope } = useAuth();
   const { push } = useToast();
+
+  /* دفع أحداث النشاط إلى الخادم المركزي كل 5 ثوانٍ (سجل مراقبة الموظفين) */
+  useEffect(() => {
+    const t = setInterval(() => {
+      const events = drainPendingEvents();
+      if (events.length === 0 || conn !== "online" || !user) return;
+      postEvents({
+        deviceId: getDeviceId(),
+        deviceLabel: getDeviceLabel(),
+        userName: user.name,
+        userRole: ROLE_META[user.role]?.label ?? user.role,
+        events,
+      }).catch(() => undefined);
+    }, 5000);
+    return () => clearInterval(t);
+  }, [conn, user]);
   const [tab, setTab] = useState<Tab>("dashboard");
   const [drawerId, setDrawerId] = useState<string | null>(null);
   const [addPatientSignal, setAddPatientSignal] = useState(0);
@@ -284,6 +304,7 @@ function Shell() {
           {tab === "expenseCats" && <ExpenseCatsPage />}
           {tab === "users" && <UsersPage />}
           {tab === "settings" && <SettingsPage />}
+          {tab === "monitor" && <ActivityMonitor />}
           {tab === "preferences" && <PreferencesPage />}
           {tab === "guide" && <GuidePage focus={guideFocus} />}
           </div>
