@@ -3,6 +3,8 @@ import {
   clinicOf,
   DEFAULT_CLINIC_SETTINGS,
   fmtDate,
+  getDeviceLabel,
+  setDeviceLabel,
   today,
   useStore,
   type ClinicSettings,
@@ -93,6 +95,31 @@ const TAG_CLS: Record<string, string> = {
   "تحسين": "bg-sky-soft text-sky",
   "إصلاح": "bg-amber-soft text-[#a06410]",
 };
+
+function DeviceLabelField() {
+  const { push } = useToast();
+  const [label, setLabel] = useState(getDeviceLabel());
+  return (
+    <div className="flex flex-wrap items-center gap-3">
+      <input
+        value={label}
+        onChange={(e) => setLabel(e.target.value)}
+        placeholder="مثال: جهاز الاستقبال"
+        className="input !w-64"
+      />
+      <button
+        className="btn-primary"
+        onClick={() => {
+          setDeviceLabel(label);
+          push("success", "حُفظ اسم الجهاز", `سيظهر هذا الجهاز باسم «${label.trim() || "جهاز غير مسمّى"}» في مراقبة النشاط.`);
+        }}
+      >
+        <IconCheck className="w-4.5 h-4.5" />
+        حفظ الاسم
+      </button>
+    </div>
+  );
+}
 
 export default function SettingsPage() {
   const { db, dispatch, conn, syncing } = useStore();
@@ -460,6 +487,16 @@ export default function SettingsPage() {
           {/* ====== البيانات ====== */}
           {tab === "data" && (
             <div className="space-y-5">
+              {/* هوية الجهاز في شبكة العيادة */}
+              <div className="card p-6 anim-pop">
+                <h2 className="font-display font-bold text-xl text-ink mb-1.5 flex items-center gap-2">
+                  <IconBox className="w-5 h-5 text-jade-deep" />
+                  هوية هذا الجهاز
+                </h2>
+                <p className="text-xs text-soft mb-4 leading-relaxed">اسم يميّز هذا الجهاز في شاشة «مراقبة النشاط» لدى المدير — مثل: جهاز الاستقبال، غرفة الكشف 1، مكتب المدير.</p>
+                <DeviceLabelField />
+              </div>
+
               <div className="card p-6 anim-pop">
                 <h2 className="font-display font-bold text-xl text-ink mb-1.5">النسخ الاحتياطي</h2>
                 <p className="text-xs text-soft mb-5">قاعدة البيانات كاملة (المرضى، المواعيد، الفواتير، الجلسات، الإعدادات…) في ملف JSON واحد.</p>

@@ -1,6 +1,195 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { arLocale } from "./prefs";
-import { fetchState, ping, saveState } from "./api";
+import {
+  fetchMergedState,
+  ping,
+  pollState,
+  saveState,
+  type ActivityEvent,
+} from "./api";
+
+/* ============================== الهوية المحلية للجهاز ============================== */
+
+export function getDeviceId(): string {
+  try {
+    let id = localStorage.getItem("dental-device-id");
+    if (!id) {
+      id = "dev-" + Math.random().toString(36).slice(2, 10);
+      localStorage.setItem("dental-device-id", id);
+    }
+    return id;
+  } catch {
+    return "dev-unknown";
+  }
+}
+export function getDeviceLabel(): string {
+  try {
+    return localStorage.getItem("dental-device-label") || "جهاز غير مسمّى";
+  } catch {
+    return "جهاز غير مسمّى";
+  }
+}
+export function setDeviceLabel(v: string) {
+  try {
+    localStorage.setItem("dental-device-label", v.trim() || "جهاز غير مسمّى");
+  } catch {
+    /* تجاهل */
+  }
+}
+
+/* ============================== سجل أحداث النشاط ============================== */
+
+const pendingEvents: ActivityEvent[] = [];
+export function drainPendingEvents(): ActivityEvent[] {
+  return pendingEvents.splice(0, pendingEvents.length);
+}
+
+/* ============================== محرك الدمج (Merge) ============================== */
+
+const MERGE_COLLECTIONS = [
+  "patients", "doctors", "staff", "services", "appointments", "invoices", "expenses",
+  "followUps", "supplies", "supplyMoves", "sessions", "implants", "prosthetics",
+  "orthoCases", "xrays", "plans", "users", "prescriptions",
+] as const;
+
+type Rec = { id?: string; updatedAt?: number };
+
+function mergeListById<T extends Rec>(a: T[] = [], b: T[] = []): T[] {
+  const map = new Map<string, T>();
+  for (const r of b) if (r && r.id) map.set(r.id, r);
+  for (const r of a) {
+    if (!r || !r.id) continue;
+    const ex = map.get(r.id);
+    if (!ex || (r.updatedAt ?? 0) >= (ex.updatedAt ?? 0)) map.set(r.id, r);
+  }
+  return [...map.values()];
+}
+
+/** دمج حالتين على مستوى السجل — الأحدث يفوز، وسجل الحذف (tombstones) هو الفيصل */
+export function mergeDB(
+  local: DB,
+  remote: DB,
+  tombstones: { entity: string; record_id: string }[] = []
+): DB {
+  const merged: Record<string, unknown> = { ...local };
+  const l = local as unknown as Record<string, Rec[]>;
+  const r = remote as unknown as Record<string, Rec[]>;
+  for (const c of MERGE_COLLECTIONS) {
+    merged[c] = mergeListById(l[c] ?? [], r[c] ?? []);
+  }
+  // العملات بمفتاح code
+  const curMap = new Map<string, { code: string }>();
+  for (const c of local.currencies ?? []) curMap.set(c.code, c);
+  for (const c of remote.currencies ?? []) curMap.set(c.code, c);
+  merged.currencies = [...curMap.values()];
+  // الفئات: اتحاد القيم
+  merged.serviceCats = [...new Set([...(local.serviceCats ?? []), ...(remote.serviceCats ?? [])])];
+  merged.itemCats = [...new Set([...(local.itemCats ?? []), ...(remote.itemCats ?? [])])];
+  merged.expenseCats = [...new Set([...(local.expenseCats ?? []), ...(remote.expenseCats ?? [])])];
+  merged.settings = { ...(local.settings ?? {}), ...(remote.settings ?? {}) };
+  merged.nextInv = Math.max(local.nextInv ?? 0, remote.nextInv ?? 0);
+  merged.savedAt = remote.savedAt ?? local.savedAt;
+
+  // تطبيق سجل الحذف المركزي — المحذوف لا يعود أبداً
+  const tset = new Map<string, Set<string>>();
+  for (const t of tombstones) {
+    if (!tset.has(t.entity)) tset.set(t.entity, new Set());
+    tset.get(t.entity)!.add(t.record_id);
+  }
+  for (const c of MERGE_COLLECTIONS) {
+    const gone = tset.get(c);
+    if (gone) merged[c] = ((merged[c] as Rec[]) ?? []).filter((r) => !gone.has(r.id ?? ""));
+  }
+  return normalizeDB(merged as unknown as DB);
+}
+
+/** ختم السجلات المضافة/المعدّلة بطابع زمني — أساس «الأحدث يفوز» في الدمج */
+function stampAction(a: Action) {
+  const now = Date.now();
+  const stamp = <T,>(o: T): T => ({ ...(o as object), updatedAt: now } as T);
+  switch (a.type) {
+    case "ADD_PATIENT": a.p = stamp(a.p); break;
+    case "ADD_APPT": a.a = stamp(a.a); break;
+    case "ADD_INVOICE": a.inv = stamp(a.inv); break;
+    case "ADD_SERVICE":
+    case "UPDATE_SERVICE": a.s = stamp(a.s); break;
+    case "ADD_EXPENSE": a.e = stamp(a.e); break;
+    case "ADD_PRESCRIPTION": a.rx = stamp(a.rx); break;
+    case "ADD_FOLLOWUP":
+    case "UPDATE_FOLLOWUP": a.f = stamp(a.f); break;
+    case "ADD_SUPPLY": a.item = stamp(a.item); break;
+    case "ADD_PLAN":
+    case "UPDATE_PLAN": a.plan = stamp(a.plan); break;
+    case "ADD_USER":
+    case "UPDATE_USER": a.u = stamp(a.u); break;
+    case "ADD_IMPLANT":
+    case "ADD_PROSTHETIC":
+    case "ADD_ORTHO":
+    case "UPDATE_ORTHO":
+    case "ADD_XRAY": a.r = stamp(a.r); break;
+    default: break;
+  }
+}
+
+/** ترجمة كل عملية إلى حدث مراقبة بالعربية (اسم + فئة + وصف) */
+function queueActionEvent(a: Action, db: DB) {
+  const now = Date.now();
+  const add = (action: string, cat: string, desc: string, entity?: string, recordId?: string) =>
+    pendingEvents.push({ at: now, action, cat, desc, entity, recordId });
+  const pname = (id?: string) => db.patients.find((p) => p.id === id)?.name ?? "مريض";
+  switch (a.type) {
+    case "ADD_PATIENT": add("إضافة", "المرضى", `سجّل مريضاً جديداً: ${a.p.name}`); break;
+    case "DELETE_PATIENT": add("حذف", "المرضى", `حذف من السجل المريض: ${pname(a.id)}`, "patients", a.id); break;
+    case "SET_TOOTH": add("تعديل", "المرضى", `حدّث حالة سن للمريض: ${pname(a.patientId)}`); break;
+    case "ADD_APPT": add("إضافة", "المواعيد", `حجز موعداً للمريض: ${pname(a.a.patientId)}`); break;
+    case "SET_APPT_STATUS": add("تعديل", "المواعيد", `غيّر حالة موعد إلى: ${APPT_META[a.status]?.label ?? a.status}`); break;
+    case "DELETE_APPT": add("حذف", "المواعيد", "حذف موعداً من الجدول", "appointments", a.id); break;
+    case "ADD_INVOICE": add("إضافة", "المالية", `أصدر الفاتورة ${a.inv.number} للمريض: ${pname(a.inv.patientId)}`); break;
+    case "PAY_INVOICE": add("تعديل", "المالية", "سجّل دفعة تحصيل على فاتورة"); break;
+    case "ADD_SERVICE": add("إضافة", "الخدمات", `أضاف خدمة جديدة: ${a.s.name}`); break;
+    case "UPDATE_SERVICE": add("تعديل", "الخدمات", `عدّل خدمة: ${a.s.name}`); break;
+    case "DELETE_SERVICE": add("حذف", "الخدمات", "حذف خدمة من قائمة الأسعار", "services", a.id); break;
+    case "ADD_EXPENSE": add("إضافة", "المالية", `سجّل مصروفاً: ${a.e.title}`); break;
+    case "DELETE_EXPENSE": add("حذف", "المالية", "حذف مصروفاً مسجلاً", "expenses", a.id); break;
+    case "ADD_PRESCRIPTION": add("إضافة", "المرضى", `كتب روشتة للمريض: ${pname(a.rx.patientId)}`); break;
+    case "DELETE_PRESCRIPTION": add("حذف", "المرضى", "حذف روشتة طبية", "prescriptions", a.id); break;
+    case "START_SESSION": add("جلسة", "الجلسات", `أدخل المريض للكرسي وبدأ جلسة علاج: ${pname(a.patientId)}`); break;
+    case "END_SESSION": add("جلسة", "الجلسات", "أنهى جلسة علاج وأصدر فواتيرها وروشتها"); break;
+    case "CANCEL_SESSION": add("جلسة", "الجلسات", "ألغى جلسة علاج مفتوحة"); break;
+    case "ADD_FOLLOWUP": add("إضافة", "المتابعات", `جدول عودة للمريض: ${pname(a.f.patientId)}`); break;
+    case "DELETE_FOLLOWUP": add("حذف", "المتابعات", "حذف عودة متابعة", "followUps", a.id); break;
+    case "ADD_SUPPLY": add("إضافة", "المخزون", `أضاف صنفاً للمخزون: ${a.item.name}`); break;
+    case "MOVE_SUPPLY": add("تعديل", "المخزون", `حركة مخزون: ${a.note}`); break;
+    case "DELETE_SUPPLY": add("حذف", "المخزون", "حذف صنفاً من المخزون", "supplies", a.id); break;
+    case "ADD_PLAN": add("إضافة", "المرضى", `أنشأ خطة علاج للمريض: ${pname(a.plan.patientId)}`); break;
+    case "DELETE_PLAN": add("حذف", "المرضى", "حذف خطة علاج", "plans", a.id); break;
+    case "ADD_USER": add("إضافة", "الإدارة", `أنشأ حساب مستخدم: ${a.u.name}`); break;
+    case "DELETE_USER": add("حذف", "الإدارة", "حذف حساب مستخدم", "users", a.id); break;
+    case "ADD_SERVICE_CAT": add("إضافة", "الخدمات", `أضاف فئة خدمات: ${a.name}`); break;
+    case "RENAME_SERVICE_CAT": add("تعديل", "الخدمات", `أعاد تسمية فئة: ${a.from} ← ${a.to}`); break;
+    case "DELETE_SERVICE_CAT": add("حذف", "الخدمات", `حذف فئة خدمات: ${a.name}`); break;
+    case "ADD_ITEM_CAT": add("إضافة", "المخزون", `أضاف فئة أصناف: ${a.name}`); break;
+    case "RENAME_ITEM_CAT": add("تعديل", "المخزون", `أعاد تسمية فئة أصناف: ${a.from} ← ${a.to}`); break;
+    case "DELETE_ITEM_CAT": add("حذف", "المخزون", `حذف فئة أصناف: ${a.name}`); break;
+    case "UPDATE_SETTINGS": add("تعديل", "الإعدادات", "عدّل الإعدادات العامة للعيادة"); break;
+    case "IMPORT": add("نظام", "النظام", "استورد نسخة احتياطية كاملة (استبدال شامل)"); break;
+    case "RESET": add("نظام", "النظام", "حذف كل البيانات وأعاد النظام للصفر"); break;
+    case "ADD_IMPLANT": add("إضافة", "المرضى", `سجّل زراعة سن للمريض: ${pname(a.r.patientId)}`); break;
+    case "ADD_PROSTHETIC": add("إضافة", "المرضى", `سجّل تركيباً للمريض: ${pname(a.r.patientId)}`); break;
+    case "ADD_ORTHO": add("إضافة", "المرضى", `فتح حالة تقويم للمريض: ${pname(a.r.patientId)}`); break;
+    case "ADD_XRAY": add("إضافة", "المرضى", `أرفق أشعة للمريض: ${pname(a.r.patientId)}`); break;
+    case "PATCH_SESSION":
+    case "UPDATE_ORTHO":
+    case "UPDATE_USER":
+    case "UPDATE_FOLLOWUP":
+    case "UPDATE_PLAN":
+    case "HYDRATE":
+    case "MERGE":
+    case "SYNCED":
+      break; // عمليات متكررة أو داخلية — لا تُسجَّل
+  }
+  if (pendingEvents.length > 50) pendingEvents.splice(0, pendingEvents.length - 50);
+}
 
 /* ============================== Types ============================== */
 
@@ -318,6 +507,7 @@ export const PERMISSIONS: { key: string; label: string; desc: string; scope?: bo
   { key: "reports", label: "التقارير", desc: "الإيرادات وأداء الأطباء" },
   { key: "settings", label: "الإعدادات العامة", desc: "هوية العيادة والدوام والفوترة والبيانات" },
   { key: "users", label: "المستخدمون والصلاحيات", desc: "إدارة الحسابات والأدوار" },
+  { key: "monitor", label: "مراقبة النشاط", desc: "متابعة عمليات الموظفين والأجهزة لحظياً (للمدير)" },
   { key: "guide", label: "دليل المستخدم", desc: "شرح شاشات النظام" },
   { key: "scope_all_patients", label: "كل المرضى", desc: "رؤية جميع ملفات المرضى — بدونها يرى الطبيب مرضاه فقط", scope: true },
   { key: "scope_all_appointments", label: "كل المواعيد", desc: "رؤية جدول مواعيد كل الأطباء — بدونها يرى الطبيب مواعيده فقط", scope: true },
@@ -973,6 +1163,8 @@ export type Action =
   | { type: "CANCEL_SESSION"; id: string }
   | { type: "IMPORT"; db: DB }
   | { type: "HYDRATE"; db: DB }
+  | { type: "MERGE"; db: DB; tombstones: { entity: string; record_id: string }[] }
+  | { type: "SYNCED"; savedAt: number }
   | { type: "ADD_USER"; u: User }
   | { type: "UPDATE_USER"; u: User }
   | { type: "DELETE_USER"; id: string }
@@ -1271,6 +1463,10 @@ function reducer(db: DB, action: Action): DB {
       return action.db;
     case "HYDRATE":
       return normalizeDB(action.db);
+    case "MERGE":
+      return mergeDB(db, normalizeDB(action.db), action.tombstones);
+    case "SYNCED":
+      return { ...db, savedAt: action.savedAt };
     case "ADD_USER":
       return { ...db, users: [...db.users, action.u] };
     case "UPDATE_USER":
@@ -1479,53 +1675,87 @@ interface Ctx {
 const StoreCtx = createContext<Ctx | null>(null);
 
 export function StoreProvider({ children }: { children: React.ReactNode }) {
-  const [db, dispatch] = useReducer(reducer, undefined as unknown as DB, () => loadLocal().db);
+  const [db, baseDispatch] = useReducer(reducer, undefined as unknown as DB, () => loadLocal().db);
   const [conn, setConn] = useState<ConnStatus>("checking");
   const [syncing, setSyncing] = useState(false);
   const connRef = useRef<ConnStatus>("checking");
   const dbRef = useRef<DB>(db);
   const bootedRef = useRef(false);
+  const dirtyRef = useRef(false); // هل توجد تغييرات محلية لم تُدفَع بعد؟
+  const wipeRef = useRef(false); // استبدال شامل قادم (RESET/IMPORT)
+  const genRef = useRef(0); // جيل المركزية — يرتفع عند الاستبدال الشامل
   connRef.current = conn;
   dbRef.current = db;
 
-  /* عند الإقلاع: مزامنة المصدرين واختيار الأحدث — القاعدة المركزية هي الأصل عند التساوي */
+  /* الموزّع الذكي: يختم السجلات + يسجّل أحداث المراقبة + يتتبع التغييرات المحلية */
+  const dispatch = useCallback((action: Action) => {
+    if (action.type !== "MERGE" && action.type !== "SYNCED" && action.type !== "HYDRATE") {
+      stampAction(action);
+      queueActionEvent(action, dbRef.current);
+      dirtyRef.current = true;
+      if (action.type === "RESET" || action.type === "IMPORT") wipeRef.current = true;
+    }
+    baseDispatch(action);
+  }, []);
+
+  /* عند الإقلاع: جلب الحالة المدمجة من القاعدة المركزية */
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const { db: local, savedAt: localTime } = loadLocal();
-      const remote = (await fetchState()) as unknown as (DB & { savedAt?: number }) | null;
-
+      const remote = await fetchMergedState();
       if (cancelled) return;
-
-      if (remote && typeof remote === "object" && Array.isArray(remote.patients)) {
-        // MySQL متاح ويحتوي حالة → قارن الطابع الزمني
-        const remoteTime = typeof remote.savedAt === "number" ? remote.savedAt : 0;
+      genRef.current = remote?.gen ?? 0;
+      const r = remote?.db as unknown as DB | null;
+      if (r && Array.isArray(r.patients)) {
+        dispatch({ type: "MERGE", db: r, tombstones: remote?.tombstones ?? [] });
+        dirtyRef.current = false; // لا حاجة لإعادة دفع ما جاء من المركز
         setConn("online");
-        if (remoteTime >= localTime) {
-          // MySQL أحدث أو مساوٍ → اعتمده كمصدر وحيد
-          dispatch({ type: "HYDRATE", db: remote });
-        } else {
-          // localStorage أحدث (إدخال لم يُزامَن بعد) → اعتمده وارفعه للقاعدة
-          dispatch({ type: "HYDRATE", db: local });
-          saveState(local).catch(() => undefined);
-        }
       } else {
-        // لا حالة في MySQL بعد → تحقق من الخادم نفسه
         const ok = await ping();
         if (cancelled) return;
         setConn(ok ? "online" : "offline");
-        dispatch({ type: "HYDRATE", db: local });
-        // خادم متصل بقاعدة لم تُعمَّر بعد → ارفع الحالة المحلية لتأسيسها
-        if (ok) saveState(local).catch(() => undefined);
+        // خادم متصل بقاعدة فارغة → ارفع الحالة المحلية لتأسيس المركز
+        if (ok) dirtyRef.current = true;
       }
       bootedRef.current = true;
     })();
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [dispatch]);
 
-  /* حفظ محلي دائم (مع طابع زمني) + دفع إلى MySQL عند الاتصال */
+  /* البث اللحظي: استطلاع القاعدة المركزية كل 4 ثوانٍ ودمج أي جديد */
+  useEffect(() => {
+    const t = setInterval(async () => {
+      if (connRef.current !== "online" || !bootedRef.current) return;
+      const res = await pollState(dbRef.current.savedAt ?? 0);
+      if (!res) return;
+
+      // ارتفع الجيل → استبدال شامل حدث (RESET/IMPORT من جهاز آخر) → حلّ محل المحلية
+      if (res.gen > genRef.current) {
+        genRef.current = res.gen;
+        const remote = await fetchMergedState();
+        const r = remote?.db as unknown as DB | null;
+        if (r && Array.isArray(r.patients)) {
+          dispatch({ type: "HYDRATE", db: r });
+          dirtyRef.current = false;
+        }
+        return;
+      }
+
+      if (!res.changed) return;
+      const remote = await fetchMergedState();
+      const r = remote?.db as unknown as DB | null;
+      if (r && Array.isArray(r.patients)) {
+        genRef.current = remote?.gen ?? genRef.current;
+        dispatch({ type: "MERGE", db: r, tombstones: remote?.tombstones ?? [] });
+        dirtyRef.current = false;
+      }
+    }, 4000);
+    return () => clearInterval(t);
+  }, [dispatch]);
+
+  /* حفظ محلي دائم + دفع التغييرات المحلية فقط إلى المركز */
   useEffect(() => {
     const stamped = { ...db, savedAt: Date.now() };
     try {
@@ -1533,10 +1763,15 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     } catch {
       /* تجاهل */
     }
-    if (!bootedRef.current || connRef.current !== "online") return;
-    const t = setTimeout(() => {
-      setSyncing(true);
-      saveState(stamped).finally(() => setSyncing(false));
+    if (!bootedRef.current || connRef.current !== "online" || !dirtyRef.current) return;
+    setSyncing(true);
+    const t = setTimeout(async () => {
+      const res = await saveState({ ...db, savedAt: Date.now(), wipe: wipeRef.current });
+      setSyncing(false);
+      if (res.ok) {
+        dirtyRef.current = false;
+        wipeRef.current = false;
+      }
     }, 700);
     return () => clearTimeout(t);
   }, [db]);
