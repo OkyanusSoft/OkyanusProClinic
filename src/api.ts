@@ -86,12 +86,37 @@ export async function ping(): Promise<boolean> {
   }
 }
 
-/** فحص اتصال قاعدة البيانات الفعلي — يعيد رسالة الخطأ الحقيقية من MySQL */
-export async function checkDb(): Promise<{ ok: boolean; error?: string; records?: number }> {
+/** مراحل تشخيص الاتصال */
+export type DbCheckStage = "ok" | "no-server" | "old-server" | "db-error";
+
+/** فحص اتصال قاعدة البيانات الفعلي — تشخيص متعدد المراحل برسائل دقيقة */
+export async function checkDb(): Promise<{ stage: DbCheckStage; error?: string; records?: number }> {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 4000);
   try {
-    const data = await req<{ ok: boolean; error?: string; records?: number }>("/api/db-check");
-    return data;
-  } catch {
-    return { ok: false, error: "تعذّر الوصول إلى الخادم." };
+    const res = await fetch(baseUrl() + "/api/db-check", { signal: ctrl.signal });
+    if (res.status === 404 || res.status === 405)
+      return {
+        stage: "old-server",
+        error: "الخادم يعمل لكن نسخة الكود قديمة — لا تحتوي نقطة فحص القاعدة. أعد تشغيل الخادم بالنسخة المحدّثة (server/index.js).",
+      };
+    let body: { ok?: boolean; error?: string; records?: number } | null = null;
+    try {
+      body = (await res.json()) as { ok?: boolean; error?: string; records?: number };
+    } catch {
+      /* استجابة غير JSON */
+    }
+    if (res.ok && body?.ok) return { stage: "ok", records: body.records };
+    return { stage: "db-error", error: body?.error ?? `رفض من الخادم (HTTP ${res.status}).` };
+  } catch (e) {
+    const aborted = e instanceof DOMException && e.name === "AbortError";
+    return {
+      stage: "no-server",
+      error: aborted
+        ? "انتهت مهلة الاتصال (4 ثوانٍ) — الخادم لا يستجيب على العنوان المحدد."
+        : "تعذّر الوصول إلى الخادم — تأكد من تشغيله (npm start) ومن العنوان، ومن السماح بـ CORS.",
+    };
+  } finally {
+    clearTimeout(timer);
   }
 }
