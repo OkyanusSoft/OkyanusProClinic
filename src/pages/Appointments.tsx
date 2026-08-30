@@ -374,7 +374,7 @@ function ScheduleView({
           onClose={() => setCardAppt(null)}
           title={`كرت الموعد — ${patientById(cardAppt.patientId)?.name ?? ""}`}
           render={(count) => (
-            <CardSheet units={Array.from({ length: count }, (_, i) => <AppointmentCardPrint key={i} a={cardAppt} />)} cols={count === 1 ? 1 : 2} caption={`موعد ${fmtDate(cardAppt.date)} · ${cardAppt.time}`} />
+            <CardSheet units={Array.from({ length: count }, (_, i) => <AppointmentCardPrint key={i} a={cardAppt} />)} cols={count === 1 ? 1 : 2} caption={`موعد ${fmtDate(cardAppt.date)} · ${cardAppt.time}`} scale={count === 1 ? 2 : 1} />
           )}
         />
       )}
@@ -675,7 +675,7 @@ function FollowUpsView({ fus, onOpenPatient }: { fus: FollowUp[]; onOpenPatient:
           onClose={() => setCardFu(null)}
           title={`كرت الرجوع — ${patientById(cardFu.patientId)?.name ?? ""}`}
           render={(count) => (
-            <CardSheet units={Array.from({ length: count }, (_, i) => <FollowUpCardPrint key={i} f={cardFu} />)} cols={count === 1 ? 1 : 2} caption={`موعد المراجعة: ${fmtDate(cardFu.dueDate)}`} />
+            <CardSheet units={Array.from({ length: count }, (_, i) => <FollowUpCardPrint key={i} f={cardFu} />)} cols={count === 1 ? 1 : 2} caption={`موعد المراجعة: ${fmtDate(cardFu.dueDate)}`} scale={count === 1 ? 2 : 1} />
           )}
         />
       )}

@@ -14,6 +14,7 @@ import {
   useStore,
 } from "../store";
 import {
+  IconBox,
   IconCalendar,
   IconCalendarPlus,
   IconCheck,
@@ -32,7 +33,7 @@ import { AnimatedNumber, Avatar, Badge, EmptyState } from "../components/ui";
 const AR = "ar-EG-u-nu-latn";
 
 type Period = "month" | "last" | "q" | "year" | "all";
-type Tab = "overview" | "financial" | "doctors" | "followups" | "services" | "expenses" | "patients";
+type Tab = "overview" | "financial" | "doctors" | "followups" | "services" | "expenses" | "patients" | "inventory";
 
 const PERIODS: { key: Period; label: string }[] = [
   { key: "month", label: "هذا الشهر" },
@@ -97,6 +98,15 @@ export default function ReportsPage() {
   const collectionRate = billed > 0 ? Math.round((collected / billed) * 100) : 0;
   const expTotal = exp.reduce((s, e) => s + e.amount, 0);
   const net = collected - expTotal;
+
+  /* ============ بيانات تقرير المخزون ============ */
+  const invValue = db.supplies.reduce((s, x) => s + x.qty * x.cost, 0);
+  const lowStock = db.supplies.filter((s) => s.qty <= s.minQty);
+  const expiringSoon = db.supplies.filter((s) => {
+    if (!s.expiry) return false;
+    const d = dayDiff(s.expiry);
+    return d >= 0 && d <= 90;
+  });
 
   /* ============ بيانات تقرير المرضى ============ */
   const patientRows = useMemo(
@@ -192,6 +202,7 @@ export default function ReportsPage() {
     { key: "followups", label: "العودات", icon: (c) => <IconCalendarPlus className={c} /> },
     { key: "services", label: "الخدمات", icon: (c) => <IconTooth className={c} /> },
     { key: "expenses", label: "المصروفات", icon: (c) => <IconReceipt className={c} /> },
+    { key: "inventory", label: "المخزون", icon: (c) => <IconBox className={c} /> },
   ];
 
   const exportCurrent = () => {
@@ -222,6 +233,11 @@ export default function ReportsPage() {
       downloadCsv("تقرير-الخدمات", [["الخدمة", "الفئة", "عدد المرات", "الإيراد"], ...serviceStats.map((x) => [x.s!.name, x.s!.category, x.qty, x.rev])]);
     else if (tab === "expenses")
       downloadCsv("تقرير-المصروفات", [["البند", "الفئة", "التاريخ", "المبلغ"], ...exp.map((e) => [e.title, e.category, e.date, e.amount])]);
+    else if (tab === "inventory")
+      downloadCsv("تقرير-المخزون", [
+        ["الصنف", "الفئة", "الوحدة", "الكمية", "الحد الأدنى", "التكلفة", "القيمة", "الصلاحية", "الحالة"],
+        ...db.supplies.map((s) => [s.name, s.category, s.unit, s.qty, s.minQty, s.cost, s.qty * s.cost, s.expiry ?? "—", s.qty <= s.minQty ? "منخفض" : "جيد"]),
+      ]);
     else
       downloadCsv("ملخص-عام", [["المؤشر", "القيمة"], ["الإيراد المحصل", collected], ["المصروفات", expTotal], ["الصافي", net], ["المواعيد المكتملة", doneAppts], ["مرضى جدد", newPatients]]);
   };
@@ -694,6 +710,63 @@ export default function ReportsPage() {
                           <td className="td stat-num text-coral">{money(e.amount)}</td>
                         </tr>
                       ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {tab === "inventory" && (
+          <div className="space-y-5">
+            <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
+              <Kpi label="إجمالي الأصناف" value={db.supplies.length} tint="bg-jade-soft text-jade-deep" icon={<IconBox className="w-5 h-5" />} sub={`${db.itemCats.length} فئة`} />
+              <Kpi label="قيمة المخزون" value={Math.round(invValue)} suffix={sym} tint="bg-mint-soft text-[#1d6b47]" icon={<IconWallet className="w-5 h-5" />} sub="إجمالي الكميات × التكلفة" />
+              <Kpi label="أصناف منخفضة" value={lowStock.length} tint="bg-coral-soft text-coral" icon={<IconSpark className="w-5 h-5" />} sub="بلغت الحد الأدنى أو أقل" />
+              <Kpi label="تنتهي صلاحيتها قريباً" value={expiringSoon.length} tint="bg-amber-soft text-[#a06410]" icon={<IconCalendar className="w-5 h-5" />} sub="خلال 90 يوماً" />
+            </div>
+
+            <div className="card overflow-hidden anim-rise">
+              <div className="flex items-center justify-between px-5 pt-4 pb-3 border-b border-line">
+                <h2 className="font-display font-bold text-lg text-ink flex items-center gap-2"><IconBox className="w-5 h-5 text-jade-deep" /> تفاصيل المخزون والمستهلكات</h2>
+                <span className="chip bg-mist text-soft stat-num">{db.supplies.length} صنف</span>
+              </div>
+              {db.supplies.length === 0 ? (
+                <EmptyState icon={<IconBox className="w-6 h-6" />} title="لا أصناف مسجلة" />
+              ) : (
+                <div className="overflow-x-auto max-h-[520px] overflow-y-auto">
+                  <table className="w-full min-w-[760px]">
+                    <thead className="bg-mist/70 border-b border-line sticky top-0">
+                      <tr>
+                        <th className="th">الصنف</th>
+                        <th className="th">الفئة</th>
+                        <th className="th">الوحدة</th>
+                        <th className="th">الكمية</th>
+                        <th className="th">الحد الأدنى</th>
+                        <th className="th">التكلفة</th>
+                        <th className="th">القيمة</th>
+                        <th className="th">الصلاحية</th>
+                        <th className="th">الحالة</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {db.supplies.map((s, i) => {
+                        const low = s.qty <= s.minQty;
+                        return (
+                          <tr key={s.id} className="border-b border-line/60 last:border-0 hover:bg-jade-soft/25 transition-colors anim-fade" style={{ animationDelay: `${i * 20}ms` }}>
+                            <td className="td font-bold text-ink">{s.name}</td>
+                            <td className="td"><span className="chip bg-mist text-soft">{s.category}</span></td>
+                            <td className="td text-soft">{s.unit}</td>
+                            <td className="td stat-num font-bold">{s.qty}</td>
+                            <td className="td stat-num text-soft">{s.minQty}</td>
+                            <td className="td stat-num">{money(s.cost)}</td>
+                            <td className="td stat-num text-jade-deep">{money(s.qty * s.cost)}</td>
+                            <td className="td text-soft">{s.expiry ? fmtDate(s.expiry) : "—"}</td>
+                            <td className="td">{low ? <span className="chip bg-coral-soft text-coral">منخفض</span> : <span className="chip bg-mint-soft text-[#1d6b47]">جيد</span>}</td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
