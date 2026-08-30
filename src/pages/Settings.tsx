@@ -10,7 +10,7 @@ import {
 import { IconAlert, IconBook, IconBox, IconCalendar, IconCheck, IconCoins, IconPulse, IconReceipt, IconShield, IconSpark, IconTrash, IconWallet, Logo } from "../icons";
 import { Field, Modal, TArea, TInput, TSelect, useToast } from "../components/ui";
 import { IconSettings } from "../icons";
-import { ping } from "../api";
+import { ping, saveState } from "../api";
 
 type SetTab = "identity" | "work" | "invoice" | "data";
 
@@ -31,6 +31,8 @@ const CHANGELOG: { v: string; date: string; current?: boolean; items: { tag: "ج
       { tag: "جديد", text: "أنماط خلفيات القوائم: ٦ نقوش (خطوط متوازية، نظيف، نقاط، شبكة، موجات، أقطار) للقائمة الجانبية وشاشة الدخول" },
       { tag: "جديد", text: "سجل التغييرات (Change Log) بخط زمني تفاعلي في الإعدادات العامة" },
       { tag: "جديد", text: "تذييل حقوق شركة أوكيانوس سوفت مع رابط الموقع ورقم التواصل" },
+      { tag: "جديد", text: "زر «مزامنة الآن» لدفع البيانات فوراً إلى MySQL والتحقق من نجاح الحفظ" },
+      { tag: "إصلاح", text: "المزامنة من MySQL أصبحت موثوقة: مقارنة زمنية تختار أحدث البيانات بين القاعدة والتخزين المحلي، فلا تضيع الإدخالات عند التحديث" },
       { tag: "تحسين", text: "ترقية رقم الإصدار إلى 3.0" },
     ],
   },
@@ -153,6 +155,21 @@ export default function SettingsPage() {
     setTesting(false);
     if (ok) push("success", "تم الاتصال بنجاح", "الخادم المركزي يستجيب على " + mysql.apiUrl);
     else push("error", "تعذّر الاتصال", "تأكد أن خادم Node يعمل على المنفذ المحدد.");
+  };
+
+  /* مزامنة فورية: دفع الحالة الحالية إلى MySQL والتحقق من نجاح الحفظ */
+  const [pushing, setPushing] = useState(false);
+  const syncNow = async () => {
+    setPushing(true);
+    const stamped = { ...db, savedAt: Date.now() };
+    const ok = await saveState(stamped);
+    setPushing(false);
+    if (ok) {
+      setServerOnline("online");
+      push("success", "تمت المزامنة مع MySQL", `${db.patients.length} مريضاً و ${db.appointments.length} موعداً و ${db.invoices.length} فاتورة حُفظت في القاعدة المركزية.`);
+    } else {
+      push("error", "فشلت المزامنة", "تعذّر الحفظ في MySQL — تحقق من تشغيل الخادم والاتصال.");
+    }
   };
 
   const saveMysql = () => {
@@ -440,6 +457,10 @@ export default function SettingsPage() {
                       {testing ? "جارٍ الاختبار…" : "اختبار الاتصال"}
                     </button>
                     <button className="btn-primary" onClick={saveMysql}><IconCheck className="w-4 h-4" /> حفظ الإعدادات</button>
+                    <button className="btn-soft" onClick={syncNow} disabled={pushing} title="دفع كل البيانات الحالية إلى MySQL الآن">
+                      {pushing ? <span className="w-4 h-4 border-2 border-jade-deep border-t-transparent rounded-full animate-spin" /> : <IconBox className="w-4 h-4" />}
+                      {pushing ? "جارٍ الرفع…" : "مزامنة الآن"}
+                    </button>
                     {testResult === "ok" && <span className="chip bg-mint-soft text-[#1d6b47] anim-pop"><IconCheck className="w-3 h-3" /> الاتصال ناجح</span>}
                     {testResult === "fail" && <span className="chip bg-coral-soft text-coral anim-pop"><IconAlert className="w-3 h-3" /> فشل الاتصال</span>}
                   </div>
