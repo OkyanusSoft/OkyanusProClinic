@@ -10,7 +10,7 @@ import {
 import { IconAlert, IconBook, IconBox, IconCalendar, IconCheck, IconCoins, IconPulse, IconReceipt, IconShield, IconSpark, IconTrash, IconWallet, Logo } from "../icons";
 import { Field, Modal, TArea, TInput, TSelect, useToast } from "../components/ui";
 import { IconSettings } from "../icons";
-import { checkDb, ping, saveState } from "../api";
+import { checkDb, ping, saveState, type DbCheckStage } from "../api";
 
 type SetTab = "identity" | "work" | "invoice" | "data";
 
@@ -135,6 +135,7 @@ export default function SettingsPage() {
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<"idle" | "ok" | "fail">("idle");
   const [serverOnline, setServerOnline] = useState<"checking" | "online" | "offline">("checking");
+  const [dbStage, setDbStage] = useState<DbCheckStage | null>(null);
   const [dbError, setDbError] = useState<string | null>(null);
   const [dbRecords, setDbRecords] = useState<number | null>(null);
 
@@ -142,17 +143,20 @@ export default function SettingsPage() {
   React.useEffect(() => {
     if (tab !== "data") return;
     setServerOnline("checking");
+    setDbStage(null);
     (async () => {
       const alive = await ping();
       if (!alive) {
         setServerOnline("offline");
+        setDbStage(null);
         setDbError(null);
         return;
       }
-      const chk = await checkDb();
       setServerOnline("online");
-      setDbError(chk.ok ? null : chk.error ?? "خطأ غير معروف في قاعدة البيانات.");
-      setDbRecords(chk.ok ? chk.records ?? 0 : null);
+      const chk = await checkDb();
+      setDbStage(chk.stage);
+      setDbError(chk.stage === "ok" ? null : chk.error ?? null);
+      setDbRecords(chk.stage === "ok" ? chk.records ?? 0 : null);
     })();
   }, [tab]);
 
@@ -160,6 +164,7 @@ export default function SettingsPage() {
     setTesting(true);
     setTestResult("idle");
     setDbError(null);
+    setDbStage(null);
     try {
       localStorage.setItem("dental-api-url", mysql.apiUrl.replace(/\/$/, ""));
     } catch { /* تجاهل */ }
@@ -167,22 +172,30 @@ export default function SettingsPage() {
     if (!alive) {
       setTestResult("fail");
       setServerOnline("offline");
+      setDbStage("no-server");
+      setDbError("تعذّر الوصول إلى الخادم — تأكد من تشغيله (npm start) ومن العنوان والمنفذ.");
       setTesting(false);
       push("error", "تعذّر الاتصال بالخادم", "تأكد أن خادم Node يعمل (npm start) على المنفذ المحدد.");
       return;
     }
-    // الخادم يعمل — الآن نفحص قاعدة البيانات الفعلية
-    const chk = await checkDb();
+    // الخادم يعمل — الآن نفحص قاعدة البيانات الفعلية بتشخيص متعدد المراحل
     setServerOnline("online");
+    const chk = await checkDb();
+    setDbStage(chk.stage);
     setTesting(false);
-    if (chk.ok) {
+    if (chk.stage === "ok") {
       setTestResult("ok");
+      setDbError(null);
       setDbRecords(chk.records ?? 0);
       push("success", "تم الاتصال بنجاح", `الخادم يستجيب وقاعدة «${mysql.database}» جاهزة (${chk.records ?? 0} حفظاً مخزناً).`);
     } else {
       setTestResult("fail");
       setDbError(chk.error ?? "خطأ غير معروف.");
-      push("error", "الخادم يعمل لكن قاعدة البيانات ترفض الاتصال", chk.error ?? "راجع بيانات الاتصال في .env");
+      if (chk.stage === "old-server")
+        push("error", "نسخة الخادم قديمة", "أوقف الخادم (Ctrl+C) وشغّله مجدداً من مجلد server ليحتوي نقاط الفحص الجديدة.");
+      else if (chk.stage === "db-error")
+        push("error", "الخادم يعمل لكن قاعدة البيانات ترفض الاتصال", chk.error ?? "راجع بيانات الاتصال في .env");
+      else push("error", "تعذّر فحص القاعدة", chk.error ?? "");
     }
   };
 
@@ -496,6 +509,38 @@ export default function SettingsPage() {
                     {testResult === "ok" && <span className="chip bg-mint-soft text-[#1d6b47] anim-pop"><IconCheck className="w-3 h-3" /> الاتصال ناجح</span>}
                     {testResult === "fail" && <span className="chip bg-coral-soft text-coral anim-pop"><IconAlert className="w-3 h-3" /> فشل الاتصال</span>}
                   </div>
+
+                  {/* لوحة التشخيص متعدد المراحل */}
+                  <div className="border-t border-line bg-white/60 px-4 py-3.5 space-y-3">
+                    <div className="flex flex-wrap items-center gap-2.5">
+                      <span className="text-[10px] font-bold text-soft tracking-widest">التشخيص المباشر</span>
+                      {/* مرحلة 1: الخادم */}
+                      <span className={`chip ${serverOnline === "online" ? "bg-mint-soft text-[#1d6b47]" : serverOnline === "offline" ? "bg-coral-soft text-coral" : "bg-mist text-soft"}`}>
+                        <span className={`w-1.5 h-1.5 rounded-full ${serverOnline === "online" ? "bg-mint pulse-dot" : serverOnline === "offline" ? "bg-coral" : "bg-soft/50 pulse-soft"}`} />
+                        الخادم: {serverOnline === "online" ? "يعمل" : serverOnline === "offline" ? "متوقف" : "جارٍ الفحص"}
+                      </span>
+                      {/* مرحلة 2: قاعدة البيانات */}
+                      <span className={`chip ${dbStage === "ok" ? "bg-mint-soft text-[#1d6b47]" : dbStage === "db-error" ? "bg-coral-soft text-coral" : dbStage === "old-server" ? "bg-amber-soft text-[#a06410]" : "bg-mist text-soft"}`}>
+                        <span className={`w-1.5 h-1.5 rounded-full ${dbStage === "ok" ? "bg-mint pulse-dot" : dbStage === "db-error" ? "bg-coral" : dbStage === "old-server" ? "bg-amber" : "bg-soft/50"}`} />
+                        قاعدة البيانات: {dbStage === "ok" ? `متصلة (${dbRecords ?? 0} حفظاً)` : dbStage === "db-error" ? "ترفض الاتصال" : dbStage === "old-server" ? "الخادم قديم" : testing ? "جارٍ الفحص…" : "لم تُفحص"}
+                      </span>
+                    </div>
+                    {dbError && (
+                      <div className="anim-pop rounded-xl border border-coral/30 bg-coral-soft/50 p-3.5">
+                        <p className="text-[11px] font-bold text-coral mb-1.5 flex items-center gap-1.5">
+                          <IconAlert className="w-3.5 h-3.5" />
+                          {dbStage === "old-server" ? "الإجراء المطلوب" : "الخطأ الحقيقي من MySQL"}
+                        </p>
+                        <p className="text-[11px] text-ink/80 leading-relaxed">{dbError}</p>
+                        {dbStage === "db-error" && (
+                          <p className="text-[10px] text-soft mt-2 leading-relaxed border-t border-coral/20 pt-2">
+                            الأسباب الشائعة: كلمة المرور في <span dir="ltr" className="stat-num">.env</span> · قاعدة <b>{mysql.database}</b> غير موجودة · المستخدم بلا صلاحيات — راجع خطوات التفعيل أعلاه.
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
                   <div className="border-t border-line bg-mist/50 px-4 py-3">
                     <p className="text-[10px] font-bold text-soft mb-1.5">محتوى ملف <span dir="ltr" className="stat-num">.env</span> المقابل لهذه الإعدادات:</p>
                     <pre className="text-[11px] stat-num text-jade-deep bg-white border border-line rounded-lg px-3 py-2 overflow-x-auto whitespace-pre" dir="ltr">{envSnippet}</pre>
