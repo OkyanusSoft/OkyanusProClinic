@@ -354,20 +354,20 @@ export function SmartCombo({
             <IconChevronDown className="w-4 h-4" />
           </span>
         </div>
-        {/* زر الإضافة — ظاهر دائماً، يتوهج عند توفر قيمة جديدة */}
+        {/* زر الإضافة — أيقونة زائد مربعة، ظاهر دائماً ويتوهج عند توفر قيمة جديدة */}
         <button
           type="button"
           onClick={doAdd}
           disabled={!canAdd}
-          className={`inline-flex items-center justify-center gap-1.5 h-10 px-3 rounded-lg text-xs font-bold shrink-0 transition-all duration-200 ${
+          aria-label={canAdd ? `إضافة «${trimmed}» إلى قائمة ${entityLabel}` : addLabel ?? "إضافة"}
+          className={`inline-flex items-center justify-center w-10 h-10 rounded-lg shrink-0 transition-all duration-200 ${
             canAdd
-              ? "bg-jade text-white cursor-pointer shadow-[0_8px_18px_-6px_rgba(18,115,196,0.65)] hover:bg-jade-deep hover:-translate-y-px anim-pop"
+              ? "bg-jade text-white cursor-pointer shadow-[0_8px_18px_-6px_rgba(18,115,196,0.65)] hover:bg-jade-deep hover:scale-105 anim-pop"
               : "bg-mist text-soft/50 border border-line cursor-not-allowed"
           }`}
           title={canAdd ? `إضافة «${trimmed}» إلى قائمة ${entityLabel}` : "اكتب قيمة جديدة غير موجودة في القائمة لتفعيل الإضافة"}
         >
-          <IconPlus className={`w-4 h-4 ${canAdd ? "pulse-soft" : ""}`} />
-          <span className="hidden sm:inline">{addLabel ?? "إضافة"}</span>
+          <IconPlus className={`w-4.5 h-4.5 ${canAdd ? "pulse-soft" : ""}`} />
         </button>
       </div>
 

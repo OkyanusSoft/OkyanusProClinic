@@ -224,6 +224,7 @@ export interface Staff {
   role: string;
   phone: string;
   active: boolean;
+  notes?: string;
 }
 export interface Currency {
   code: string;

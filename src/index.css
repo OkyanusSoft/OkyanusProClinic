@@ -1,8 +1,9 @@
 @import "tailwindcss";
 
 @theme {
-  --font-display: "Cairo", sans-serif;
-  --font-body: "Cairo", sans-serif;
+  /* القاهرة مضمّنة محلياً — والاحتياطيات أنظمة مضمونة في ويندوز/ماك/أندرويد لحفظ التناسق إن غابت */
+  --font-display: "Cairo", "Segoe UI", Tahoma, "Noto Kufi Arabic", "Arial", sans-serif;
+  --font-body: "Cairo", "Segoe UI", Tahoma, "Noto Kufi Arabic", "Arial", sans-serif;
 
   /* لوحة «المحيط» — كحلي عميق + أزرق كوبالت + سماوي مضيء */
   --color-pine: #0a2b47;
