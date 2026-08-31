@@ -319,8 +319,10 @@ export function SmartCombo({
     return () => document.removeEventListener("mousedown", onDoc);
   }, [open]);
 
+  const canAdd = !!trimmed && !exactExists;
+
   const doAdd = () => {
-    if (!trimmed || exactExists) return;
+    if (!canAdd) return;
     onAdd(trimmed);
     onChange(trimmed);
     setOpen(false);
@@ -352,17 +354,21 @@ export function SmartCombo({
             <IconChevronDown className="w-4 h-4" />
           </span>
         </div>
-        {trimmed && !exactExists && (
-          <button
-            type="button"
-            onClick={doAdd}
-            className="btn-primary !h-10 !px-3 !text-xs shrink-0 anim-pop"
-            title={`إضافة «${trimmed}» إلى قائمة ${entityLabel}`}
-          >
-            <IconPlus className="w-4 h-4" />
-            <span className="hidden sm:inline">{addLabel ?? "إضافة"}</span>
-          </button>
-        )}
+        {/* زر الإضافة — ظاهر دائماً، يتوهج عند توفر قيمة جديدة */}
+        <button
+          type="button"
+          onClick={doAdd}
+          disabled={!canAdd}
+          className={`inline-flex items-center justify-center gap-1.5 h-10 px-3 rounded-lg text-xs font-bold shrink-0 transition-all duration-200 ${
+            canAdd
+              ? "bg-jade text-white cursor-pointer shadow-[0_8px_18px_-6px_rgba(18,115,196,0.65)] hover:bg-jade-deep hover:-translate-y-px anim-pop"
+              : "bg-mist text-soft/50 border border-line cursor-not-allowed"
+          }`}
+          title={canAdd ? `إضافة «${trimmed}» إلى قائمة ${entityLabel}` : "اكتب قيمة جديدة غير موجودة في القائمة لتفعيل الإضافة"}
+        >
+          <IconPlus className={`w-4 h-4 ${canAdd ? "pulse-soft" : ""}`} />
+          <span className="hidden sm:inline">{addLabel ?? "إضافة"}</span>
+        </button>
       </div>
 
       {open && (
