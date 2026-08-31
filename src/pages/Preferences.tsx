@@ -391,7 +391,7 @@ export default function PreferencesPage() {
           <IconCheck className="w-4 h-4 text-mint" />
           كل التفضيلات تُحفَظ محلياً وتُطبَّق على النظام كله — {db.patients.length > 0 ? "متزامنة مع قاعدة البيانات" : ""}
         </p>
-        <span className="chip bg-white border border-line text-soft">التفضيلات · الإصدار 2.7</span>
+        <span className="chip bg-white border border-line text-soft">التفضيلات · الإصدار 4.0</span>
       </div>
     </div>
   );
