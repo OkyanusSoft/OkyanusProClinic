@@ -18,7 +18,7 @@ import {
   type Patient,
 } from "../store";
 import { IconCalendar, IconCalendarPlus, IconChevronDown, IconClock, IconIdCard, IconPencil, IconPhone, IconPlus, IconPrinter, IconSearch, IconSpark, IconUserPlus, IconUsers, IconAlert } from "../icons";
-import { Avatar, Badge, EmptyState, Field, Modal, TArea, TInput, TSelect, TwoStepDelete, useToast } from "../components/ui";
+import { Avatar, Badge, EmptyState, Field, Modal, SmartCombo, TArea, TInput, TSelect, TwoStepDelete, useToast } from "../components/ui";
 import DentalChart from "../components/DentalChart";
 import { CardPrintModal, PatientCardSheet, PatientPrint, PrintModal, RxPrint } from "../components/PrintSheet";
 import { FollowUpModal } from "./Appointments";
@@ -258,6 +258,8 @@ function AddPatientModal({
   onBook: (patientId: string) => void;
   dispatch: React.Dispatch<any>;
 }) {
+  const { db } = useStore();
+  const { push } = useToast();
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [age, setAge] = useState("");
@@ -335,12 +337,18 @@ function AddPatientModal({
         </Field>
         <div className="col-span-2">
           <Field label="المدينة">
-            <TInput list="yemen-cities" value={city} onChange={(e) => setCity(e.target.value)} placeholder="صنعاء" />
-            <datalist id="yemen-cities">
-              {YEMEN_CITIES.map((c) => (
-                <option key={c} value={c} />
-              ))}
-            </datalist>
+            <SmartCombo
+              value={city}
+              onChange={setCity}
+              options={db.cities}
+              entityLabel="المدن"
+              addLabel="إضافة المدينة"
+              placeholder="اكتب المدينة أو اختر من القائمة…"
+              onAdd={(v) => {
+                dispatch({ type: "ADD_CITY", name: v });
+                push("success", `أُضيفت مدينة «${v}»`, "أصبحت متاحة الآن في قوائم المدن فوراً.");
+              }}
+            />
           </Field>
         </div>
         <div className="col-span-2">

@@ -570,6 +570,10 @@ export interface DB {
   plans: TreatmentPlan[];
   users: User[];
   settings: ClinicSettings;
+  /** قوائم ديناميكية قابلة للإضافة الفورية */
+  cities: string[];
+  specialties: string[];
+  staffRoles: string[];
   nextInv: number;
   /** طابع زمن آخر حفظ — للمقارنة بين localStorage و MySQL واختيار الأحدث */
   savedAt?: number;
@@ -702,6 +706,18 @@ export const YEMEN_CITIES = ["صنعاء", "عدن", "تعز", "الحديدة",
 
 export const STAFF_ROLES = ["مساعد أسنان", "استقبال وعلاقات مرضى", "فني تعقيم", "فني مختبر أسنان", "محاسب", "ممرض"];
 
+export const DEFAULT_SPECIALTIES = [
+  "طب أسنان عام وترميم",
+  "تقويم الأسنان",
+  "جراحة الفم والوجه والفكين",
+  "طب أسنان الأطفال",
+  "علاج الجذور والعصب",
+  "علاج اللثة",
+  "التعويضات السنية",
+  "أشعة الفم والوجه والفكين",
+  "طب الفم",
+];
+
 /* ============================== Helpers ============================== */
 
 export const uid = () => Math.random().toString(36).slice(2, 10);
@@ -797,6 +813,9 @@ function bootstrap(): DB {
     serviceCats: ["تشخيص", "وقاية", "علاج", "تجميل", "جراحة", "تعويضات", "تقويم"],
     itemCats: ["تخدير", "حشوات", "علاج عصب", "جراحة", "وقاية", "تعقيم", "مختبر", "استهلاكي عام"],
     expenseCats: EXPENSE_CATS.map((c) => c.name),
+    cities: [...YEMEN_CITIES],
+    specialties: [...DEFAULT_SPECIALTIES],
+    staffRoles: [...STAFF_ROLES],
     plans: [],
     users: [adminUser],
     settings: DEFAULT_CLINIC_SETTINGS,
@@ -1126,7 +1145,7 @@ function seed(): DB {
   const itemCats: string[] = ["تخدير", "حشوات", "علاج عصب", "جراحة", "وقاية", "تعقيم", "مختبر", "استهلاكي عام"];
   const expenseCats: string[] = EXPENSE_CATS.map((c) => c.name);
 
-  return { patients, doctors, staff, currencies, defaultCurrency: "YER", services, appointments, invoices, activity, expenses, prescriptions, sessions, implants, prosthetics, orthoCases, xrays, followUps, supplies, supplyMoves, serviceCats, itemCats, expenseCats, plans, users, settings: DEFAULT_CLINIC_SETTINGS, nextInv: 1043 };
+  return { patients, doctors, staff, currencies, defaultCurrency: "YER", services, appointments, invoices, activity, expenses, prescriptions, sessions, implants, prosthetics, orthoCases, xrays, followUps, supplies, supplyMoves, serviceCats, itemCats, expenseCats, cities: [...YEMEN_CITIES], specialties: [...DEFAULT_SPECIALTIES], staffRoles: [...STAFF_ROLES], plans, users, settings: DEFAULT_CLINIC_SETTINGS, nextInv: 1043 };
 }
 
 /* ============================== Store ============================== */
@@ -1196,6 +1215,9 @@ export type Action =
   | { type: "ADD_EXPENSE_CAT"; name: string }
   | { type: "RENAME_EXPENSE_CAT"; from: string; to: string }
   | { type: "DELETE_EXPENSE_CAT"; name: string }
+  | { type: "ADD_CITY"; name: string }
+  | { type: "ADD_SPECIALTY"; name: string }
+  | { type: "ADD_STAFF_ROLE"; name: string }
   | { type: "RESET" };
 
 const nowIso = () => new Date().toISOString();
@@ -1591,6 +1613,23 @@ function reducer(db: DB, action: Action): DB {
       };
     }
 
+    /* ---------- القوائم الديناميكية (إضافة فورية) ---------- */
+    case "ADD_CITY": {
+      const name = action.name.trim();
+      if (!name || db.cities.some((c) => c === name)) return db;
+      return { ...db, cities: [...db.cities, name] };
+    }
+    case "ADD_SPECIALTY": {
+      const name = action.name.trim();
+      if (!name || db.specialties.some((c) => c === name)) return db;
+      return { ...db, specialties: [...db.specialties, name] };
+    }
+    case "ADD_STAFF_ROLE": {
+      const name = action.name.trim();
+      if (!name || db.staffRoles.some((c) => c === name)) return db;
+      return { ...db, staffRoles: [...db.staffRoles, name] };
+    }
+
     case "RESET":
       return bootstrap();
     default:
@@ -1635,6 +1674,9 @@ export function normalizeDB(raw: Partial<DB> | null | undefined): DB {
     serviceCats: arr<string>(db.serviceCats).length ? arr<string>(db.serviceCats) : base.serviceCats,
     itemCats: arr<string>(db.itemCats).length ? arr<string>(db.itemCats) : base.itemCats,
     expenseCats: arr<string>(db.expenseCats).length ? arr<string>(db.expenseCats) : base.expenseCats,
+    cities: arr<string>(db.cities).length ? arr<string>(db.cities) : base.cities,
+    specialties: arr<string>(db.specialties).length ? arr<string>(db.specialties) : base.specialties,
+    staffRoles: arr<string>(db.staffRoles).length ? arr<string>(db.staffRoles) : base.staffRoles,
     settings: { ...DEFAULT_CLINIC_SETTINGS, ...(db.settings ?? {}) },
     users: (arr<User>(db.users).length ? arr<User>(db.users) : base.users).map((u) =>
       u.role === "secretary" || u.role === "assistant"
