@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { DEFAULT_SPECIALTIES, STAFF_ROLES, today, uid, useStore, type Doctor, type Staff } from "../store";
 import { IconCalendar, IconIdCard, IconPencil, IconPhone, IconPlus, IconStetho } from "../icons";
-import { Avatar, EmptyState, Field, Modal, SmartCombo, Switch, TInput, TwoStepDelete, useToast } from "../components/ui";
+import { Avatar, EmptyState, Field, Modal, SmartCombo, Switch, TArea, TInput, TwoStepDelete, useToast } from "../components/ui";
 
 const COLORS = ["#0d8f83", "#3a86c4", "#e2952b", "#b23a48", "#2c9c69", "#0a6158"];
 
@@ -121,7 +121,10 @@ export default function TeamPage() {
                       <td className="td">
                         <div className="flex items-center gap-3">
                           <Avatar name={s.name} size="w-9 h-9 text-xs" />
-                          <span className={`font-bold ${s.active ? "text-ink" : "text-soft line-through"}`}>{s.name}</span>
+                          <div className="min-w-0">
+                            <p className={`font-bold leading-tight ${s.active ? "text-ink" : "text-soft line-through"}`}>{s.name}</p>
+                            {s.notes && <p className="text-[10px] text-soft mt-0.5 truncate max-w-44" title={s.notes}>{s.notes}</p>}
+                          </div>
                         </div>
                       </td>
                       <td className="td"><span className="chip bg-sky-soft text-sky">{s.role}</span></td>
@@ -249,6 +252,8 @@ function StaffModal({ initial, onClose }: { initial?: Staff; onClose: () => void
   const [name, setName] = useState(initial?.name ?? "");
   const [role, setRole] = useState(initial?.role ?? STAFF_ROLES[0]);
   const [phone, setPhone] = useState(initial?.phone ?? "");
+  const [active, setActive] = useState(initial?.active ?? true);
+  const [notes, setNotes] = useState(initial?.notes ?? "");
   const [err, setErr] = useState("");
 
   const save = () => {
@@ -258,7 +263,8 @@ function StaffModal({ initial, onClose }: { initial?: Staff; onClose: () => void
       name: name.trim(),
       role,
       phone: phone.trim() || "7XXXXXXXX",
-      active: initial?.active ?? true,
+      active,
+      notes: notes.trim() || undefined,
     };
     dispatch({ type: initial ? "UPDATE_STAFF" : "ADD_STAFF", s });
     push("success", initial ? "تم تعديل بيانات الموظف" : "انضم موظف جديد للطاقم", s.name);
@@ -271,6 +277,7 @@ function StaffModal({ initial, onClose }: { initial?: Staff; onClose: () => void
       onClose={onClose}
       title={initial ? `تعديل «${initial.name}»` : "إضافة موظف جديد"}
       subtitle="المساعدون والاستقبال وفنيو التعقيم والمختبر"
+      width="max-w-2xl"
       footer={
         <>
           <button className="btn-ghost" onClick={onClose}>إلغاء</button>
@@ -278,7 +285,22 @@ function StaffModal({ initial, onClose }: { initial?: Staff; onClose: () => void
         </>
       }
     >
-      <div className="grid grid-cols-2 gap-4">
+      {/* بطاقة معاينة حيّة */}
+      <div className="flex items-center gap-4 rounded-xl bg-mist/70 border border-line p-4 mb-5">
+        <Avatar name={name.trim() || "موظف جديد"} size="w-14 h-14 text-lg" />
+        <div className="min-w-0 flex-1">
+          <p className="font-display font-bold text-base text-ink truncate">{name.trim() || "موظف جديد"}</p>
+          <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+            <span className="chip bg-jade-soft text-jade-deep">{role || "المسمى الوظيفي"}</span>
+            <span className={`chip ${active ? "bg-mint-soft text-[#1d6b47]" : "bg-mist text-soft"}`}>
+              <span className={`w-1.5 h-1.5 rounded-full ${active ? "bg-mint pulse-dot" : "bg-soft/40"}`} />
+              {active ? "في الخدمة" : "موقوف"}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-x-4 gap-y-5">
         <div className="col-span-2">
           <Field label="الاسم الكامل *">
             <TInput value={name} onChange={(e) => setName(e.target.value)} placeholder="أ. ..." />
@@ -301,6 +323,17 @@ function StaffModal({ initial, onClose }: { initial?: Staff; onClose: () => void
         <Field label="رقم الجوال">
           <TInput value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="7XXXXXXXX" dir="ltr" />
         </Field>
+        <Field label="حالة الخدمة">
+          <div className="flex items-center gap-3 h-10 rounded-lg border border-line bg-white px-3">
+            <Switch on={active} onChange={setActive} />
+            <span className="text-xs font-bold text-soft">{active ? "الموظف نشط ويظهر في الطاقم" : "الموظف موقوف مؤقتاً"}</span>
+          </div>
+        </Field>
+        <div className="col-span-2">
+          <Field label="ملاحظات (اختياري)">
+            <TArea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="ساعات الدوام، المهام الإضافية، ملاحظات إدارية…" />
+          </Field>
+        </div>
       </div>
       {err && <p className="mt-3 text-xs font-bold text-coral bg-coral-soft rounded-lg px-3 py-2.5 anim-pop">{err}</p>}
     </Modal>
