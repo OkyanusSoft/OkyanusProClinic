@@ -330,7 +330,7 @@ function Shell() {
                   <span dir="ltr">781 183 050</span>
                 </span>
               </div>
-              <p className="text-[10px] text-soft/60">نظام {clinicOf(db).clinicName} · الإصدار 3.0</p>
+              <p className="text-[10px] text-soft/60">نظام {clinicOf(db).clinicName} · الإصدار 4.0</p>
             </div>
         </footer>
       </div>
