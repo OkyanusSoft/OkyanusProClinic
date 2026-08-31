@@ -1,18 +1,9 @@
 import React, { useState } from "react";
-import { STAFF_ROLES, today, uid, useStore, type Doctor, type Staff } from "../store";
+import { DEFAULT_SPECIALTIES, STAFF_ROLES, today, uid, useStore, type Doctor, type Staff } from "../store";
 import { IconCalendar, IconIdCard, IconPencil, IconPhone, IconPlus, IconStetho } from "../icons";
-import { Avatar, EmptyState, Field, Modal, Switch, TInput, TSelect, TwoStepDelete, useToast } from "../components/ui";
+import { Avatar, EmptyState, Field, Modal, SmartCombo, Switch, TInput, TwoStepDelete, useToast } from "../components/ui";
 
 const COLORS = ["#0d8f83", "#3a86c4", "#e2952b", "#b23a48", "#2c9c69", "#0a6158"];
-const SPECIALTIES = [
-  "طب أسنان عام وترميم",
-  "تقويم الأسنان",
-  "جراحة الفم والوجه",
-  "طب أسنان الأطفال",
-  "علاج الجذور والعصب",
-  "طب الفم واللثة",
-  "تركيبات وتعويضات",
-];
 
 export default function TeamPage() {
   const { db, dispatch } = useStore();
@@ -170,10 +161,10 @@ export default function TeamPage() {
 /* ============================ نافذة طبيب ============================ */
 
 function DoctorModal({ initial, onClose }: { initial?: Doctor; onClose: () => void }) {
-  const { dispatch } = useStore();
+  const { db, dispatch } = useStore();
   const { push } = useToast();
   const [name, setName] = useState(initial?.name ?? "");
-  const [specialty, setSpecialty] = useState(initial?.specialty ?? SPECIALTIES[0]);
+  const [specialty, setSpecialty] = useState(initial?.specialty ?? DEFAULT_SPECIALTIES[0]);
   const [phone, setPhone] = useState(initial?.phone ?? "");
   const [color, setColor] = useState(initial?.color ?? COLORS[0]);
   const [err, setErr] = useState("");
@@ -212,12 +203,19 @@ function DoctorModal({ initial, onClose }: { initial?: Doctor; onClose: () => vo
             <TInput value={name} onChange={(e) => setName(e.target.value)} placeholder="د. ..." />
           </Field>
         </div>
-        <Field label="التخصص">
-          <TSelect value={specialty} onChange={(e) => setSpecialty(e.target.value)}>
-            {SPECIALTIES.map((s) => (
-              <option key={s} value={s}>{s}</option>
-            ))}
-          </TSelect>
+        <Field label="التخصص الطبي">
+          <SmartCombo
+            value={specialty}
+            onChange={setSpecialty}
+            options={db.specialties}
+            entityLabel="التخصصات الطبية"
+            addLabel="إضافة التخصص"
+            placeholder="اكتب التخصص أو اختر من القائمة…"
+            onAdd={(v) => {
+              dispatch({ type: "ADD_SPECIALTY", name: v });
+              push("success", `أُضيف تخصص «${v}»`, "أصبح متاحاً الآن في قوائم التخصص فوراً.");
+            }}
+          />
         </Field>
         <Field label="رقم الجوال">
           <TInput value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="7XXXXXXXX" dir="ltr" />
@@ -246,7 +244,7 @@ function DoctorModal({ initial, onClose }: { initial?: Doctor; onClose: () => vo
 /* ============================ نافذة موظف ============================ */
 
 function StaffModal({ initial, onClose }: { initial?: Staff; onClose: () => void }) {
-  const { dispatch } = useStore();
+  const { db, dispatch } = useStore();
   const { push } = useToast();
   const [name, setName] = useState(initial?.name ?? "");
   const [role, setRole] = useState(initial?.role ?? STAFF_ROLES[0]);
@@ -287,11 +285,18 @@ function StaffModal({ initial, onClose }: { initial?: Staff; onClose: () => void
           </Field>
         </div>
         <Field label="المسمى الوظيفي">
-          <TSelect value={role} onChange={(e) => setRole(e.target.value)}>
-            {STAFF_ROLES.map((r) => (
-              <option key={r} value={r}>{r}</option>
-            ))}
-          </TSelect>
+          <SmartCombo
+            value={role}
+            onChange={setRole}
+            options={db.staffRoles}
+            entityLabel="المسميات الوظيفية"
+            addLabel="إضافة المسمى"
+            placeholder="اكتب المسمى أو اختر من القائمة…"
+            onAdd={(v) => {
+              dispatch({ type: "ADD_STAFF_ROLE", name: v });
+              push("success", `أُضيف مسمى «${v}»`, "أصبح متاحاً الآن في قوائم المسميات فوراً.");
+            }}
+          />
         </Field>
         <Field label="رقم الجوال">
           <TInput value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="7XXXXXXXX" dir="ltr" />

@@ -3,11 +3,12 @@ import React, {
   useCallback,
   useContext,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
 import { createPortal } from "react-dom";
-import { IconAlert, IconCheck, IconTrash, IconX } from "../icons";
+import { IconAlert, IconCheck, IconChevronDown, IconPlus, IconTrash, IconX } from "../icons";
 import { loadPrefs } from "../prefs";
 
 /* ============================ Toasts ============================ */
@@ -278,6 +279,129 @@ export function Field({ label, children, hint }: { label: string; children: Reac
     </div>
   );
 }
+/**
+ * حقل ذكي: اقتراحات مُصفّاة من قائمة + زر «إضافة للقائمة» عند كتابة قيمة غير موجودة.
+ * الإضافة فورية — تنعكس في الحقل نفسه وكل الحقول الأخرى المشاركة لنفس القائمة.
+ */
+export function SmartCombo({
+  value,
+  onChange,
+  options,
+  onAdd,
+  placeholder,
+  addLabel,
+  entityLabel,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  options: string[];
+  onAdd: (v: string) => void;
+  placeholder?: string;
+  addLabel?: string;
+  entityLabel: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const trimmed = value.trim();
+  const exactExists = options.some((o) => o === trimmed);
+
+  const filtered = useMemo(
+    () => (trimmed ? options.filter((o) => o.includes(trimmed)) : options),
+    [options, trimmed]
+  );
+
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [open]);
+
+  const doAdd = () => {
+    if (!trimmed || exactExists) return;
+    onAdd(trimmed);
+    onChange(trimmed);
+    setOpen(false);
+  };
+
+  return (
+    <div ref={ref} className="relative">
+      <div className="flex gap-1.5">
+        <div className="relative flex-1">
+          <input
+            value={value}
+            onChange={(e) => {
+              onChange(e.target.value);
+              setOpen(true);
+            }}
+            onFocus={() => setOpen(true)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && trimmed && !exactExists) {
+                e.preventDefault();
+                doAdd();
+              }
+            }}
+            placeholder={placeholder}
+            className="input !pe-9"
+          />
+          <span
+            className={`absolute inset-y-0 end-3 flex items-center text-soft pointer-events-none transition-transform ${open ? "rotate-180" : ""}`}
+          >
+            <IconChevronDown className="w-4 h-4" />
+          </span>
+        </div>
+        {trimmed && !exactExists && (
+          <button
+            type="button"
+            onClick={doAdd}
+            className="btn-primary !h-10 !px-3 !text-xs shrink-0 anim-pop"
+            title={`إضافة «${trimmed}» إلى قائمة ${entityLabel}`}
+          >
+            <IconPlus className="w-4 h-4" />
+            <span className="hidden sm:inline">{addLabel ?? "إضافة"}</span>
+          </button>
+        )}
+      </div>
+
+      {open && (
+        <div className="anim-pop absolute z-50 mt-1.5 inset-x-0 card !rounded-xl p-1.5 max-h-56 overflow-y-auto shadow-[0_18px_44px_-12px_rgba(11,47,43,0.3)]">
+          <p className="px-3 py-1.5 text-[10px] font-bold text-soft tracking-wide">
+            {entityLabel} المتاحة ({filtered.length})
+          </p>
+          {filtered.map((o) => (
+            <button
+              key={o}
+              type="button"
+              onClick={() => {
+                onChange(o);
+                setOpen(false);
+              }}
+              className={`w-full flex items-center justify-between rounded-lg px-3 py-2 text-start text-sm cursor-pointer transition-colors ${
+                o === trimmed ? "bg-jade-soft text-jade-deep font-bold" : "text-ink hover:bg-mist"
+              }`}
+            >
+              <span>{o}</span>
+              {o === trimmed && <IconCheck className="w-3.5 h-3.5" />}
+            </button>
+          ))}
+          {trimmed && !exactExists && (
+            <button
+              type="button"
+              onClick={doAdd}
+              className="w-full flex items-center gap-2 rounded-lg px-3 py-2.5 text-start text-sm font-bold text-jade-deep bg-jade-soft/60 hover:bg-jade-soft cursor-pointer transition-colors border border-dashed border-jade/40 mt-1"
+            >
+              <IconPlus className="w-4 h-4" />
+              إضافة «{trimmed}» إلى قائمة {entityLabel}
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export const TInput = (p: React.InputHTMLAttributes<HTMLInputElement>) => <input {...p} className={`input ${p.className ?? ""}`} />;
 export const TSelect = (p: React.SelectHTMLAttributes<HTMLSelectElement>) => (
   <select {...p} className={`input appearance-none cursor-pointer ${p.className ?? ""}`} />
