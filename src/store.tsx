@@ -151,6 +151,7 @@ function queueActionEvent(a: Action, db: DB) {
     case "DELETE_SERVICE": add("حذف", "الخدمات", "حذف خدمة من قائمة الأسعار", "services", a.id); break;
     case "ADD_EXPENSE": add("إضافة", "المالية", `سجّل مصروفاً: ${a.e.title}`); break;
     case "DELETE_EXPENSE": add("حذف", "المالية", "حذف مصروفاً مسجلاً", "expenses", a.id); break;
+    case "UPDATE_EXPENSE": add("تعديل", "المالية", `عدّل مصروفاً: ${a.e.title}`); break;
     case "ADD_PRESCRIPTION": add("إضافة", "المرضى", `كتب روشتة للمريض: ${pname(a.rx.patientId)}`); break;
     case "DELETE_PRESCRIPTION": add("حذف", "المرضى", "حذف روشتة طبية", "prescriptions", a.id); break;
     case "START_SESSION": add("جلسة", "الجلسات", `أدخل المريض للكرسي وبدأ جلسة علاج: ${pname(a.patientId)}`); break;
@@ -423,6 +424,22 @@ export interface FollowUp {
   notes?: string;
 }
 
+/** مكتبة أسباب العودة — تُحفظ تلقائياً وتُدار من شاشة جدولة العودة */
+export interface FollowUpReason {
+  id: string;
+  text: string;
+}
+
+export const DEFAULT_FOLLOWUP_REASONS: string[] = [
+  "مراجعة عامة",
+  "تنظيف دوري كل 6 أشهر",
+  "فك الغرز ومراجعة الجرح",
+  "تركيب التاج بعد علاج العصب",
+  "موعد شد التقويم الشهري",
+  "كشف مرحلة الالتئام للزرعة",
+  "مراجعة ما بعد الخلع",
+];
+
 export const FU_META: Record<FollowUpStatus, { label: string; cls: string; dot: string }> = {
   pending: { label: "بانتظار المراجعة", cls: "bg-sky-soft text-sky", dot: "#3a86c4" },
   booked: { label: "محجوزة", cls: "bg-jade-soft text-jade-deep", dot: "#0d8f83" },
@@ -606,6 +623,8 @@ export interface DB {
   cities: string[];
   specialties: string[];
   staffRoles: string[];
+  /** مكتبة أسباب العودة */
+  followUpReasons: FollowUpReason[];
   nextInv: number;
   /** طابع زمن آخر حفظ — للمقارنة بين localStorage و MySQL واختيار الأحدث */
   savedAt?: number;
@@ -852,6 +871,7 @@ function bootstrap(): DB {
     cities: [...YEMEN_CITIES],
     specialties: [...DEFAULT_SPECIALTIES],
     staffRoles: [...STAFF_ROLES],
+    followUpReasons: DEFAULT_FOLLOWUP_REASONS.map((t, i) => ({ id: `fur-${i}`, text: t })),
     plans: [],
     users: [adminUser],
     settings: DEFAULT_CLINIC_SETTINGS,
@@ -1180,8 +1200,9 @@ function seed(): DB {
   const serviceCats: string[] = ["تشخيص", "وقاية", "علاج", "تجميل", "جراحة", "تعويضات", "تقويم"];
   const itemCats: string[] = ["تخدير", "حشوات", "علاج عصب", "جراحة", "وقاية", "تعقيم", "مختبر", "استهلاكي عام"];
   const expenseCats: string[] = EXPENSE_CATS.map((c) => c.name);
+  const followUpReasons: FollowUpReason[] = DEFAULT_FOLLOWUP_REASONS.map((t, i) => ({ id: `fur-${i}`, text: t }));
 
-  return { patients, doctors, staff, currencies, defaultCurrency: "YER", services, appointments, invoices, activity, expenses, prescriptions, sessions, implants, prosthetics, orthoCases, xrays, followUps, supplies, supplyMoves, serviceCats, itemCats, expenseCats, cities: [...YEMEN_CITIES], specialties: [...DEFAULT_SPECIALTIES], staffRoles: [...STAFF_ROLES], plans, users, settings: DEFAULT_CLINIC_SETTINGS, nextInv: 1043 };
+  return { patients, doctors, staff, currencies, defaultCurrency: "YER", services, appointments, invoices, activity, expenses, prescriptions, sessions, implants, prosthetics, orthoCases, xrays, followUps, supplies, supplyMoves, serviceCats, itemCats, expenseCats, cities: [...YEMEN_CITIES], specialties: [...DEFAULT_SPECIALTIES], staffRoles: [...STAFF_ROLES], followUpReasons, plans, users, settings: DEFAULT_CLINIC_SETTINGS, nextInv: 1043 };
 }
 
 /* ============================== Store ============================== */
@@ -1254,6 +1275,10 @@ export type Action =
   | { type: "ADD_CITY"; name: string }
   | { type: "ADD_SPECIALTY"; name: string }
   | { type: "ADD_STAFF_ROLE"; name: string }
+  | { type: "ADD_FOLLOWUP_REASON"; text: string }
+  | { type: "UPDATE_FOLLOWUP_REASON"; id: string; text: string }
+  | { type: "DELETE_FOLLOWUP_REASON"; id: string }
+  | { type: "UPDATE_EXPENSE"; e: Expense }
   | { type: "RESET" };
 
 const nowIso = () => new Date().toISOString();
@@ -1378,6 +1403,8 @@ function reducer(db: DB, action: Action): DB {
       };
     case "DELETE_EXPENSE":
       return { ...db, expenses: db.expenses.filter((e) => e.id !== action.id) };
+    case "UPDATE_EXPENSE":
+      return { ...db, expenses: db.expenses.map((e) => (e.id === action.e.id ? action.e : e)) };
     case "ADD_PRESCRIPTION": {
       const p = db.patients.find((x) => x.id === action.rx.patientId);
       return {
@@ -1683,6 +1710,20 @@ function reducer(db: DB, action: Action): DB {
       return { ...db, staffRoles: [...db.staffRoles, name] };
     }
 
+    /* ---------- مكتبة أسباب العودة ---------- */
+    case "ADD_FOLLOWUP_REASON": {
+      const text = action.text.trim();
+      if (!text || db.followUpReasons.some((r) => r.text === text)) return db;
+      return { ...db, followUpReasons: [...db.followUpReasons, { id: uid(), text }] };
+    }
+    case "UPDATE_FOLLOWUP_REASON": {
+      const text = action.text.trim();
+      if (!text) return db;
+      return { ...db, followUpReasons: db.followUpReasons.map((r) => (r.id === action.id ? { ...r, text } : r)) };
+    }
+    case "DELETE_FOLLOWUP_REASON":
+      return { ...db, followUpReasons: db.followUpReasons.filter((r) => r.id !== action.id) };
+
     case "RESET":
       return bootstrap();
     default:
@@ -1749,6 +1790,7 @@ export function normalizeDB(raw: Partial<DB> | null | undefined): DB {
     cities: arr<string>(db.cities).length ? arr<string>(db.cities) : base.cities,
     specialties: arr<string>(db.specialties).length ? arr<string>(db.specialties) : base.specialties,
     staffRoles: arr<string>(db.staffRoles).length ? arr<string>(db.staffRoles) : base.staffRoles,
+    followUpReasons: arr<FollowUpReason>(db.followUpReasons).length ? arr<FollowUpReason>(db.followUpReasons) : base.followUpReasons,
     settings: { ...DEFAULT_CLINIC_SETTINGS, ...(db.settings ?? {}) },
     users: (arr<User>(db.users).length ? arr<User>(db.users) : base.users).map((u) =>
       u.role === "secretary" || u.role === "assistant"

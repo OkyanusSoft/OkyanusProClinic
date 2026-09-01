@@ -245,7 +245,7 @@ export default function PatientsPage({ addSignal, onOpenPatient, onBook }: PageP
 
 /* ============================ نافذة إضافة مريض ============================ */
 
-function AddPatientModal({
+export function AddPatientModal({
   open,
   onClose,
   onSaved,
@@ -260,6 +260,8 @@ function AddPatientModal({
 }) {
   const { db } = useStore();
   const { push } = useToast();
+  /* رقم جوال افتراضي تسلسلي — يُسند تلقائياً إن تُرك الحقل فارغاً */
+  const defaultPhone = `77${String(1000000 + db.patients.length + 1)}`;
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [age, setAge] = useState("");
@@ -279,11 +281,13 @@ function AddPatientModal({
   const save = () => {
     if (name.trim().length < 3) return setErr("أدخل الاسم الثلاثي على الأقل.");
     const cleanPhone = phone.replace(/[\s\-().]/g, "");
-    if (!/^7\d{8,14}$/.test(cleanPhone)) return setErr("رقم الجوال يجب أن يبدأ بـ 7 ويتكون من 9 أرقام على الأقل (مثل 771234567).");
+    /* إن تُرك الجوال فارغاً يُسند الرقم الافتراضي — لا يُطلب من المستخدم */
+    const finalPhone = cleanPhone === "" ? defaultPhone : cleanPhone;
+    if (!/^7\d{8,14}$/.test(finalPhone)) return setErr("رقم الجوال يجب أن يبدأ بـ 7 ويتكون من 9 أرقام على الأقل (مثل 771234567).");
     const p: Patient = {
       id: uid(),
       name: name.trim(),
-      phone: cleanPhone,
+      phone: finalPhone,
       age: Number(age) || 25,
       gender,
       blood,
@@ -316,8 +320,8 @@ function AddPatientModal({
             <TInput value={name} onChange={(e) => setName(e.target.value)} placeholder="مثال: وائل عبدالله الشرفي" />
           </Field>
         </div>
-        <Field label="رقم الجوال *">
-          <TInput value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="77xxxxxxx" dir="ltr" className="!text-start" />
+        <Field label="رقم الجوال" hint={`اختياري — إن تُرك فارغاً يُسند تلقائياً ${defaultPhone}`}>
+          <TInput value={phone} onChange={(e) => setPhone(e.target.value)} placeholder={defaultPhone} dir="ltr" className="!text-start" />
         </Field>
         <Field label="العمر">
           <TInput type="number" value={age} onChange={(e) => setAge(e.target.value)} placeholder="30" />
