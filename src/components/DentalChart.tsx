@@ -141,7 +141,7 @@ function Tooth({
   topY: number;
   selected: boolean;
   hovered: boolean;
-  workKind?: WorkKind | null;
+  workKind?: string | null;
   onClick: () => void;
   onHover: (n: number | null) => void;
 }) {
@@ -154,7 +154,14 @@ function Tooth({
   const rootPaths = useMemo(() => rootD(w, roots), [w, roots]);
   const sw = selected ? 2.4 : hovered ? 2 : 1.4;
   const numY = upper ? topY - 10 : topY + TH + 20;
-  const wk = workKind ? WORK_META[workKind] : null;
+  /* لون شارة العمل من اسم الفئة (حسب الكلمة المفتاحية) */
+  const catColor = (c: string): string =>
+    c.includes("قلع") ? "#d9503a" :
+    c.includes("حشو") ? "#1273c4" :
+    c.includes("عصب") ? "#e2952b" :
+    c.includes("تركيب") ? "#2f9fe0" :
+    c.includes("تقويم") ? "#2c9c69" : "#5c7186";
+  const wk = workKind ? { color: catColor(workKind) } : null;
 
   return (
     <g
@@ -270,7 +277,7 @@ interface Props {
   multiSelect?: boolean;
   selection?: number[];
   onToggle?: (n: number) => void;
-  workBadges?: Partial<Record<number, WorkKind>>;
+  workBadges?: Partial<Record<number, string>>;
 }
 
 export default function DentalChart({
