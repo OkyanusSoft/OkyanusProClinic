@@ -662,8 +662,8 @@ export function PatientDrawer({
                           <div className="flex flex-wrap gap-1.5 mt-2.5">
                             {s.procedures.map((pr, j) => (
                               <span key={j} className="chip bg-mist text-ink">
-                                {serviceById(pr.serviceId)?.name}
-                                {pr.tooth && <b className="stat-num text-[#a06410]">· سن {pr.tooth}</b>}
+                                {pr.name}
+                                {pr.teeth.length > 0 && <b className="stat-num text-[#a06410]">· {pr.teeth.length === 1 ? `سن ${pr.teeth[0]}` : `${pr.teeth.length} أسنان`}</b>}
                               </span>
                             ))}
                             {s.teethTreated.map((t, j) => (

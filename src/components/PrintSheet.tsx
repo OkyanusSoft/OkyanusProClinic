@@ -928,7 +928,7 @@ export function SessionPrint({ session }: { session: ClinicalSession }) {
   const d = doctorById(session.doctorId);
   const inv = session.invoiceId ? db.invoices.find((i) => i.id === session.invoiceId) : undefined;
   const invTotal = inv ? invoiceTotal(inv) : 0;
-  const procTotal = session.procedures.reduce((s, pr) => s + (serviceById(pr.serviceId)?.price ?? 0), 0);
+  const procTotal = session.procedures.reduce((s, pr) => s + pr.price * Math.max(1, pr.teeth.length), 0);
   const duration =
     session.endedAt && session.startedAt
       ? Math.max(1, Math.round((new Date(session.endedAt).getTime() - new Date(session.startedAt).getTime()) / 60000))
@@ -976,22 +976,21 @@ export function SessionPrint({ session }: { session: ClinicalSession }) {
             <tr className="bg-mist text-[11px]">
               <th className="border border-line px-3 py-2 text-start">#</th>
               <th className="border border-line px-3 py-2 text-start">الإجراء</th>
-              <th className="border border-line px-3 py-2">السن</th>
-              <th className="border border-line px-3 py-2">السعر</th>
+              <th className="border border-line px-3 py-2">الفئة</th>
+              <th className="border border-line px-3 py-2">الأسنان</th>
+              <th className="border border-line px-3 py-2">الإجمالي</th>
             </tr>
           </thead>
           <tbody>
-            {session.procedures.map((pr, i) => {
-              const s = serviceById(pr.serviceId);
-              return (
-                <tr key={i}>
-                  <td className="border border-line px-3 py-2 stat-num text-xs text-soft">{i + 1}</td>
-                  <td className="border border-line px-3 py-2 font-semibold">{s?.name ?? "إجراء"}</td>
-                  <td className="border border-line px-3 py-2 text-center stat-num">{pr.tooth ?? "—"}</td>
-                  <td className="border border-line px-3 py-2 text-center stat-num">{money(s?.price ?? 0)}</td>
-                </tr>
-              );
-            })}
+            {session.procedures.map((pr, i) => (
+              <tr key={i}>
+                <td className="border border-line px-3 py-2 stat-num text-xs text-soft">{i + 1}</td>
+                <td className="border border-line px-3 py-2 font-semibold">{pr.name}</td>
+                <td className="border border-line px-3 py-2 text-center text-xs text-soft">{pr.category}</td>
+                <td className="border border-line px-3 py-2 text-center stat-num">{pr.teeth.length ? pr.teeth.join("، ") : "—"}</td>
+                <td className="border border-line px-3 py-2 text-center stat-num">{money(pr.price * Math.max(1, pr.teeth.length))}</td>
+              </tr>
+            ))}
           </tbody>
         </table>
       )}

@@ -736,7 +736,7 @@ function HistoryView({ sessions, onOpenPatient }: { sessions: import("../store")
             const d = doctorById(s.doctorId);
             const inv = s.invoiceId ? db.invoices.find((x) => x.id === s.invoiceId) : undefined;
             const invTotal = inv ? invoiceTotal(inv) : 0;
-            const val = s.procedures.reduce((sum, pr) => sum + (serviceById(pr.serviceId)?.price ?? 0), 0);
+            const val = s.procedures.reduce((sum, pr) => sum + pr.price * Math.max(1, pr.teeth.length), 0);
             const fu = s.fuId ? db.followUps.find((f) => f.id === s.fuId) : undefined;
             const fuOverdue = !!fu && fu.status === "pending" && fu.dueDate < today(0);
             const isOpen = openId === s.id;
@@ -754,14 +754,14 @@ function HistoryView({ sessions, onOpenPatient }: { sessions: import("../store")
                       <span className="text-[10px] font-bold text-soft">· {d?.name}</span>
                     </div>
                     <p className="text-[11px] text-soft mt-1 truncate">
-                      {s.procedures.map((pr) => serviceById(pr.serviceId)?.name).join(" · ") || "استشارة وفحص"}
+                      {s.procedures.map((pr) => pr.name).join(" · ") || "استشارة وفحص"}
                       {s.diagnosis ? ` — ${s.diagnosis}` : ""}
                     </p>
                     <div className="flex items-center gap-1.5 flex-wrap mt-2">
-                      {s.procedures.filter((pr) => pr.tooth).map((pr, j) => (
+                      {s.procedures.filter((pr) => pr.teeth.length).map((pr, j) => (
                         <span key={j} className="chip bg-amber-soft text-[#a06410]">
                           <IconTooth className="w-3 h-3" />
-                          سن {pr.tooth}
+                          {pr.teeth.length === 1 ? `سن ${pr.teeth[0]}` : `${pr.teeth.length} أسنان`}
                         </span>
                       ))}
                       {s.meds.length > 0 && (
@@ -814,13 +814,17 @@ function HistoryView({ sessions, onOpenPatient }: { sessions: import("../store")
                         ) : (
                           <ul className="space-y-1.5">
                             {s.procedures.map((pr, j) => {
-                              const sv = serviceById(pr.serviceId);
+                              const cat = pr.category ?? "";
+                              const clr = cat.includes("قلع") ? "#d9503a" : cat.includes("حشو") ? "#1273c4" : cat.includes("عصب") ? "#e2952b" : cat.includes("تركيب") ? "#2f9fe0" : cat.includes("تقويم") ? "#2c9c69" : "#5c7186";
                               return (
-                                <li key={j} className="flex items-center gap-2 text-xs font-semibold text-ink">
-                                  <span className="w-2 h-2 rounded-full shrink-0" style={{ background: sv?.color }} />
-                                  {sv?.name}
-                                  {pr.tooth && <span className="chip bg-amber-soft text-[#a06410] !py-0.5"><IconTooth className="w-3 h-3" /> سن {pr.tooth}</span>}
-                                  <span className="stat-num text-soft ms-auto">{money(sv?.price ?? 0)}</span>
+                                <li key={j} className="flex items-center gap-2 text-xs font-semibold text-ink flex-wrap">
+                                  <span className="w-2 h-2 rounded-full shrink-0" style={{ background: clr }} />
+                                  {pr.name}
+                                  {pr.teeth.length > 0 && (
+                                    <span className="chip bg-amber-soft text-[#a06410] !py-0.5"><IconTooth className="w-3 h-3" /> {pr.teeth.length === 1 ? `سن ${pr.teeth[0]}` : `${pr.teeth.length} أسنان`}</span>
+                                  )}
+                                  {pr.canals?.length ? <span className="text-soft font-medium">{pr.canals.map((c) => `${c.channels}ق`).join("·")}</span> : null}
+                                  <span className="stat-num text-soft ms-auto">{money(pr.price * Math.max(1, pr.teeth.length))}</span>
                                 </li>
                               );
                             })}
