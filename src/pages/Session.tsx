@@ -35,6 +35,7 @@ import {
   type Prosthetic,
   type SessionStage,
   type ToothStatus,
+  type SessionProc,
   type WorkItem,
   type WorkKind,
   type XrayRec,
@@ -64,7 +65,7 @@ import {
   IconWallet,
   IconXray,
 } from "../icons";
-import { Avatar, Badge, Drop, DropItem, EmptyState, Field, Modal, Switch, TArea, TInput, TSelect, TwoStepDelete, useToast } from "../components/ui";
+import { Avatar, Badge, DateInput, Drop, DropItem, EmptyState, Field, Modal, Switch, TArea, TInput, TSelect, TwoStepDelete, useToast } from "../components/ui";
 import DentalChart from "../components/DentalChart";
 import { InvoicePrint, PrintModal, RxPrint } from "../components/PrintSheet";
 
@@ -641,7 +642,7 @@ function Workstation({ session, readonly = false, onExit }: { session: ClinicalS
                 {fuEnabled ? (
                   <div className="flex gap-1.5 mt-1">
                     <TInput value={fuReason} onChange={(e) => setFuReason(e.target.value)} className="!h-8 !w-52 !text-[11px]" placeholder="سبب العودة" />
-                    <TInput type="date" value={fuDate} onChange={(e) => setFuDate(e.target.value)} className="!h-8 !w-36 !text-[11px]" />
+                    <DateInput value={fuDate} onChange={setFuDate} className="!h-8 !w-32 !text-[11px]" />
                   </div>
                 ) : (
                   <p className="text-[10px] text-soft mt-0.5">
@@ -862,32 +863,29 @@ function WorkPlanSection({
     const st = session.stages.find((s) => s.id === id);
     // حذف العودة المرتبطة إن وُجدت
     if (st?.fuId) dispatch({ type: "DELETE_FOLLOWUP", id: st.fuId });
+    const fallback = session.stages.find((s) => s.id !== id)!.id;
     patch({
       stages: session.stages.filter((s) => s.id !== id),
-      workItems: session.workItems.map((w) => (w.stageId === id ? { ...w, stageId: session.stages.find((s) => s.id !== id)!.id } : w)),
+      procedures: session.procedures.map((pr) => (pr.stageId === id ? { ...pr, stageId: fallback } : pr)),
     });
-    if (st) push("info", `حُذفت مرحلة «${st.name}»`, st.fuId ? "أُزيلت عودتها المرتبطة من المتابعات." : "نُقلت أعمالها إلى مرحلة أخرى.");
+    if (st) push("info", `حُذفت مرحلة «${st.name}»`, st.fuId ? "أُزيلت عودتها المرتبطة من المتابعات." : "نُقلت إجراءاتها إلى مرحلة أخرى.");
   };
 
   const label = (n: number) => (mode === "child" ? "ABCDE"[(n % 10) - 1] : String(n));
 
-  const kindBtn = (k: WorkKind) => {
-    const active = kind === k;
-    const m = WORK_META[k];
-    return (
-      <button
-        key={k}
-        onClick={() => setKind(active ? null : k)}
-        className={`rounded-xl border-2 px-3 py-2.5 text-sm font-bold cursor-pointer transition-all flex items-center gap-2 ${
-          active ? "shadow-md scale-[1.02]" : "border-line bg-white text-soft hover:border-jade/40"
-        }`}
-        style={active ? { borderColor: m.color, background: `${m.color}14`, color: m.color } : undefined}
-      >
-        <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: m.color }} />
-        {k}
-      </button>
-    );
+  /* تعديل سعر إجراء منفَّذ */
+  const updateProcPrice = (id: string, v: number) =>
+    patch({ procedures: session.procedures.map((pr) => (pr.id === id ? { ...pr, price: Math.max(0, v) } : pr)) });
+
+  /* حذف إجراء منفَّذ */
+  const removeProc = (id: string) => {
+    const pr = session.procedures.find((x) => x.id === id);
+    patch({ procedures: session.procedures.filter((x) => x.id !== id) });
+    if (pr) push("info", `حُذف إجراء «${pr.name}»`);
   };
+
+  /* إجمالي قيمة الإجراءات المنفذة */
+  const procTotal = session.procedures.reduce((s, pr) => s + pr.price * Math.max(1, pr.teeth.length), 0);
 
   return (
     <section className="card p-5 anim-fade">
@@ -899,10 +897,10 @@ function WorkPlanSection({
             {mode === "child" ? "أسنان لبنية A–E" : "أسنان دائمة FDI"} · حسب العمر
           </span>
         </h3>
-        {session.workItems.length > 0 && (
+        {session.procedures.length > 0 && (
           <span className="chip bg-amber-soft text-[#a06410]">
             <IconClock className="w-3.5 h-3.5" />
-            {session.workItems.length} عمل مخطط — يُثبَّت عند الخروج
+            {session.procedures.length} إجراء منفَّذ — يُفوَتَر عند الخروج
           </span>
         )}
       </div>
@@ -1057,41 +1055,6 @@ function WorkPlanSection({
         )}
       </div>
 
-      {/* خطة العمل المضافة */}
-      {session.workItems.length > 0 && (
-        <div className="mt-4">
-          <p className="label !mb-2">الأعمال المخططة ({session.workItems.length})</p>
-          <ul className="space-y-2">
-            {session.workItems.map((w) => {
-              const m = WORK_META[w.kind];
-              const detail =
-                w.kind === "قلع" ? w.extractType :
-                w.kind === "حشوات" ? w.fillType :
-                w.kind === "سحب عصب" ? `${w.rctType} · ${w.channels} قناة · ${w.rctFill}` :
-                w.kind === "تركيب" ? `${w.prosType}${w.withRct ? ` · عصب ${w.channels} قناة` : ""}` :
-                w.kind === "أطقم" ? w.dentureType :
-                `${w.wireType} · سلك ${w.wireNum} · ${w.rubberType}`;
-              return (
-                <li key={w.id} className="flex items-center gap-3 rounded-xl border border-line bg-white px-4 py-3 anim-fade" style={{ borderInlineStartWidth: 4, borderInlineStartColor: m.color }}>
-                  <span className="chip" style={{ background: `${m.color}14`, color: m.color }}>{w.kind}</span>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-bold text-ink truncate">{detail}</p>
-                    <p className="text-[11px] text-soft mt-0.5">
-                      {w.teeth.length > 0 ? <>الأسنان: <span className="stat-num font-bold">{w.teeth.map(label).join("، ")}</span> · </> : null}
-                      {stageName(w.stageId)}
-                      {w.note ? ` · ${w.note}` : ""}
-                    </p>
-                  </div>
-                  <button className="icon-btn !w-8 !h-8 hover:!bg-coral-soft hover:!text-coral" onClick={() => removeWork(w.id)} aria-label="حذف العمل">
-                    <IconTrash className="w-4 h-4" />
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
-        </div>
-      )}
-
       {/* جدول مراحل الجلسات */}
       <div className="mt-5">
         <div className="flex items-center justify-between mb-2.5">
@@ -1116,7 +1079,7 @@ function WorkPlanSection({
               </thead>
               <tbody>
                 {session.stages.map((s) => {
-                  const items = session.workItems.filter((w) => w.stageId === s.id);
+                  const items = session.procedures.filter((pr) => pr.stageId === s.id);
                   return (
                     <tr key={s.id} className={`border-t border-line/70 ${s.done ? "bg-mint-soft/30" : "bg-white"} transition-colors`}>
                       <td className="td !py-2">
@@ -1128,11 +1091,10 @@ function WorkPlanSection({
                         />
                       </td>
                       <td className="td !py-2">
-                        <input
-                          type="date"
+                        <DateInput
                           value={s.date}
-                          onChange={(e) => updateStage(s.id, { date: e.target.value })}
-                          className="text-soft stat-num bg-transparent border border-transparent hover:border-line focus:border-jade focus:bg-white rounded-md px-2 py-1 outline-none transition-all cursor-pointer"
+                          onChange={(iso) => updateStage(s.id, { date: iso })}
+                          className="!h-8 !w-32 !text-[11px] !bg-transparent !border-transparent hover:!border-line focus:!border-jade"
                           aria-label="التاريخ المقرر"
                         />
                       </td>
@@ -1190,9 +1152,12 @@ function WorkPlanSection({
                           <span className="text-soft/60 text-xs">—</span>
                         ) : (
                           <div className="flex flex-wrap gap-1">
-                            {items.map((w) => (
-                              <span key={w.id} className="chip !text-[9px]" style={{ background: `${WORK_META[w.kind].color}14`, color: WORK_META[w.kind].color }}>{w.kind}</span>
-                            ))}
+                            {items.map((pr) => {
+                              const clr = CAT_COLOR[catKey(pr.category)];
+                              return (
+                                <span key={pr.id} className="chip !text-[9px]" style={{ background: `${clr}14`, color: clr }}>{pr.name}</span>
+                              );
+                            })}
                           </div>
                         )}
                       </td>
@@ -1252,6 +1217,107 @@ function WorkPlanSection({
             ))}
           </div>
         </div>
+      </div>
+
+      {/* ====== الإجراءات والخدمات المنفذة ====== */}
+      <div className="mt-5 rounded-2xl border-2 border-jade/25 bg-gradient-to-b from-jade-soft/40 to-transparent overflow-hidden">
+        <div className="flex flex-wrap items-center justify-between gap-2.5 px-4 py-3 bg-jade-soft/50">
+          <p className="font-display font-bold text-base text-jade-deep flex items-center gap-2">
+            <span className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-jade text-white"><IconReceipt className="w-4.5 h-4.5" /></span>
+            الإجراءات والخدمات المنفذة
+          </p>
+          <span className="chip bg-white border border-jade/30 text-jade-deep stat-num">
+            {session.procedures.length} إجراء · {money(procTotal)}
+          </span>
+        </div>
+
+        {session.procedures.length === 0 ? (
+          <p className="text-xs text-soft text-center px-4 py-6">
+            لم يُنفَّذ إجراء بعد — حدّد الأسنان من الخريطة أعلاه، اختر فئة الخدمة ثم أضف الإجراء ليظهر هنا ويُضاف لفاتورة المريض.
+          </p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm min-w-[700px]">
+              <thead className="bg-white/70">
+                <tr>
+                  <th className="th !py-2.5">الإجراء</th>
+                  <th className="th !py-2.5">الفئة</th>
+                  <th className="th !py-2.5">الأسنان</th>
+                  <th className="th !py-2.5">التفاصيل</th>
+                  <th className="th !py-2.5">المرحلة</th>
+                  <th className="th !py-2.5">السعر</th>
+                  <th className="th !py-2.5">الإجمالي</th>
+                  <th className="th !py-2.5 text-end">حذف</th>
+                </tr>
+              </thead>
+              <tbody>
+                {session.procedures.map((pr) => {
+                  const clr = CAT_COLOR[catKey(pr.category)];
+                  const count = Math.max(1, pr.teeth.length);
+                  const lineTotal = pr.price * count;
+                  return (
+                    <tr key={pr.id} className="border-t border-line/70 bg-white hover:bg-mist/40 transition-colors anim-fade">
+                      <td className="td !py-2.5">
+                        <div className="flex items-center gap-2">
+                          <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: clr }} />
+                          <span className="font-bold text-ink">{pr.name}</span>
+                        </div>
+                      </td>
+                      <td className="td !py-2.5">
+                        <span className="chip !text-[10px]" style={{ background: `${clr}14`, color: clr }}>{pr.category}</span>
+                      </td>
+                      <td className="td !py-2.5">
+                        {pr.teeth.length ? (
+                          <span className="stat-num font-bold text-ink">{pr.teeth.map(label).join("، ")}</span>
+                        ) : (
+                          <span className="text-soft/60 text-xs">عام</span>
+                        )}
+                      </td>
+                      <td className="td !py-2.5">
+                        <div className="text-[11px] text-soft leading-relaxed max-w-44">
+                          {pr.canals?.length
+                            ? pr.canals.map((c) => `سن ${label(c.tooth)}: ${c.channels} قناة${c.length ? ` · ${c.length} مم` : ""}`).join(" · ")
+                            : [pr.detail && pr.detail !== pr.name ? pr.detail : null, pr.impression ? `قياس: ${pr.impression}` : null, pr.color ? `لون: ${pr.color}` : null, pr.wireNum ? `سلك ${pr.wireNum}` : null, pr.ligature ? `ربل: ${pr.ligature}` : null]
+                                .filter(Boolean)
+                                .join(" · ") || "—"}
+                        </div>
+                      </td>
+                      <td className="td !py-2.5">
+                        <span className="chip bg-mist text-soft !text-[10px]">{pr.stageId ? stageName(pr.stageId) : "—"}</span>
+                      </td>
+                      <td className="td !py-2.5">
+                        <input
+                          type="number"
+                          min={0}
+                          value={pr.price}
+                          onChange={(e) => updateProcPrice(pr.id, Number(e.target.value) || 0)}
+                          className="input !h-8 !w-24 !text-center stat-num"
+                          aria-label="السعر"
+                        />
+                        {pr.teeth.length > 1 && <p className="text-[9px] text-soft text-center mt-1 stat-num">× {pr.teeth.length} أسنان</p>}
+                      </td>
+                      <td className="td !py-2.5">
+                        <span className="stat-num font-bold text-jade-deep">{money(lineTotal)}</span>
+                      </td>
+                      <td className="td !py-2.5 text-end">
+                        <button className="icon-btn !w-7 !h-7 hover:!bg-coral-soft hover:!text-coral" onClick={() => removeProc(pr.id)} aria-label="حذف الإجراء" title="حذف">
+                          <IconTrash className="w-3.5 h-3.5" />
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+              <tfoot>
+                <tr className="border-t-2 border-jade/30 bg-jade-soft/60">
+                  <td colSpan={6} className="td !py-3 text-end font-bold text-jade-deep">إجمالي الإجراءات — يُضاف لفاتورة المريض</td>
+                  <td className="td !py-3"><span className="stat-num text-lg font-bold text-jade-deep">{money(procTotal)}</span></td>
+                  <td className="td !py-3" />
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        )}
       </div>
     </section>
   );
@@ -1772,7 +1838,7 @@ function ImplantModal({ patientId, tooth, onClose }: { patientId: string; tooth?
           </TSelect>
         </Field>
         <Field label="التاريخ">
-          <TInput type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+          <DateInput value={date} onChange={setDate} />
         </Field>
         <div className="col-span-2">
           <Field label="ملاحظات جراحية">
@@ -1877,7 +1943,7 @@ function ProstheticModal({ patientId, onClose }: { patientId: string; onClose: (
           </TSelect>
         </Field>
         <Field label="التاريخ">
-          <TInput type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+          <DateInput value={date} onChange={setDate} />
         </Field>
       </div>
       {err && <p className="mt-3 text-xs font-bold text-coral bg-coral-soft rounded-lg px-3 py-2.5 anim-pop">{err}</p>}
@@ -1978,10 +2044,10 @@ function OrthoModal({ patientId, initial, onClose }: { patientId: string; initia
           </TSelect>
         </Field>
         <Field label="تاريخ البدء">
-          <TInput type="date" value={started} onChange={(e) => setStarted(e.target.value)} />
+          <DateInput value={started} onChange={setStarted} />
         </Field>
         <Field label="موعد الشد القادم">
-          <TInput type="date" value={nextAdjust} onChange={(e) => setNextAdjust(e.target.value)} />
+          <DateInput value={nextAdjust} onChange={setNextAdjust} />
         </Field>
         <div className="col-span-2">
           <Field label={`التقدم العلاجي — ${progress}%`}>
@@ -2125,7 +2191,7 @@ function XrayModal({ patientId, onClose }: { patientId: string; onClose: () => v
           </TSelect>
         </Field>
         <Field label="التاريخ">
-          <TInput type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+          <DateInput value={date} onChange={setDate} />
         </Field>
         <div className="col-span-2">
           <Field label="التقرير الشعاعي *">

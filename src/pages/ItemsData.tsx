@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { today, uid, useMoney, useStore, type SupplyItem } from "../store";
 import { IconAlert, IconBox, IconClock, IconPlus, IconSearch, IconTrendUp } from "../icons";
-import { EmptyState, Field, Modal, TInput, TSelect, TwoStepDelete, useToast } from "../components/ui";
+import { DateInput, EmptyState, Field, Modal, TInput, TSelect, TwoStepDelete, useToast } from "../components/ui";
 
 const MOVE_REASONS = ["توريد من المورد", "استهلاك علاج", "جلسة تنظيف", "تشغيل تعقيم", "تالف / منتهي", "جرد وتصحيح", "إرجاع للمورد"];
 
@@ -216,7 +216,7 @@ function AddSupplyModal({ onClose }: { onClose: () => void }) {
         <Field label="الرصيد الحالي *"><TInput type="number" value={qty} onChange={(e) => setQty(e.target.value)} /></Field>
         <Field label="الحد الأدنى"><TInput type="number" value={minQty} onChange={(e) => setMinQty(e.target.value)} /></Field>
         <Field label="تكلفة الوحدة (ر.ي)"><TInput type="number" value={cost} onChange={(e) => setCost(e.target.value)} /></Field>
-        <Field label="تاريخ الانتهاء"><TInput type="date" value={expiry} onChange={(e) => setExpiry(e.target.value)} /></Field>
+        <Field label="تاريخ الانتهاء"><DateInput value={expiry} onChange={setExpiry} /></Field>
       </div>
     </Modal>
   );
