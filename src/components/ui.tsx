@@ -408,6 +408,104 @@ export function SmartCombo({
   );
 }
 
+/* ---------- تحويلات التاريخ dd/mm/yyyy ---------- */
+const nf2 = () => new Intl.NumberFormat(loadPrefs().digits === "ar" ? "ar-EG" : "ar-EG-u-nu-latn", { minimumIntegerDigits: 2, useGrouping: false });
+
+/** yyyy-mm-dd ← dd/mm/yyyy */
+export const toDisplayDate = (iso: string): string => {
+  if (!iso || !/^\d{4}-\d{2}-\d{2}$/.test(iso)) return iso ?? "";
+  const [y, m, d] = iso.split("-");
+  const n = nf2();
+  return `${n.format(Number(d))}/${n.format(Number(m))}/${y}`;
+};
+
+/** dd/mm/yyyy (أو صيغ مرنة) → yyyy-mm/yyyy. يعيد null إن كانت غير صالحة */
+export const parseDisplayDate = (raw: string): string | null => {
+  const digits = raw.replace(/[^\d]/g, "");
+  let d = 0, m = 0, y = 0;
+  if (/^\d{8}$/.test(digits)) {
+    d = +digits.slice(0, 2); m = +digits.slice(2, 4); y = +digits.slice(4);
+  } else if (/^\d{6}$/.test(digits)) {
+    d = +digits.slice(0, 2); m = +digits.slice(2, 4); y = 2000 + +digits.slice(4);
+  } else {
+    return null;
+  }
+  if (y < 100) y += 2000;
+  const dt = new Date(y, m - 1, d);
+  if (dt.getFullYear() !== y || dt.getMonth() !== m - 1 || dt.getDate() !== d) return null;
+  const p = (v: number) => String(v).padStart(2, "0");
+  return `${y}-${p(m)}-${p(d)}`;
+};
+
+/**
+ * حقل تاريخ موحّد بتنسيق dd/mm/yyyy — لا يعتمد على صيغة المتصفح.
+ * يخزن بقيمة ISO (yyyy-mm-dd) ويعرض ويحرر بالعربية dd/mm/yyyy.
+ */
+export function DateInput({
+  value,
+  onChange,
+  className,
+  placeholder,
+  ...rest
+}: {
+  value: string;
+  onChange: (iso: string) => void;
+  className?: string;
+  placeholder?: string;
+} & Omit<React.InputHTMLAttributes<HTMLInputElement>, "value" | "onChange">) {
+  const [text, setText] = useState(() => toDisplayDate(value));
+  const [invalid, setInvalid] = useState(false);
+
+  // مزامنة عند تغيّر القيمة من الخارج
+  useEffect(() => {
+    setText(toDisplayDate(value));
+    setInvalid(false);
+  }, [value]);
+
+  const commit = (raw: string) => {
+    const iso = parseDisplayDate(raw);
+    if (iso) {
+      setInvalid(false);
+      setText(toDisplayDate(iso));
+      if (iso !== value) onChange(iso);
+    } else if (raw.trim() === "") {
+      setInvalid(false);
+      setText("");
+      if (value) onChange("");
+    } else {
+      setInvalid(true);
+    }
+  };
+
+  return (
+    <input
+      {...rest}
+      value={text}
+      inputMode="numeric"
+      dir="ltr"
+      placeholder={placeholder ?? "dd/mm/yyyy"}
+      onChange={(e) => {
+        setText(e.target.value);
+        setInvalid(false);
+        // تحويل فوري عند اكتمال 8 أرقام
+        const digits = e.target.value.replace(/[^\d]/g, "");
+        if (digits.length === 8) {
+          const iso = parseDisplayDate(e.target.value);
+          if (iso) {
+            setText(toDisplayDate(iso));
+            if (iso !== value) onChange(iso);
+          }
+        }
+      }}
+      onBlur={(e) => commit(e.target.value)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") commit((e.target as HTMLInputElement).value);
+      }}
+      className={`input stat-num ${invalid ? "!border-coral !text-coral" : ""} ${className ?? ""}`}
+    />
+  );
+}
+
 export const TInput = (p: React.InputHTMLAttributes<HTMLInputElement>) => <input {...p} className={`input ${p.className ?? ""}`} />;
 export const TSelect = (p: React.SelectHTMLAttributes<HTMLSelectElement>) => (
   <select {...p} className={`input appearance-none cursor-pointer ${p.className ?? ""}`} />
