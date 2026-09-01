@@ -253,6 +253,7 @@ export interface Appointment {
 }
 export interface InvoiceItem {
   serviceId: string;
+  name?: string; // اسم البند عند عدم وجود خدمة مرتبطة (إجراء مخصص)
   qty: number;
   price: number;
 }
@@ -294,11 +295,33 @@ export interface Prescription {
   items: RxItem[];
   notes?: string;
 }
+/** بيانات قنوات العصب لكل سن على حدة */
+export interface ToothCanalData {
+  tooth: number;
+  channels: number; // عدد القنوات
+  length: number;   // طول القناة (مم)
+}
+
+/**
+ * إجراء/خدمة منفذة داخل الجلسة.
+ * تُبنى من تبويبات «مخطط العمل السريري» (فئات الخدمات) وتحمل سعراً قابلاً للتعديل،
+ * وتُحوَّل تلقائياً إلى بند فاتورة عند إنهاء الجلسة.
+ */
 export interface SessionProc {
-  serviceId: string;
-  tooth?: number;
-  detail?: string;   // وصف نوع العمل: قلع جراحي، حشوة كمبوزيت…
-  channels?: number; // عدد قنوات العصب المنفَّذة
+  id: string;
+  category: string;          // فئة الخدمة المصدر (قلع/حشوات/سحب عصب/تركيب/تقويم/…)
+  name: string;              // اسم الإجراء/الخدمة
+  serviceId?: string;        // ربط اختياري بخدمة من قائمة الأسعار
+  price: number;             // السعر القابل للتعديل
+  teeth: number[];           // الأسنان المحددة (FDI)
+  detail?: string;           // النوع: نوع القلع/الحشوة/العصب/التركيب…
+  canals?: ToothCanalData[]; // سحب العصب: قنوات كل سن
+  impression?: string;       // تركيب: أخذ القياس
+  color?: string;            // تركيب: اللون
+  wireNum?: string;          // تقويم: رقم السلك
+  ligature?: string;         // تقويم: نوع الربل
+  stageId?: string;          // المرحلة (الجلسة) المرتبطة
+  note?: string;
 }
 export interface ClinicalSession {
   id: string;
@@ -1010,7 +1033,7 @@ function seed(): DB {
       "p2", "d1", today(0), "09:00", "09:42",
       "نزيف في اللثة عند التفريش",
       "التهاب لثة بسيط مع ترسبات جيرية على القواطع السفلية",
-      [{ serviceId: "s2" }],
+      [{ id: uid(), category: "وقاية", name: "تنظيف وتلميع", serviceId: "s2", price: 4000, teeth: [] }],
       [],
       [{ name: "غسول كلورهيكسيدين", dose: "10 مل", freq: "مرتين يومياً", duration: "أسبوع" }],
       "استخدام فرشاة ناعمة ومحلول ماء وملح دافئ",
@@ -1020,7 +1043,7 @@ function seed(): DB {
       "p9", "d1", today(-1), "11:00", "12:15",
       "ألم شديد في الضرس السفلي الأيمن يزداد ليلاً",
       "التهاب لبّي غير قابل للعكس — السن 46",
-      [{ serviceId: "s5", tooth: 46 }],
+      [{ id: uid(), category: "سحب عصب", name: "علاج عصب", serviceId: "s5", price: 18000, teeth: [46], canals: [{ tooth: 46, channels: 3, length: 21 }] }],
       [{ tooth: 46, status: "root" }],
       [
         { name: "أموكسيسيلين Amoxicillin", dose: "500 مجم", freq: "كل 8 ساعات", duration: "5 أيام" },
@@ -1399,12 +1422,12 @@ function reducer(db: DB, action: Action): DB {
       let invoiceId: string | undefined;
       let invNumber: string | undefined;
       if (s.procedures.length > 0) {
-        const qty = new Map<string, number>();
-        s.procedures.forEach((pr) => qty.set(pr.serviceId, (qty.get(pr.serviceId) ?? 0) + 1));
-        const items: InvoiceItem[] = [...qty.entries()].map(([serviceId, q]) => ({
-          serviceId,
-          qty: q,
-          price: db.services.find((x) => x.id === serviceId)?.price ?? 0,
+        // كل إجراء يصبح بنداً مستقلاً باسمه وسعره القابل للتعديل
+        const items: InvoiceItem[] = s.procedures.map((pr) => ({
+          serviceId: pr.serviceId ?? "",
+          name: pr.name,
+          qty: Math.max(1, pr.teeth.length),
+          price: pr.price,
         }));
         const total = items.reduce((a, i) => a + i.qty * i.price, 0);
         const inv: Invoice = {
@@ -1663,6 +1686,25 @@ export function normalizeDB(raw: Partial<DB> | null | undefined): DB {
       summary: s.summary ?? "",
       workItems: s.workItems ?? [],
       stages: s.stages ?? [],
+      procedures: arr<SessionProc>(s.procedures).map((pr) => {
+        const legacy = pr as SessionProc & { tooth?: number };
+        return {
+          id: pr.id ?? uid(),
+          category: pr.category ?? "علاج",
+          name: pr.name ?? pr.detail ?? "إجراء",
+          serviceId: pr.serviceId,
+          price: typeof pr.price === "number" ? pr.price : 0,
+          teeth: Array.isArray(pr.teeth) ? pr.teeth : legacy.tooth ? [legacy.tooth] : [],
+          detail: pr.detail,
+          canals: pr.canals,
+          impression: pr.impression,
+          color: pr.color,
+          wireNum: pr.wireNum,
+          ligature: pr.ligature,
+          stageId: pr.stageId,
+          note: pr.note,
+        };
+      }),
     })),
     implants: arr<Implant>(db.implants),
     prosthetics: arr<Prosthetic>(db.prosthetics),

@@ -270,7 +270,7 @@ export default function SessionPage() {
               const p = patientById(s.patientId);
               const d = doctorById(s.doctorId);
               const inv = s.invoiceId ? db.invoices.find((x) => x.id === s.invoiceId) : undefined;
-              const val = s.procedures.reduce((sum, pr) => sum + (serviceById(pr.serviceId)?.price ?? 0), 0);
+              const val = s.procedures.reduce((sum, pr) => sum + pr.price * Math.max(1, pr.teeth.length), 0);
               return (
                 <li key={s.id} className="card card-hover p-4 anim-fade" style={{ animationDelay: `${i * 60}ms` }}>
                   <div className="flex flex-wrap items-center gap-3">
@@ -278,7 +278,7 @@ export default function SessionPage() {
                     <div className="flex-1 min-w-44">
                       <p className="font-bold text-sm text-ink">{p?.name}</p>
                       <p className="text-[11px] text-soft mt-0.5 truncate">
-                        {s.procedures.map((pr) => serviceById(pr.serviceId)?.name).join(" · ") || "استشارة"}
+                        {s.procedures.map((pr) => pr.name).join(" · ") || "استشارة"}
                         {s.diagnosis ? ` — ${s.diagnosis}` : ""}
                       </p>
                     </div>
@@ -383,8 +383,6 @@ function Workstation({ session, readonly = false, onExit }: { session: ClinicalS
   const [fuEnabled, setFuEnabled] = useState(true);
   const [fuReason, setFuReason] = useState("");
   const [fuDate, setFuDate] = useState("");
-  const [procService, setProcService] = useState("");
-  const [procTooth, setProcTooth] = useState("");
   const [armCancel, setArmCancel] = useState(false);
 
   const now = useNowTick(readonly ? 0 : 1000);
@@ -413,14 +411,14 @@ function Workstation({ session, readonly = false, onExit }: { session: ClinicalS
   );
   const mergedTeeth = { ...p?.teeth, ...pendingTeeth };
 
-  const total = session.procedures.reduce((s, pr) => s + (serviceById(pr.serviceId)?.price ?? 0), 0);
+  const total = session.procedures.reduce((s, pr) => s + pr.price * Math.max(1, pr.teeth.length), 0);
   const paidNum = Math.min(Math.max(0, Number(paid) || 0), total);
   const remaining = total - paidNum;
 
   /* اقتراح عودة المتابعة حسب الإجراءات المنفذة */
   const suggestion = useMemo(
-    () => suggestFollowUp(session.procedures.map((pr) => serviceById(pr.serviceId)?.name ?? "")),
-    [session.procedures, serviceById]
+    () => suggestFollowUp(session.procedures.map((pr) => pr.name)),
+    [session.procedures]
   );
   useEffect(() => {
     setFuReason(suggestion.reason);
@@ -454,13 +452,6 @@ function Workstation({ session, readonly = false, onExit }: { session: ClinicalS
     prosthetics: prosthetics.length || undefined,
     ortho: orthos.length || undefined,
     xrays: xrays.length || undefined,
-  };
-
-  const addProc = () => {
-    if (!procService) return push("warn", "اختر الإجراء أولاً");
-    patch({ procedures: [...session.procedures, { serviceId: procService, tooth: procTooth ? Number(procTooth) : undefined }] });
-    setProcService("");
-    setProcTooth("");
   };
 
   const setTooth = (tooth: number, status: ToothStatus) => {
@@ -614,11 +605,6 @@ function Workstation({ session, readonly = false, onExit }: { session: ClinicalS
               patch={patch}
               mergedTeeth={mergedTeeth}
               setTooth={setTooth}
-              procService={procService}
-              setProcService={setProcService}
-              procTooth={procTooth}
-              setProcTooth={setProcTooth}
-              addProc={addProc}
               fuEnabled={fuEnabled}
               fuReason={fuReason}
               fuDate={fuDate}
@@ -723,83 +709,94 @@ function WorkPlanSection({
   onSetTooth?: (tooth: number, status: ToothStatus) => void;
 }) {
   const { db, dispatch, serviceById } = useStore();
+  const money = useMoney();
   const { push } = useToast();
+
+  /* ---- التبويبات تُولَّد تلقائياً من فئات الخدمات ---- */
+  const categories = useMemo(() => db.serviceCats.filter((c) => db.services.some((s) => s.category === c && s.active)), [db.serviceCats, db.services]);
+  const [activeCat, setActiveCat] = useState(categories[0] ?? "");
+  useEffect(() => {
+    if (!categories.includes(activeCat) && categories.length) setActiveCat(categories[0]);
+  }, [categories, activeCat]);
+
   const [selection, setSelection] = useState<number[]>([]);
-  const [kind, setKind] = useState<WorkKind | null>(null);
   const [stageId, setStageId] = useState(session.stages[0]?.id ?? "");
-  const [extractType, setExtractType] = useState(EXTRACT_TYPES[0]);
-  const [fillType, setFillType] = useState(FILL_TYPES[0]);
-  const [rctType, setRctType] = useState(RCT_TYPES[0]);
-  const [channels, setChannels] = useState(2);
-  const [rctFill, setRctFill] = useState(RCT_FILLS[0]);
-  const [prosType, setProsType] = useState(PROSTHETIC_KINDS[0]);
-  const [withRct, setWithRct] = useState(false);
-  const [dentureType, setDentureType] = useState(DENTURE_TYPES[0]);
-  const [wireType, setWireType] = useState(WIRE_TYPES[0]);
-  const [wireNum, setWireNum] = useState("014");
-  const [rubberType, setRubberType] = useState(RUBBER_TYPES[0]);
-  const [note, setNote] = useState("");
+  const [selectedServiceId, setSelectedServiceId] = useState<string | null>(null);
+  const [customName, setCustomName] = useState("");
+  const [price, setPrice] = useState("");
+  const [canalsByTooth, setCanalsByTooth] = useState<Record<number, { channels: number; length: number }>>({});
+  const [impression, setImpression] = useState("");
+  const [color, setColor] = useState("");
+  const [wireNum, setWireNum] = useState("");
+  const [ligature, setLigature] = useState("");
 
   const mode = dentitionOf(age);
 
+  /* تصنيف الفئة إلى نوع خاص أو عام */
+  const catKey = (cat: string): "extraction" | "filling" | "rct" | "prosthetic" | "ortho" | "generic" => {
+    if (cat.includes("قلع")) return "extraction";
+    if (cat.includes("حشو")) return "filling";
+    if (cat.includes("عصب")) return "rct";
+    if (cat.includes("تركيب")) return "prosthetic";
+    if (cat.includes("تقويم")) return "ortho";
+    return "generic";
+  };
+  const key = catKey(activeCat);
+  const catServices = useMemo(() => db.services.filter((s) => s.category === activeCat && s.active), [db.services, activeCat]);
+  const selectedService = catServices.find((s) => s.id === selectedServiceId) ?? null;
+
   const workBadges = useMemo(() => {
-    const m: Partial<Record<number, WorkKind>> = {};
-    session.workItems.forEach((w) => w.teeth.forEach((t) => (m[t] = w.kind)));
+    const m: Partial<Record<number, string>> = {};
+    session.procedures.forEach((pr) => pr.teeth.forEach((t) => (m[t] = pr.category)));
     return m;
-  }, [session.workItems]);
+  }, [session.procedures]);
 
   const toggleTooth = (n: number) =>
     setSelection((sel) => (sel.includes(n) ? sel.filter((x) => x !== n) : [...sel, n]));
 
   const stageName = (id: string) => session.stages.find((s) => s.id === id)?.name ?? "—";
 
-  const addWork = () => {
-    if (!kind) return push("warn", "اختر نوع العمل أولاً");
-    if (kind !== "أطقم" && kind !== "تقويم" && selection.length === 0)
-      return push("warn", "حدّد سناً واحداً على الأقل من الخريطة");
-    const item: WorkItem = {
-      id: uid(),
-      kind,
-      teeth: kind === "أطقم" || kind === "تقويم" ? [] : [...selection],
-      stageId,
-      note: note.trim() || undefined,
-    };
-    if (kind === "قلع") item.extractType = extractType;
-    if (kind === "حشوات") item.fillType = fillType;
-    if (kind === "سحب عصب") {
-      item.rctType = rctType;
-      item.channels = channels;
-      item.rctFill = rctFill;
-    }
-    if (kind === "تركيب") {
-      item.prosType = prosType;
-      item.withRct = withRct;
-      if (withRct) {
-        item.rctType = rctType;
-        item.channels = channels;
-      }
-    }
-    if (kind === "أطقم") item.dentureType = dentureType;
-    if (kind === "تقويم") {
-      item.wireType = wireType;
-      item.wireNum = wireNum;
-      item.rubberType = rubberType;
-    }
-    // تحديث ألوان الخريطة حسب العمل
-    const treated = [...session.teethTreated.filter((t) => !item.teeth.includes(t.tooth))];
-    item.teeth.forEach((tooth) => treated.push({ tooth, status: WORK_META[kind].status }));
-    patch({ workItems: [...session.workItems, item], teethTreated: treated });
-    push("success", `أُضيف عمل «${kind}»`, item.teeth.length ? `${item.teeth.length} سن — ${stageName(stageId)}` : stageName(stageId));
-    setSelection([]);
-    setKind(null);
-    setNote("");
+  const CAT_COLOR: Record<string, string> = {
+    extraction: "#d9503a", filling: "#1273c4", rct: "#e2952b", prosthetic: "#2f9fe0", ortho: "#2c9c69", generic: "#5c7186",
   };
 
-  const removeWork = (id: string) => {
-    const w = session.workItems.find((x) => x.id === id);
-    patch({ workItems: session.workItems.filter((x) => x.id !== id) });
-    if (w) push("info", `حُذف عمل «${w.kind}»`);
+  const addProc = () => {
+    const name = selectedService?.name ?? customName.trim();
+    if (!name) return push("warn", "اختر خدمة أو اكتب اسم الإجراء");
+    const priceNum = price !== "" ? Math.max(0, Number(price) || 0) : selectedService?.price ?? 0;
+    const proc: SessionProc = {
+      id: uid(),
+      category: activeCat,
+      name,
+      serviceId: selectedService?.id,
+      price: priceNum,
+      teeth: [...selection],
+      detail: selectedService?.name ?? customName.trim(),
+      canals:
+        (key === "rct" || key === "prosthetic") && selection.length
+          ? selection.map((t) => ({ tooth: t, channels: canalsByTooth[t]?.channels ?? 1, length: canalsByTooth[t]?.length ?? 0 }))
+          : undefined,
+      impression: key === "prosthetic" ? impression.trim() || undefined : undefined,
+      color: key === "prosthetic" ? color.trim() || undefined : undefined,
+      wireNum: key === "ortho" ? wireNum.trim() || undefined : undefined,
+      ligature: key === "ortho" ? ligature.trim() || undefined : undefined,
+      stageId,
+    };
+    patch({ procedures: [...session.procedures, proc] });
+    push("success", `أُضيف «${name}» إلى الإجراءات`, `${selection.length ? selection.length + " سن · " : ""}${money(priceNum)} — ${stageName(stageId)}`);
+    setSelection([]);
+    setSelectedServiceId(null);
+    setCustomName("");
+    setPrice("");
+    setCanalsByTooth({});
+    setImpression("");
+    setColor("");
+    setWireNum("");
+    setLigature("");
   };
+
+  const setCanal = (tooth: number, field: "channels" | "length", v: number) =>
+    setCanalsByTooth((prev) => ({ ...prev, [tooth]: { channels: prev[tooth]?.channels ?? 1, length: prev[tooth]?.length ?? 0, [field]: v } }));
 
   /* ربط المرحلة بعودة/متابعة تلقائياً — الجلسة الثانية بتاريخ لاحق = عودة مسجلة */
   const stageReason = (name: string) => `${name} — متابعة خطة العلاج (${serviceById(session.procedures[0]?.serviceId ?? "")?.name ?? "علاج مستمر"})`;
@@ -943,140 +940,117 @@ function WorkPlanSection({
           </TSelect>
         </div>
 
-        <div className="flex flex-wrap gap-2 mb-4">{WORK_KINDS.map(kindBtn)}</div>
+        {/* تبويبات فئات الخدمات — تُولَّد تلقائياً */}
+        <div className="flex flex-wrap gap-2 mb-4">
+          {categories.length === 0 && (
+            <p className="text-xs text-soft">لا توجد فئات خدمات بها خدمات مفعلة — أضفها من شاشة «فئات الخدمات» و«بيانات الخدمات».</p>
+          )}
+          {categories.map((c) => {
+            const k = catKey(c);
+            const active = c === activeCat;
+            const clr = CAT_COLOR[k];
+            return (
+              <button
+                key={c}
+                onClick={() => { setActiveCat(c); setSelectedServiceId(null); }}
+                className={`rounded-xl border-2 px-3 py-2 text-sm font-bold cursor-pointer transition-all flex items-center gap-2 ${active ? "shadow-md scale-[1.02]" : "border-line bg-white text-soft hover:border-jade/40"}`}
+                style={active ? { borderColor: clr, background: `${clr}14`, color: clr } : undefined}
+              >
+                <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: clr }} />
+                {c}
+                <span className="stat-num !text-[9px] opacity-70">{db.services.filter((s) => s.category === c && s.active).length}</span>
+              </button>
+            );
+          })}
+        </div>
 
-        {/* الحقول الديناميكية حسب نوع العمل */}
-        {kind && (
+        {/* حقول الفئة المختارة — الخدمات + الحقول الخاصة */}
+        {activeCat && (
           <div className="anim-pop rounded-xl border border-line bg-white p-4 space-y-3.5">
-            <div className="flex items-center justify-between">
-              <p className="text-sm font-bold" style={{ color: WORK_META[kind].color }}>
-                تفاصيل «{kind}» — {WORK_META[kind].desc}
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-sm font-bold" style={{ color: CAT_COLOR[key] }}>
+                فئة «{activeCat}» — اختر الخدمة أو اكتب إجراءً مخصصاً
               </p>
-              {kind !== "أطقم" && kind !== "تقويم" && (
-                <span className="chip bg-mist text-soft stat-num">عدد الأسنان: {selection.length}</span>
-              )}
+              <span className="chip bg-mist text-soft stat-num">عدد الأسنان: {selection.length}</span>
             </div>
 
-            {kind === "قلع" && (
-              <div className="flex flex-wrap items-end gap-3">
-                <div className="min-w-48 flex-1">
-                  <Field label="نوع القلع">
-                    <TSelect value={extractType} onChange={(e) => setExtractType(e.target.value)}>
-                      {EXTRACT_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
-                      <option value="أخرى">أخرى…</option>
-                    </TSelect>
-                  </Field>
-                </div>
-                {extractType === "أخرى" && (
-                  <div className="min-w-48 flex-1">
-                    <Field label="حدّد النوع">
-                      <TInput value={note} onChange={(e) => setNote(e.target.value)} placeholder="مثال: قلع ضرس عقل منطمر" />
-                    </Field>
-                  </div>
-                )}
+            {/* خدمات الفئة — نفس آلية شاشة الخدمات */}
+            {catServices.length > 0 ? (
+              <div className="flex flex-wrap gap-2">
+                {catServices.map((s) => {
+                  const on = selectedServiceId === s.id;
+                  return (
+                    <button
+                      key={s.id}
+                      onClick={() => { setSelectedServiceId(on ? null : s.id); setPrice(on ? "" : String(s.price)); setCustomName(""); }}
+                      className={`rounded-lg border px-3 py-2 text-xs font-bold cursor-pointer transition-all flex items-center gap-2 ${on ? "border-jade bg-jade-soft text-jade-deep shadow-sm" : "border-line bg-white text-soft hover:border-jade/50"}`}
+                    >
+                      <span className="w-2 h-2 rounded-full" style={{ background: s.color }} />
+                      {s.name}
+                      <span className="stat-num !text-[10px] opacity-80">{money(s.price)}</span>
+                    </button>
+                  );
+                })}
               </div>
+            ) : (
+              <p className="text-[11px] text-soft">لا خدمات مفعلة في هذه الفئة — اكتب اسم الإجراء يدوياً أدناه.</p>
             )}
 
-            {kind === "حشوات" && (
-              <div className="min-w-48">
-                <Field label="نوع الحشوة">
-                  <TSelect value={fillType} onChange={(e) => setFillType(e.target.value)}>
-                    {FILL_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
-                    <option value="أخرى">أخرى…</option>
-                  </TSelect>
-                </Field>
-                {fillType === "أخرى" && (
-                  <TInput value={note} onChange={(e) => setNote(e.target.value)} placeholder="اكتب نوع الحشوة…" className="!mt-2" />
-                )}
-              </div>
-            )}
+            {/* اسم مخصص + السعر القابل للتعديل */}
+            <div className="grid sm:grid-cols-2 gap-3">
+              <Field label="اسم الإجراء / الخدمة">
+                <TInput value={selectedService ? selectedService.name : customName} onChange={(e) => { setSelectedServiceId(null); setCustomName(e.target.value); }} placeholder="مثال: حشوة كمبوزيت" />
+              </Field>
+              <Field label="السعر (قابل للتعديل)">
+                <TInput type="number" value={price} onChange={(e) => setPrice(e.target.value)} placeholder={selectedService ? String(selectedService.price) : "0"} />
+              </Field>
+            </div>
 
-            {(kind === "سحب عصب" || (kind === "تركيب" && withRct)) && (
-              <div className="flex flex-wrap items-end gap-4">
-                <div className="min-w-48 flex-1">
-                  <Field label="نوع سحب العصب">
-                    <TSelect value={rctType} onChange={(e) => setRctType(e.target.value)}>
-                      {RCT_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
-                    </TSelect>
-                  </Field>
-                </div>
-                <div>
-                  <Field label="عدد القنوات">
-                    <div className="flex items-center gap-2.5">
-                      <CanalMini n={channels} />
-                      <div className="flex items-center gap-1 bg-mist rounded-lg p-1" dir="ltr">
-                        <button onClick={() => setChannels((c) => Math.max(1, c - 1))} className="w-8 h-8 rounded-md bg-white border border-line font-bold cursor-pointer hover:border-jade">−</button>
-                        <span className="stat-num text-base w-8 text-center text-ink">{channels}</span>
-                        <button onClick={() => setChannels((c) => Math.min(4, c + 1))} className="w-8 h-8 rounded-md bg-white border border-line font-bold cursor-pointer hover:border-jade">+</button>
+            {/* سحب العصب: قنوات كل سن على حدة */}
+            {(key === "rct" || key === "prosthetic") && selection.length > 0 && (
+              <div className="rounded-lg bg-amber-soft/40 border border-amber/30 p-3 space-y-2.5">
+                <p className="text-xs font-bold text-[#a06410]">{key === "rct" ? "قنوات العصب لكل سن" : "قنوات العصب (إن ترافق التركيب مع سحب عصب)"}</p>
+                {selection.map((t) => {
+                  const c = canalsByTooth[t]?.channels ?? 1;
+                  const l = canalsByTooth[t]?.length ?? 0;
+                  return (
+                    <div key={t} className="flex flex-wrap items-center gap-3 bg-white rounded-lg border border-line px-3 py-2">
+                      <span className="chip bg-amber-soft text-[#a06410] stat-num">سن {label(t)}</span>
+                      <label className="text-[11px] font-bold text-soft">عدد القنوات</label>
+                      <div className="flex items-center gap-1 bg-mist rounded-md p-0.5" dir="ltr">
+                        <button onClick={() => setCanal(t, "channels", Math.max(1, c - 1))} className="w-7 h-7 rounded bg-white border border-line font-bold cursor-pointer hover:border-jade">−</button>
+                        <span className="stat-num text-sm w-7 text-center text-ink">{c}</span>
+                        <button onClick={() => setCanal(t, "channels", Math.min(4, c + 1))} className="w-7 h-7 rounded bg-white border border-line font-bold cursor-pointer hover:border-jade">+</button>
                       </div>
+                      <label className="text-[11px] font-bold text-soft">طول القناة (مم)</label>
+                      <input type="number" value={l || ""} onChange={(e) => setCanal(t, "length", Number(e.target.value) || 0)} placeholder="0" className="input !w-20 !h-8 !text-xs text-center" />
                     </div>
-                  </Field>
-                </div>
-                {kind === "سحب عصب" && (
-                  <div className="min-w-48 flex-1">
-                    <Field label="حشوة الجلسة الأولى">
-                      <TSelect value={rctFill} onChange={(e) => setRctFill(e.target.value)}>
-                        {RCT_FILLS.map((t) => <option key={t} value={t}>{t}</option>)}
-                      </TSelect>
-                    </Field>
-                  </div>
-                )}
+                  );
+                })}
               </div>
             )}
 
-            {kind === "تركيب" && (
-              <div className="flex flex-wrap items-end gap-3">
-                <div className="min-w-48 flex-1">
-                  <Field label="نوع التركيب">
-                    <TSelect value={prosType} onChange={(e) => setProsType(e.target.value)}>
-                      {PROSTHETIC_KINDS.map((t) => <option key={t} value={t}>{t}</option>)}
-                    </TSelect>
-                  </Field>
-                </div>
-                <label className="flex items-center gap-2.5 cursor-pointer pb-2.5 select-none">
-                  <Switch on={withRct} onChange={setWithRct} />
-                  <span className="text-xs font-bold text-soft">يترافق مع سحب عصب</span>
-                </label>
+            {/* تركيب: القياس + اللون */}
+            {key === "prosthetic" && (
+              <div className="grid sm:grid-cols-2 gap-3">
+                <Field label="أخذ القياس"><TInput value={impression} onChange={(e) => setImpression(e.target.value)} placeholder="مثال: قياس سيلكون كامل" /></Field>
+                <Field label="اللون"><TInput value={color} onChange={(e) => setColor(e.target.value)} placeholder="مثال: A2" /></Field>
               </div>
             )}
 
-            {kind === "أطقم" && (
-              <div className="min-w-48">
-                <Field label="نوع الطقم">
-                  <TSelect value={dentureType} onChange={(e) => setDentureType(e.target.value)}>
-                    {DENTURE_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
-                  </TSelect>
-                </Field>
-              </div>
-            )}
-
-            {kind === "تقويم" && (
-              <div className="grid sm:grid-cols-3 gap-3">
-                <Field label="نوع السلك">
-                  <TSelect value={wireType} onChange={(e) => setWireType(e.target.value)}>
-                    {WIRE_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
-                  </TSelect>
-                </Field>
-                <Field label="رقم السلك">
-                  <TInput value={wireNum} onChange={(e) => setWireNum(e.target.value)} placeholder="مثال: 014" />
-                </Field>
-                <Field label="نوع الربلات">
-                  <TSelect value={rubberType} onChange={(e) => setRubberType(e.target.value)}>
-                    {RUBBER_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
-                  </TSelect>
-                </Field>
+            {/* تقويم: رقم السلك + نوع الربل */}
+            {key === "ortho" && (
+              <div className="grid sm:grid-cols-2 gap-3">
+                <Field label="رقم السلك"><TInput value={wireNum} onChange={(e) => setWireNum(e.target.value)} placeholder="مثال: 014 NiTi" /></Field>
+                <Field label="نوع الربل"><TInput value={ligature} onChange={(e) => setLigature(e.target.value)} placeholder="مثال: ربلات شفافة" /></Field>
               </div>
             )}
 
             <div className="flex items-center justify-between gap-3 pt-1">
-              <button className="btn-ghost !h-9 !text-xs" onClick={() => { setKind(null); setSelection([]); }}>إلغاء</button>
-              <button
-                onClick={addWork}
-                className="btn-primary !h-10"
-                style={{ background: WORK_META[kind].color, boxShadow: `0 8px 18px -6px ${WORK_META[kind].color}88` }}
-              >
+              <button className="btn-ghost !h-9 !text-xs" onClick={() => { setSelection([]); setSelectedServiceId(null); setCustomName(""); setPrice(""); }}>إلغاء</button>
+              <button onClick={addProc} className="btn-primary !h-10" style={{ background: CAT_COLOR[key], boxShadow: `0 8px 18px -6px ${CAT_COLOR[key]}88` }}>
                 <IconPlus className="w-4 h-4" />
-                إضافة إلى خطة العمل — {stageName(stageId)}
+                إضافة إلى الإجراءات — {stageName(stageId)}
               </button>
             </div>
           </div>
@@ -1290,11 +1264,6 @@ function TreatmentTab(props: {
   patch: (pp: Partial<ClinicalSession>) => void;
   mergedTeeth: Partial<Record<number, ToothStatus>>;
   setTooth: (tooth: number, status: ToothStatus) => void;
-  procService: string;
-  setProcService: (v: string) => void;
-  procTooth: string;
-  setProcTooth: (v: string) => void;
-  addProc: () => void;
   fuEnabled: boolean;
   fuReason: string;
   fuDate: string;
@@ -1303,7 +1272,7 @@ function TreatmentTab(props: {
   const money = useMoney();
   const { session, patch } = props;
   const p = patientById(session.patientId);
-  const total = session.procedures.reduce((s, pr) => s + (serviceById(pr.serviceId)?.price ?? 0), 0);
+  const total = session.procedures.reduce((s, pr) => s + pr.price * Math.max(1, pr.teeth.length), 0);
 
   /* ---- توليد تقرير العمل حرفاً حرفاً من بيانات الجلسة ---- */
   const [typing, setTyping] = useState(false);
@@ -1315,11 +1284,12 @@ function TreatmentTab(props: {
     if (typing) return;
     const procs = session.procedures
       .map((pr) => {
-        const n = serviceById(pr.serviceId)?.name;
-        return pr.tooth && n ? `${n} — سن ${pr.tooth}` : n;
+        const t = pr.teeth.length ? ` — الأسنان ${pr.teeth.join("، ")}` : "";
+        const d = pr.detail && pr.detail !== pr.name ? ` (${pr.detail})` : "";
+        return `${pr.name}${d}${t}`;
       })
       .filter(Boolean)
-      .join("، ");
+      .join("؛ ");
     const teeth = session.teethTreated.map((t) => `سن ${t.tooth}: ${TOOTH_META[t.status].label}`).join("، ");
     const meds = session.meds.map((m) => m.name.split(" ")[0]).join("، ");
     const lines = [
@@ -1357,74 +1327,20 @@ function TreatmentTab(props: {
 
   return (
     <div className="space-y-5">
-      <div className="grid xl:grid-cols-2 gap-5 items-start">
-        <section className="card p-5">
-          <h3 className="font-display font-bold text-lg text-ink mb-4 flex items-center gap-2">
-            <span className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-jade-soft text-jade-deep"><IconStetho className="w-4.5 h-4.5" /></span>
-            الفحص والتشخيص
-          </h3>
-          <div className="grid sm:grid-cols-2 gap-4">
-            <Field label="الشكوى الرئيسية">
-              <TArea value={session.complaint} onChange={(e) => patch({ complaint: e.target.value })} placeholder="مثال: ألم عند المضغ في الضرس العلوي الأيسر منذ 3 أيام…" />
-            </Field>
-            <Field label="التشخيص السريري">
-              <TArea value={session.diagnosis} onChange={(e) => patch({ diagnosis: e.target.value })} placeholder="مثال: تسوس عميق ملامس للّب — السن 26…" />
-            </Field>
-          </div>
-        </section>
-
-        <section className="card p-5">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="font-display font-bold text-lg text-ink flex items-center gap-2">
-              <span className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-mint-soft text-[#1d6b47]"><IconTooth className="w-4.5 h-4.5" /></span>
-              الإجراءات والخدمات المنفذة
-            </h3>
-            <span className="chip bg-mist text-soft stat-num">{session.procedures.length} إجراء</span>
-          </div>
-          <div className="flex flex-wrap items-center gap-2.5 mb-4">
-            <TSelect value={props.procService} onChange={(e) => props.setProcService(e.target.value)} className="!w-auto flex-1 min-w-44">
-              <option value="">— اختر إجراءً من قائمة الأسعار —</option>
-              {db.services.filter((s) => s.active).map((s) => (
-                <option key={s.id} value={s.id}>{s.name} — {money(s.price)}</option>
-              ))}
-            </TSelect>
-            <TSelect value={props.procTooth} onChange={(e) => props.setProcTooth(e.target.value)} className="!w-32">
-              <option value="">بدون سن</option>
-              {FDI.map((t) => (
-                <option key={t} value={t}>سن {t}</option>
-              ))}
-            </TSelect>
-            <button className="btn-soft !h-10" onClick={props.addProc}>
-              <IconPlus className="w-4 h-4" />
-              إضافة
-            </button>
-          </div>
-          {session.procedures.length === 0 ? (
-            <p className="text-xs text-soft bg-mist rounded-lg px-4 py-4 text-center">لم تُضف إجراءات بعد — كل إجراء يُضاف هنا يدخل فاتورة المريض تلقائياً.</p>
-          ) : (
-            <ul className="divide-y divide-line/70 rounded-xl border border-line overflow-hidden">
-              {session.procedures.map((pr, i) => {
-                const s = serviceById(pr.serviceId);
-                return (
-                  <li key={i} className="flex items-center gap-3 px-4 py-2.5 bg-white anim-fade">
-                    <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: s?.color }} />
-                    <span className="text-sm font-bold text-ink flex-1 truncate">{s?.name}</span>
-                    {pr.tooth && <span className="chip bg-amber-soft text-[#a06410]"><IconTooth className="w-3 h-3" /> سن {pr.tooth}</span>}
-                    <span className="stat-num text-sm text-ink">{money(s?.price ?? 0)}</span>
-                    <button className="icon-btn !w-8 !h-8 hover:!bg-coral-soft hover:!text-coral" onClick={() => patch({ procedures: session.procedures.filter((_, j) => j !== i) })} aria-label="حذف">
-                      <IconTrash className="w-4 h-4" />
-                    </button>
-                  </li>
-                );
-              })}
-              <li className="flex items-center justify-between px-4 py-3 bg-jade-soft/60">
-                <span className="text-xs font-bold text-jade-deep">إجمالي الإجراءات — يُضاف للفاتورة</span>
-                <span className="stat-num text-xl font-bold text-jade-deep">{money(total)}</span>
-              </li>
-            </ul>
-          )}
-        </section>
-      </div>
+      <section className="card p-5">
+        <h3 className="font-display font-bold text-lg text-ink mb-4 flex items-center gap-2">
+          <span className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-jade-soft text-jade-deep"><IconStetho className="w-4.5 h-4.5" /></span>
+          الفحص والتشخيص
+        </h3>
+        <div className="grid sm:grid-cols-2 gap-4">
+          <Field label="الشكوى الرئيسية">
+            <TArea value={session.complaint} onChange={(e) => patch({ complaint: e.target.value })} placeholder="مثال: ألم عند المضغ في الضرس العلوي الأيسر منذ 3 أيام…" />
+          </Field>
+          <Field label="التشخيص السريري">
+            <TArea value={session.diagnosis} onChange={(e) => patch({ diagnosis: e.target.value })} placeholder="مثال: تسوس عميق ملامس للّب — السن 26…" />
+          </Field>
+        </div>
+      </section>
 
       {/* تقرير العمل — يرتبط تلقائياً بالعودات والمتابعة */}
       <section className="card p-5 anim-fade relative overflow-hidden">
