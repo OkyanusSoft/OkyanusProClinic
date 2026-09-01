@@ -753,8 +753,12 @@ export const today = (offset = 0) => {
   return dstr(d);
 };
 export const fmtMoney = (n: number) => `${Math.round(n).toLocaleString("en-US")} ر.ي`;
-export const fmtDate = (ds: string) =>
-  new Intl.DateTimeFormat(arLocale(), { day: "numeric", month: "long" }).format(new Date(ds + "T12:00:00"));
+/** تنسيق موحّد للتاريخ: dd/mm/yyyy — يحترم تفضيل الأرقام (لاتينية/مشرقية) */
+export const fmtDate = (ds: string) => {
+  const d = new Date(ds + "T12:00:00");
+  const nf = new Intl.NumberFormat(arLocale(), { minimumIntegerDigits: 2, useGrouping: false });
+  return `${nf.format(d.getDate())}/${nf.format(d.getMonth() + 1)}/${d.getFullYear()}`;
+};
 export const fmtDateFull = (ds: string) =>
   new Intl.DateTimeFormat(arLocale(), { weekday: "long", day: "numeric", month: "long", year: "numeric" }).format(
     new Date(ds + "T12:00:00")
