@@ -11,6 +11,7 @@ import {
   IMPLANT_BRANDS,
   IMPLANT_STATUS,
   invoiceStatus,
+  isConsultCategory,
   invoiceTotal,
   INV_META,
   ORTHO_KINDS,
@@ -713,8 +714,11 @@ function WorkPlanSection({
   const money = useMoney();
   const { push } = useToast();
 
-  /* ---- التبويبات تُولَّد تلقائياً من فئات الخدمات ---- */
-  const categories = useMemo(() => db.serviceCats.filter((c) => db.services.some((s) => s.category === c && s.active)), [db.serviceCats, db.services]);
+  /* ---- التبويبات تُولَّد تلقائياً من فئات الخدمات (تُستبعد فئة الكشف لأنها أُدرجت مع الحجز) ---- */
+  const categories = useMemo(
+    () => db.serviceCats.filter((c) => !isConsultCategory(c) && db.services.some((s) => s.category === c && s.active)),
+    [db.serviceCats, db.services]
+  );
   const [activeCat, setActiveCat] = useState(categories[0] ?? "");
   useEffect(() => {
     if (!categories.includes(activeCat) && categories.length) setActiveCat(categories[0]);

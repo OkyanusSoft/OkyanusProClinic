@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import {
   addMinutes,
   APPT_META,
+  consultServiceOf,
   dayName,
   dstr,
   fmtDate,
@@ -1020,22 +1021,23 @@ export function AddAppointmentModal({
   defaultTime?: string;
   defaultDate?: string;
 }) {
-  const { db, dispatch, patientById, serviceById } = useStore();
+  const { db, dispatch, patientById } = useStore();
   const { apptScope } = useAuth();
   const money = useMoney();
   const { push } = useToast();
   const [patientId, setPatientId] = useState("");
-  const [serviceId, setServiceId] = useState("");
   const [doctorId, setDoctorId] = useState("d1");
   const [date, setDate] = useState(today(0));
   const [time, setTime] = useState("10:00");
   const [notes, setNotes] = useState("");
   const [err, setErr] = useState("");
 
+  /* خدمة الكشف/الاستشارة تُثبَّت تلقائياً عند الحجز — لا تختارها السكرتارية */
+  const consultSvc = useMemo(() => consultServiceOf(db.services), [db.services]);
+
   useEffect(() => {
     if (open) {
       setPatientId(defaultPatient ?? "");
-      setServiceId("");
       setDoctorId(apptScope ?? "d1");
       setDate(defaultDate ?? today(0));
       setTime(defaultTime ?? "10:00");
@@ -1060,15 +1062,15 @@ export function AddAppointmentModal({
 
   const save = () => {
     if (!patientId) return setErr("اختر المريض أولاً.");
-    if (!serviceId) return setErr("اختر نوع العلاج.");
+    if (!consultSvc) return setErr("لا توجد خدمة كشف/استشارة مفعلة — فعّلها من شاشة «بيانات الخدمات».");
     if (busy(time)) return setErr("هذا الوقت محجوز لدى الطبيب نفسه — اختر وقتاً آخر.");
-    const a: Appointment = { id: uid(), patientId, serviceId, doctorId, date, time, status: "confirmed", notes: notes.trim() || undefined };
+    const a: Appointment = { id: uid(), patientId, serviceId: consultSvc.id, doctorId, date, time, status: "confirmed", notes: notes.trim() || undefined };
     dispatch({ type: "ADD_APPT", a });
     push("success", "تم تأكيد الحجز", `${patientById(patientId)?.name} — ${fmtDate(date)} ${time}`);
     onClose();
   };
 
-  const svc = serviceId ? serviceById(serviceId) : undefined;
+  const svc = consultSvc ?? undefined;
 
   return (
     <Modal
@@ -1094,13 +1096,22 @@ export function AddAppointmentModal({
             </TSelect>
           </Field>
         </div>
-        <Field label="العلاج *">
-          <TSelect value={serviceId} onChange={(e) => setServiceId(e.target.value)}>
-            <option value="">— اختر —</option>
-            {db.services.filter((s) => s.active).map((s) => (
-              <option key={s.id} value={s.id}>{s.name} — {money(s.price)}</option>
-            ))}
-          </TSelect>
+        <Field label="نوع الزيارة" hint="تُثبَّت تلقائياً — خدمة الكشف والاستشارة من فئة التشخيص">
+          <div className="input !bg-mist/60 !cursor-default border-dashed !h-auto !py-2.5 flex items-center gap-2.5">
+            <span className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-jade-soft text-jade-deep shrink-0">
+              <IconStetho className="w-4.5 h-4.5" />
+            </span>
+            <div className="flex-1 min-w-0 text-start">
+              <p className="text-sm font-bold text-ink truncate leading-tight">{consultSvc?.name ?? "—"}</p>
+              <p className="text-[10px] font-semibold text-soft mt-0.5">
+                {consultSvc ? `فئة ${consultSvc.category} · ${money(consultSvc.price)}` : "لا توجد خدمة كشف مفعلة"}
+              </p>
+            </div>
+            <span className="chip bg-jade-soft text-jade-deep !text-[9px] shrink-0">
+              <IconCheck className="w-3 h-3" />
+              مثبتة تلقائياً
+            </span>
+          </div>
         </Field>
         <Field label="الطبيب" hint={apptScope ? "مقيّد بطبيبك حسب صلاحياتك — تغيّره الإدارة" : undefined}>
           <TSelect value={doctorId} onChange={(e) => setDoctorId(e.target.value)} disabled={!!apptScope} className={apptScope ? "opacity-70 cursor-not-allowed" : ""}>
