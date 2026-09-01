@@ -703,16 +703,117 @@ function WorkPlanSection({
   age,
   baseTeeth,
   onSetTooth,
+  patientName,
+  fuEnabled,
+  fuReason,
+  fuDate,
 }: {
   session: ClinicalSession;
   patch: (pp: Partial<ClinicalSession>) => void;
   age: number;
   baseTeeth: Partial<Record<number, ToothStatus>>;
   onSetTooth?: (tooth: number, status: ToothStatus) => void;
+  patientName?: string;
+  fuEnabled?: boolean;
+  fuReason?: string;
+  fuDate?: string;
 }) {
   const { db, dispatch, serviceById } = useStore();
   const money = useMoney();
   const { push } = useToast();
+
+  /* ---- التوليد التلقائي: تقرير العمل + الشكوى + التشخيص ---- */
+  const [typing, setTyping] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const typeTimer = useRef<number | null>(null);
+  useEffect(() => () => { if (typeTimer.current) window.clearTimeout(typeTimer.current); }, []);
+
+  const toothLabel = (n: number) => (dentitionOf(age) === "child" ? "ABCDE"[(n % 10) - 1] : String(n));
+
+  /** يولّد شكوى رئيسية ذكية من الأسنان المتضررة أو المحددة أو الفئة النشطة */
+  const generateComplaint = () => {
+    const focus = selection.length ? selection : Object.entries(baseTeeth).filter(([, s]) => s && s !== "healthy").map(([t]) => Number(t));
+    const caries = focus.filter((t) => baseTeeth[t] === "caries");
+    const teethTxt = focus.slice(0, 3).map(toothLabel).join("، ");
+    const variants = caries.length
+      ? [
+          `ألم متواصل في ${caries.length === 1 ? `السن ${toothLabel(caries[0])}` : `الأسنان ${teethTxt}`} يزداد مع البرودة والحرارة والمضغ منذ عدة أيام.`,
+          `حساسية شديدة عند تناول السكريات والمشروبات الباردة في ${caries.length === 1 ? `السن ${toothLabel(caries[0])}` : `الأسنان ${teethTxt}`} مع ألم ليلي متقطع.`,
+        ]
+      : focus.length
+      ? [
+          `ألم عند المضغ في ${focus.length === 1 ? `السن ${toothLabel(focus[0])}` : `الأسنان ${teethTxt}`} مع انزعاج مستمر منذ أيام.`,
+          `انزعاج وشعور بضغط في ${focus.length === 1 ? `السن ${toothLabel(focus[0])}` : `منطقة الأسنان ${teethTxt}`} يزداد تدريجياً.`,
+        ]
+      : [
+          `مراجعة دورية للكشف على صحة الفم والأسنان وتنظيف الترسبات.`,
+          `فحص عام مع شكوى بسيطة من حساسية متفرقة عند البرودة.`,
+        ];
+    patch({ complaint: variants[Math.floor(Math.random() * variants.length)] });
+    push("info", "وُلّدت الشكوى الرئيسية تلقائياً");
+  };
+
+  /** يولّد تشخيصاً سريرياً من الشكوى وحالات الأسنان */
+  const generateDiagnosis = () => {
+    const caries = Object.entries(baseTeeth).filter(([, s]) => s === "caries").map(([t]) => Number(t));
+    const roots = Object.entries(baseTeeth).filter(([, s]) => s === "root").map(([t]) => Number(t));
+    const parts: string[] = [];
+    if (caries.length) parts.push(`تسوس ${caries.length === 1 ? `عميق ملامس للّب في السن` : `نشط في الأسنان`} ${caries.slice(0, 3).map(toothLabel).join("، ")}`);
+    if (roots.length) parts.push(`التهاب لبّي في السن ${roots.slice(0, 2).map(toothLabel).join("، ")}`);
+    if (!parts.length) parts.push("لثة وأنسجة داعمة بحالة جيدة، لا آفات نشطة");
+    const variants = [
+      `${parts.join("؛ ")} — يحتاج خطة علاج متعددة الجلسات.`,
+      `الفحص السريري والشعاعي يؤكد: ${parts.join("؛ ")}.`,
+    ];
+    patch({ diagnosis: variants[Math.floor(Math.random() * variants.length)] });
+    push("info", "وُلّد التشخيص السريري تلقائياً");
+  };
+
+  /** يولّد تقرير العمل السريري كاملاً من بيانات الجلسة حرفاً حرفاً */
+  const generateReport = () => {
+    if (typing) return;
+    const procs = session.procedures
+      .map((pr) => {
+        const t = pr.teeth.length ? ` — الأسنان ${pr.teeth.map(toothLabel).join("، ")}` : "";
+        const d = pr.detail && pr.detail !== pr.name ? ` (${pr.detail})` : "";
+        return `${pr.name}${d}${t}`;
+      })
+      .filter(Boolean)
+      .join("؛ ");
+    const teeth = session.teethTreated.map((t) => `سن ${toothLabel(t.tooth)}: ${TOOTH_META[t.status].label}`).join("، ");
+    const meds = session.meds.map((m) => m.name.split(" ")[0]).join("، ");
+    const lines = [
+      `حضر المريض ${patientName ?? ""} (${age} سنة) جلسة علاج بتاريخ ${fmtDate(session.date)}.`,
+      session.complaint.trim() ? `الشكوى الرئيسية: ${session.complaint.trim()}` : "",
+      session.diagnosis.trim() ? `التشخيص السريري: ${session.diagnosis.trim()}` : "",
+      procs ? `الإجراءات المنفذة: ${procs}.` : "",
+      teeth ? `تحديثات خريطة الأسنان: ${teeth}.` : "",
+      meds ? `الأدوية الموصوفة: ${meds}.` : "",
+      fuEnabled && fuReason?.trim()
+        ? `التوصية: ${fuReason.trim()}${fuDate ? ` — مراجعة ${fmtDate(fuDate)}` : ""}.`
+        : "",
+    ].filter(Boolean);
+    const text = lines.join("\n");
+    setTyping(true);
+    let i = 0;
+    const tick = () => {
+      i = Math.min(text.length, i + 3);
+      dispatch({ type: "PATCH_SESSION", id: session.id, patch: { summary: text.slice(0, i) } });
+      if (i < text.length) typeTimer.current = window.setTimeout(tick, 20);
+      else setTyping(false);
+    };
+    tick();
+  };
+
+  const copyReport = async () => {
+    try {
+      await navigator.clipboard.writeText(session.summary);
+    } catch {
+      /* بيئات لا تدعم الحافظة */
+    }
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1600);
+  };
 
   /* ---- التبويبات تُولَّد تلقائياً من فئات الخدمات (تُستبعد فئة الكشف لأنها أُدرجت مع الحجز) ---- */
   const categories = useMemo(
@@ -1223,6 +1324,95 @@ function WorkPlanSection({
         </div>
       </div>
 
+      {/* ====== الفحص والتشخيص ====== */}
+      <div className="mt-5 rounded-2xl border border-line bg-white p-4.5 shadow-sm">
+        <h4 className="font-display font-bold text-base text-ink mb-3.5 flex items-center gap-2">
+          <span className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-jade-soft text-jade-deep"><IconStetho className="w-4.5 h-4.5" /></span>
+          الفحص والتشخيص
+          <span className="chip bg-mist text-soft !text-[9px]">قبل الأخير · يُضمَّن في التقرير</span>
+        </h4>
+        <div className="grid sm:grid-cols-2 gap-4">
+          <div>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="label !mb-0">الشكوى الرئيسية</label>
+              <button
+                onClick={generateComplaint}
+                className="btn-soft !h-7 !px-2.5 !text-[10px]"
+                title="يولّد شكوى ذكية من الأسنان المتضررة أو المحددة"
+              >
+                <IconSpark className="w-3 h-3" />
+                توليد تلقائي
+              </button>
+            </div>
+            <TArea value={session.complaint} onChange={(e) => patch({ complaint: e.target.value })} placeholder="مثال: ألم عند المضغ في الضرس العلوي الأيسر منذ 3 أيام…" className="!min-h-24" />
+          </div>
+          <div>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="label !mb-0">التشخيص السريري</label>
+              <button
+                onClick={generateDiagnosis}
+                className="btn-soft !h-7 !px-2.5 !text-[10px]"
+                title="يولّد تشخيصاً من الشكوى وحالات الأسنان"
+              >
+                <IconSpark className="w-3 h-3" />
+                توليد تلقائي
+              </button>
+            </div>
+            <TArea value={session.diagnosis} onChange={(e) => patch({ diagnosis: e.target.value })} placeholder="مثال: تسوس عميق ملامس للّب — السن 26…" className="!min-h-24" />
+          </div>
+        </div>
+      </div>
+
+      {/* ====== تقرير العمل السريري ====== */}
+      <div className="mt-5 rounded-2xl border border-line bg-white relative overflow-hidden shadow-sm">
+        <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-l from-jade via-[#3fd0c0] to-transparent" />
+        <div className="p-4.5">
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+            <h4 className="font-display font-bold text-base text-ink flex items-center gap-2">
+              <span className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-pine text-[#7fe0d4]"><IconPencil className="w-4.5 h-4.5" /></span>
+              تقرير العمل السريري
+              <span className="chip bg-mist text-soft !text-[9px]">قبل الأخير · يُرفق بملف المريض</span>
+            </h4>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={copyReport}
+                disabled={!session.summary.trim()}
+                className={`btn-ghost !h-8 !px-3 !text-[10px] ${copied ? "!bg-mint-soft !text-[#1d6b47] !border-mint" : ""} disabled:opacity-40 disabled:cursor-not-allowed`}
+              >
+                {copied ? <IconCheck className="w-3 h-3" /> : <IconCopy className="w-3 h-3" />}
+                {copied ? "نُسخ" : "نسخ"}
+              </button>
+              <button
+                onClick={generateReport}
+                disabled={typing}
+                className="btn-primary !h-8 !px-3.5 !text-[10px] disabled:opacity-40 disabled:cursor-not-allowed"
+                title="يكتب التقرير كاملاً من الشكوى والتشخيص والإجراءات والأسنان والأدوية والتوصية"
+              >
+                <IconSpark className={`w-3 h-3 ${typing ? "pulse-soft" : ""}`} />
+                {typing ? "جارٍ التوليد…" : "توليد تلقائي كامل"}
+              </button>
+            </div>
+          </div>
+          <div className="relative">
+            <TArea
+              value={session.summary}
+              onChange={(e) => patch({ summary: e.target.value })}
+              placeholder="اكتب تقرير العمل السريري… أو اضغط «توليد تلقائي كامل» ليُكتب كل ما قام به الدكتور من بيانات الجلسة."
+              className="!min-h-28 leading-relaxed font-medium"
+            />
+            {typing && (
+              <span className="absolute top-2.5 end-2.5 chip bg-pine text-[#7fe0d4] !py-1 anim-pop">
+                <span className="w-1.5 h-1.5 rounded-full bg-[#3fd0c0] pulse-dot" />
+                يكتب الآن<span className="pulse-soft">▌</span>
+              </span>
+            )}
+          </div>
+          {session.summary.trim().length > 0 && !typing && (
+            <p className="text-[10px] font-bold text-soft mt-2 stat-num" dir="ltr">{session.summary.length} حرفاً — يظهر في «الجلسات المكتملة» وملف المريض</p>
+          )}
+        </div>
+      </div>
+
       {/* ====== الإجراءات والخدمات المنفذة ====== */}
       <div className="mt-5 rounded-2xl border-2 border-jade/25 bg-gradient-to-b from-jade-soft/40 to-transparent overflow-hidden">
         <div className="flex flex-wrap items-center justify-between gap-2.5 px-4 py-3 bg-jade-soft/50">
@@ -1338,131 +1528,23 @@ function TreatmentTab(props: {
   fuReason: string;
   fuDate: string;
 }) {
-  const { db, dispatch, serviceById, patientById } = useStore();
-  const money = useMoney();
+  const { patientById } = useStore();
   const { session, patch } = props;
   const p = patientById(session.patientId);
-  const total = session.procedures.reduce((s, pr) => s + pr.price * Math.max(1, pr.teeth.length), 0);
 
-  /* ---- توليد تقرير العمل حرفاً حرفاً من بيانات الجلسة ---- */
-  const [typing, setTyping] = useState(false);
-  const [copied, setCopied] = useState(false);
-  const typeTimer = useRef<number | null>(null);
-  useEffect(() => () => { if (typeTimer.current) window.clearTimeout(typeTimer.current); }, []);
-
-  const generateReport = () => {
-    if (typing) return;
-    const procs = session.procedures
-      .map((pr) => {
-        const t = pr.teeth.length ? ` — الأسنان ${pr.teeth.join("، ")}` : "";
-        const d = pr.detail && pr.detail !== pr.name ? ` (${pr.detail})` : "";
-        return `${pr.name}${d}${t}`;
-      })
-      .filter(Boolean)
-      .join("؛ ");
-    const teeth = session.teethTreated.map((t) => `سن ${t.tooth}: ${TOOTH_META[t.status].label}`).join("، ");
-    const meds = session.meds.map((m) => m.name.split(" ")[0]).join("، ");
-    const lines = [
-      `حضر المريض ${p?.name ?? ""} (${p?.age ?? ""} سنة) جلسة علاج بتاريخ ${fmtDate(session.date)}.`,
-      session.complaint.trim() ? `الشكوى الرئيسية: ${session.complaint.trim()}.` : "",
-      session.diagnosis.trim() ? `التشخيص السريري: ${session.diagnosis.trim()}.` : "",
-      procs ? `الإجراءات المنفذة: ${procs}.` : "",
-      teeth ? `تحديثات خريطة الأسنان: ${teeth}.` : "",
-      meds ? `الأدوية الموصوفة: ${meds}.` : "",
-      props.fuEnabled && props.fuReason.trim()
-        ? `التوصية: ${props.fuReason.trim()}${props.fuDate ? ` — مراجعة ${fmtDate(props.fuDate)}` : ""}.`
-        : "",
-    ].filter(Boolean);
-    const text = lines.join("\n");
-    setTyping(true);
-    let i = 0;
-    const tick = () => {
-      i = Math.min(text.length, i + 3);
-      dispatch({ type: "PATCH_SESSION", id: session.id, patch: { summary: text.slice(0, i) } });
-      if (i < text.length) typeTimer.current = window.setTimeout(tick, 20);
-      else setTyping(false);
-    };
-    tick();
-  };
-
-  const copyReport = async () => {
-    try {
-      await navigator.clipboard.writeText(session.summary);
-    } catch {
-      /* بيئات لا تدعم الحافظة */
-    }
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1600);
-  };
-
+  /* مخطط العمل السريري — يحوي: الخريطة، مراحل الجلسات، الفحص والتشخيص، تقرير العمل، الإجراءات (الأخيرة) */
   return (
-    <div className="space-y-5">
-      <section className="card p-5">
-        <h3 className="font-display font-bold text-lg text-ink mb-4 flex items-center gap-2">
-          <span className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-jade-soft text-jade-deep"><IconStetho className="w-4.5 h-4.5" /></span>
-          الفحص والتشخيص
-        </h3>
-        <div className="grid sm:grid-cols-2 gap-4">
-          <Field label="الشكوى الرئيسية">
-            <TArea value={session.complaint} onChange={(e) => patch({ complaint: e.target.value })} placeholder="مثال: ألم عند المضغ في الضرس العلوي الأيسر منذ 3 أيام…" />
-          </Field>
-          <Field label="التشخيص السريري">
-            <TArea value={session.diagnosis} onChange={(e) => patch({ diagnosis: e.target.value })} placeholder="مثال: تسوس عميق ملامس للّب — السن 26…" />
-          </Field>
-        </div>
-      </section>
-
-      {/* تقرير العمل — يرتبط تلقائياً بالعودات والمتابعة */}
-      <section className="card p-5 anim-fade relative overflow-hidden">
-        <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-l from-jade via-[#3fd0c0] to-transparent" />
-        <div className="flex flex-wrap items-center justify-between gap-3 mb-3.5">
-          <h3 className="font-display font-bold text-lg text-ink flex items-center gap-2">
-            <span className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-pine text-[#7fe0d4]"><IconPencil className="w-4.5 h-4.5" /></span>
-            تقرير العمل السريري
-            <span className="chip bg-mist text-soft !text-[9px]">يُحفَظ لحظياً · يُرفق بملف المريض والعودات</span>
-          </h3>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={copyReport}
-              disabled={!session.summary.trim()}
-              className={`btn-ghost !h-9 !px-3 !text-[11px] ${copied ? "!bg-mint-soft !text-[#1d6b47] !border-mint" : ""} disabled:opacity-40 disabled:cursor-not-allowed`}
-            >
-              {copied ? <IconCheck className="w-3.5 h-3.5" /> : <IconCopy className="w-3.5 h-3.5" />}
-              {copied ? "نُسخ" : "نسخ التقرير"}
-            </button>
-            <button
-              onClick={generateReport}
-              disabled={typing || session.procedures.length === 0}
-              className="btn-primary !h-9 !px-3.5 !text-[11px] disabled:opacity-40 disabled:cursor-not-allowed"
-              title={session.procedures.length === 0 ? "أضف إجراءً واحداً على الأقل ليُبنى التقرير من بيانات الجلسة" : "يكتب التقرير من بيانات الجلسة حرفاً حرفاً"}
-            >
-              <IconSpark className={`w-3.5 h-3.5 ${typing ? "pulse-soft" : ""}`} />
-              {typing ? "جارٍ التوليد…" : "توليد تلقائي"}
-            </button>
-          </div>
-        </div>
-        <div className="relative">
-          <TArea
-            value={session.summary}
-            onChange={(e) => patch({ summary: e.target.value })}
-            placeholder="اكتب تقرير العمل السريري… أو اضغط «توليد تلقائي» ليُكتب من الشكوى والتشخيص والإجراءات والأسنان والأدوية والتوصية."
-            className="!min-h-28 leading-relaxed font-medium"
-          />
-          {typing && (
-            <span className="absolute top-2.5 end-2.5 chip bg-pine text-[#7fe0d4] !py-1 anim-pop">
-              <span className="w-1.5 h-1.5 rounded-full bg-[#3fd0c0] pulse-dot" />
-              يكتب الآن<span className="pulse-soft">▌</span>
-            </span>
-          )}
-        </div>
-        {session.summary.trim().length > 0 && !typing && (
-          <p className="text-[10px] font-bold text-soft mt-2 stat-num" dir="ltr">{session.summary.length} حرفاً — يظهر في «الجلسات المكتملة» وملف المريض</p>
-        )}
-      </section>
-
-      {/* مخطط العمل السريري — خريطة + اختيار متعدد + مراحل الجلسات */}
-      <WorkPlanSection session={session} patch={patch} age={p?.age ?? 30} baseTeeth={props.mergedTeeth} onSetTooth={props.setTooth} />
-    </div>
+    <WorkPlanSection
+      session={session}
+      patch={patch}
+      age={p?.age ?? 30}
+      baseTeeth={props.mergedTeeth}
+      onSetTooth={props.setTooth}
+      patientName={p?.name}
+      fuEnabled={props.fuEnabled}
+      fuReason={props.fuReason}
+      fuDate={props.fuDate}
+    />
   );
 }
 
