@@ -30,16 +30,20 @@ import {
   IconChevronDown,
   IconIdCard,
   IconClock,
+  IconPencil,
   IconPlus,
   IconPrinter,
+  IconTrash,
   IconReceipt,
   IconSpark,
   IconStetho,
   IconTooth,
+  IconUserPlus,
   IconX,
 } from "../icons";
 import { Avatar, Badge, DateInput, Drop, DropItem, EmptyState, Field, Modal, TArea, TInput, TSelect, TwoStepDelete, useToast } from "../components/ui";
 import { AppointmentCardPrint, AppointmentsDayPrint, CardPrintModal, CardSheet, FollowUpCardPrint, PrintModal } from "../components/PrintSheet";
+import { AddPatientModal } from "./Patients";
 
 /* ساعات الحجز — تُشتق من إعدادات الدوام العامة */
 const hoursBetween = (start: string, end: string) => {
@@ -85,11 +89,12 @@ interface Props {
 }
 
 export default function AppointmentsPage({ onOpenPatient, onBook }: Props) {
-  const { db, patientById } = useStore();
+  const { db, dispatch, patientById } = useStore();
   const { apptScope, doctorScopeId } = useAuth();
   const [view, setView] = useState<View>("schedule");
   const [day, setDay] = useState(today(0));
   const [showFu, setShowFu] = useState(false);
+  const [showNewPatient, setShowNewPatient] = useState(false);
 
   const visible = useMemo(
     () => (apptScope ? db.appointments.filter((a) => a.doctorId === apptScope) : db.appointments),
@@ -134,6 +139,10 @@ export default function AppointmentsPage({ onOpenPatient, onBook }: Props) {
               عودة جديدة
             </button>
           )}
+          <button className="btn-soft" onClick={() => setShowNewPatient(true)}>
+            <IconUserPlus className="w-4 h-4" />
+            مريض جديد
+          </button>
           <button className="btn-primary" onClick={() => onBook()}>
             <IconCalendarPlus className="w-4.5 h-4.5" />
             موعد جديد
@@ -165,6 +174,22 @@ export default function AppointmentsPage({ onOpenPatient, onBook }: Props) {
       {view === "history" && <HistoryView sessions={doneSessions} onOpenPatient={onOpenPatient} />}
 
       {showFu && <FollowUpModal onClose={() => setShowFu(false)} />}
+      {showNewPatient && (
+        <AddPatientModal
+          open
+          dispatch={dispatch}
+          onClose={() => setShowNewPatient(false)}
+          onSaved={(p) => {
+            setShowNewPatient(false);
+            /* بعد حفظ المريض يُفتح الحجز له مباشرة */
+            onBook(p.id);
+          }}
+          onBook={(pid) => {
+            setShowNewPatient(false);
+            onBook(pid);
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -901,16 +926,6 @@ function HistoryView({ sessions, onOpenPatient }: { sessions: import("../store")
 
 /* ============================ نافذة: عودة جديدة ============================ */
 
-const QUICK_REASONS = [
-  "مراجعة عامة",
-  "تنظيف دوري كل 6 أشهر",
-  "فك الغرز ومراجعة الجرح",
-  "تركيب التاج بعد علاج العصب",
-  "موعد شد التقويم الشهري",
-  "كشف مرحلة الالتئام للزرعة",
-  "مراجعة ما بعد الخلع",
-];
-
 export function FollowUpModal({
   patientId,
   onClose,
@@ -929,11 +944,36 @@ export function FollowUpModal({
   const [dueDate, setDueDate] = useState(today(7));
   const [notes, setNotes] = useState("");
   const [err, setErr] = useState("");
+  /* مكتبة الأسباب */
+  const [showLib, setShowLib] = useState(true);
+  const [editId, setEditId] = useState<string | null>(null);
+  const [editText, setEditText] = useState("");
+  const [newReason, setNewReason] = useState("");
+
+  const reasons = db.followUpReasons;
+
+  const pickReason = (t: string) => {
+    setReason(t);
+    setErr("");
+  };
+
+  const saveReasonToLib = () => {
+    const t = newReason.trim();
+    if (t.length < 3) return push("warn", "اكتب سبباً (3 أحرف على الأقل)");
+    if (reasons.some((r) => r.text === t)) return push("info", "السبب موجود بالفعل في المكتبة");
+    dispatch({ type: "ADD_FOLLOWUP_REASON", text: t });
+    setNewReason("");
+    push("success", "حُفظ السبب في المكتبة", "أصبح متاحاً للاختيار في كل جدولات العودة.");
+  };
 
   const save = () => {
     if (!pid) return setErr("اختر المريض أولاً.");
     if (reason.trim().length < 3) return setErr("اكتب سبب العودة.");
     if (!dueDate) return setErr("حدد تاريخ الاستحقاق.");
+    /* حفظ تلقائي: إن كان السبب جديداً يُضاف للمكتبة */
+    if (!reasons.some((r) => r.text === reason.trim())) {
+      dispatch({ type: "ADD_FOLLOWUP_REASON", text: reason.trim() });
+    }
     dispatch({
       type: "ADD_FOLLOWUP",
       f: { id: uid(), patientId: pid, doctorId, reason: reason.trim(), dueDate, status: "pending", createdAt: new Date().toISOString(), notes: notes.trim() || undefined },
@@ -973,15 +1013,87 @@ export function FollowUpModal({
         </div>
         <div className="col-span-2">
           <Field label="سبب العودة *">
-            <TInput value={reason} onChange={(e) => setReason(e.target.value)} placeholder="مثال: تركيب التاج بعد علاج العصب" />
-            <div className="flex flex-wrap gap-1.5 mt-2">
-              {QUICK_REASONS.map((r) => (
-                <button key={r} onClick={() => setReason(r)} className={`chip cursor-pointer transition-colors ${reason === r ? "bg-jade text-white" : "bg-mist text-soft hover:bg-jade-soft hover:text-jade-deep"}`}>
-                  {r}
-                </button>
-              ))}
-            </div>
+            <TInput value={reason} onChange={(e) => setReason(e.target.value)} placeholder="اكتب السبب أو اختره من المكتبة أدناه…" />
           </Field>
+
+          {/* مكتبة الأسباب — اختيار / تعديل / حذف / إضافة */}
+          <div className="mt-3 rounded-xl border border-line bg-mist/40 overflow-hidden">
+            <div className="flex items-center justify-between px-3.5 py-2.5 bg-white border-b border-line">
+              <button onClick={() => setShowLib((v) => !v)} className="flex items-center gap-2 text-xs font-bold text-ink cursor-pointer">
+                <IconCalendar className="w-4 h-4 text-jade-deep" />
+                مكتبة أسباب العودة
+                <span className="chip bg-mist text-soft !text-[9px] stat-num">{reasons.length}</span>
+                <IconChevronDown className={`w-3.5 h-3.5 text-soft transition-transform ${showLib ? "rotate-180" : ""}`} />
+              </button>
+              <div className="flex items-center gap-1.5">
+                <TInput value={newReason} onChange={(e) => setNewReason(e.target.value)} placeholder="سبب جديد…" className="!h-8 !w-40 !text-xs" />
+                <button onClick={saveReasonToLib} className="btn-primary !h-8 !px-2.5 !text-[11px]" title="حفظ السبب الجديد في المكتبة">
+                  <IconPlus className="w-3.5 h-3.5" />
+                  حفظ
+                </button>
+              </div>
+            </div>
+
+            {showLib && (
+              <div className="max-h-44 overflow-y-auto">
+                {reasons.length === 0 ? (
+                  <p className="text-xs text-soft text-center py-5">لا أسباب محفوظة — أضف أول سبب من الحقل أعلاه.</p>
+                ) : (
+                  <table className="w-full text-sm">
+                    <tbody>
+                      {reasons.map((r) => (
+                        <tr key={r.id} className={`border-b border-line/50 last:border-0 transition-colors ${reason === r.text ? "bg-jade-soft/50" : "bg-white hover:bg-mist/60"}`}>
+                          <td className="px-3.5 py-2">
+                            {editId === r.id ? (
+                              <div className="flex items-center gap-1.5">
+                                <TInput value={editText} onChange={(e) => setEditText(e.target.value)} className="!h-8 !text-xs" autoFocus />
+                                <button
+                                  onClick={() => {
+                                    dispatch({ type: "UPDATE_FOLLOWUP_REASON", id: r.id, text: editText });
+                                    setEditId(null);
+                                    push("success", "عُدّل السبب");
+                                  }}
+                                  className="icon-btn !w-7 !h-7 !bg-mint-soft !text-[#1d6b47]"
+                                  title="حفظ التعديل"
+                                >
+                                  <IconCheck className="w-3.5 h-3.5" />
+                                </button>
+                                <button onClick={() => setEditId(null)} className="icon-btn !w-7 !h-7" title="إلغاء">
+                                  <IconX className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            ) : (
+                              <span className="text-xs font-semibold text-ink">{r.text}</span>
+                            )}
+                          </td>
+                          <td className="px-2 py-2 text-end whitespace-nowrap">
+                            <div className="flex items-center justify-end gap-0.5">
+                              <button onClick={() => pickReason(r.text)} className="icon-btn !w-7 !h-7 !text-jade-deep hover:!bg-jade-soft" title="اختيار هذا السبب">
+                                <IconCheck className="w-3.5 h-3.5" />
+                              </button>
+                              <button onClick={() => { setEditId(r.id); setEditText(r.text); }} className="icon-btn !w-7 !h-7" title="تعديل">
+                                <IconPencil className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                onClick={() => {
+                                  dispatch({ type: "DELETE_FOLLOWUP_REASON", id: r.id });
+                                  push("info", "حُذف السبب من المكتبة");
+                                }}
+                                className="icon-btn !w-7 !h-7 hover:!bg-coral-soft hover:!text-coral"
+                                title="حذف"
+                              >
+                                <IconTrash className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            )}
+          </div>
         </div>
         <Field label="طبيب المتابعة">
           <TSelect value={doctorId} onChange={(e) => setDoctorId(e.target.value)} disabled={!!apptScope}>
@@ -1096,30 +1208,34 @@ export function AddAppointmentModal({
             </TSelect>
           </Field>
         </div>
-        <Field label="نوع الزيارة" hint="تُثبَّت تلقائياً — خدمة الكشف والاستشارة من فئة التشخيص">
-          <div className="input !bg-mist/60 !cursor-default border-dashed !h-auto !py-2.5 flex items-center gap-2.5">
-            <span className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-jade-soft text-jade-deep shrink-0">
-              <IconStetho className="w-4.5 h-4.5" />
-            </span>
-            <div className="flex-1 min-w-0 text-start">
-              <p className="text-sm font-bold text-ink truncate leading-tight">{consultSvc?.name ?? "—"}</p>
-              <p className="text-[10px] font-semibold text-soft mt-0.5">
-                {consultSvc ? `فئة ${consultSvc.category} · ${money(consultSvc.price)}` : "لا توجد خدمة كشف مفعلة"}
-              </p>
+        <div className="col-span-2">
+          <Field label="نوع الزيارة" hint="تُثبَّت تلقائياً — خدمة الكشف والاستشارة من فئة التشخيص">
+            <div className="input !bg-mist/60 !cursor-default border-dashed !h-auto !py-2.5 flex items-center gap-2.5">
+              <span className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-jade-soft text-jade-deep shrink-0">
+                <IconStetho className="w-4.5 h-4.5" />
+              </span>
+              <div className="flex-1 min-w-0 text-start">
+                <p className="text-sm font-bold text-ink truncate leading-tight">{consultSvc?.name ?? "—"}</p>
+                <p className="text-[10px] font-semibold text-soft mt-0.5">
+                  {consultSvc ? `فئة ${consultSvc.category} · ${money(consultSvc.price)}` : "لا توجد خدمة كشف مفعلة"}
+                </p>
+              </div>
+              <span className="chip bg-jade-soft text-jade-deep !text-[9px] shrink-0">
+                <IconCheck className="w-3 h-3" />
+                مثبتة تلقائياً
+              </span>
             </div>
-            <span className="chip bg-jade-soft text-jade-deep !text-[9px] shrink-0">
-              <IconCheck className="w-3 h-3" />
-              مثبتة تلقائياً
-            </span>
-          </div>
-        </Field>
-        <Field label="الطبيب" hint={apptScope ? "مقيّد بطبيبك حسب صلاحياتك — تغيّره الإدارة" : undefined}>
-          <TSelect value={doctorId} onChange={(e) => setDoctorId(e.target.value)} disabled={!!apptScope} className={apptScope ? "opacity-70 cursor-not-allowed" : ""}>
-            {db.doctors.map((d) => (
-              <option key={d.id} value={d.id}>{d.name} — {d.specialty}</option>
-            ))}
-          </TSelect>
-        </Field>
+          </Field>
+        </div>
+        <div className="col-span-2">
+          <Field label="الطبيب" hint={apptScope ? "مقيّد بطبيبك حسب صلاحياتك — تغيّره الإدارة" : undefined}>
+            <TSelect value={doctorId} onChange={(e) => setDoctorId(e.target.value)} disabled={!!apptScope} className={apptScope ? "opacity-70 cursor-not-allowed" : ""}>
+              {db.doctors.map((d) => (
+                <option key={d.id} value={d.id}>{d.name} — {d.specialty}</option>
+              ))}
+            </TSelect>
+          </Field>
+        </div>
         <Field label="التاريخ">
           <DateInput value={date} onChange={setDate} />
         </Field>

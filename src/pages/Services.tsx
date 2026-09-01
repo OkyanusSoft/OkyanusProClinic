@@ -288,7 +288,7 @@ function ServiceModal({ initial, onClose }: { initial?: Service; onClose: () => 
   const { push } = useToast();
   const [name, setName] = useState(initial?.name ?? "");
   const [category, setCategory] = useState(initial?.category ?? db.serviceCats[0] ?? "علاج");
-  const [price, setPrice] = useState(String(initial?.price ?? ""));
+  const [price, setPrice] = useState(String(initial?.price ?? 1000));
   const [duration, setDuration] = useState(String(initial?.duration ?? 30));
   const [color, setColor] = useState(initial?.color ?? COLORS[0]);
   const [err, setErr] = useState("");
@@ -340,8 +340,8 @@ function ServiceModal({ initial, onClose }: { initial?: Service; onClose: () => 
           <TInput type="number" value={duration} onChange={(e) => setDuration(e.target.value)} min={10} />
         </Field>
         <div className="col-span-2">
-          <Field label="السعر بالريال اليمني *">
-            <TInput type="number" value={price} onChange={(e) => setPrice(e.target.value)} placeholder="7000" />
+          <Field label="السعر بالريال اليمني *" hint="الافتراضي 1000 ريال — عدّله حسب الخدمة">
+            <TInput type="number" value={price} onChange={(e) => setPrice(e.target.value)} placeholder="1000" />
           </Field>
         </div>
         <div className="col-span-2">

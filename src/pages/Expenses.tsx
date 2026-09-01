@@ -1,7 +1,8 @@
 import React, { useMemo, useState } from "react";
-import { expCatColor, EXPENSE_CATS, fmtDate, today, uid, useMoney, useStore, type Expense } from "../store";
-import { IconPlus, IconReceipt, IconWallet } from "../icons";
+import { clinicOf, expCatColor, EXPENSE_CATS, fmtDate, today, uid, useMoney, useStore, type Expense } from "../store";
+import { IconPencil, IconPlus, IconPrinter, IconReceipt, IconWallet } from "../icons";
 import { AnimatedNumber, DateInput, EmptyState, Field, Modal, TArea, TInput, TSelect, TwoStepDelete, useToast } from "../components/ui";
+import { PrintModal } from "../components/PrintSheet";
 
 export default function ExpensesPage() {
   const { db, dispatch } = useStore();
