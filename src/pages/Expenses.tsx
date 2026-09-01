@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { expCatColor, EXPENSE_CATS, fmtDate, today, uid, useMoney, useStore, type Expense } from "../store";
 import { IconPlus, IconReceipt, IconWallet } from "../icons";
-import { AnimatedNumber, EmptyState, Field, Modal, TArea, TInput, TSelect, TwoStepDelete, useToast } from "../components/ui";
+import { AnimatedNumber, DateInput, EmptyState, Field, Modal, TArea, TInput, TSelect, TwoStepDelete, useToast } from "../components/ui";
 
 export default function ExpensesPage() {
   const { db, dispatch } = useStore();
@@ -198,7 +198,7 @@ function AddExpenseModal({ onClose }: { onClose: () => void }) {
         </Field>
         <div className="col-span-2">
           <Field label="التاريخ">
-            <TInput type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+            <DateInput value={date} onChange={setDate} />
           </Field>
         </div>
         <div className="col-span-2">

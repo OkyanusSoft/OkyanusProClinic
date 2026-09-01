@@ -37,7 +37,7 @@ import {
   IconTooth,
   IconX,
 } from "../icons";
-import { Avatar, Badge, Drop, DropItem, EmptyState, Field, Modal, TArea, TInput, TSelect, TwoStepDelete, useToast } from "../components/ui";
+import { Avatar, Badge, DateInput, Drop, DropItem, EmptyState, Field, Modal, TArea, TInput, TSelect, TwoStepDelete, useToast } from "../components/ui";
 import { AppointmentCardPrint, AppointmentsDayPrint, CardPrintModal, CardSheet, FollowUpCardPrint, PrintModal } from "../components/PrintSheet";
 
 /* ساعات الحجز — تُشتق من إعدادات الدوام العامة */
@@ -992,7 +992,7 @@ export function FollowUpModal({
           </TSelect>
         </Field>
         <Field label="تاريخ الاستحقاق *">
-          <TInput type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
+          <DateInput value={dueDate} onChange={setDueDate} />
         </Field>
         <div className="col-span-2">
           <Field label="ملاحظات">
@@ -1110,7 +1110,7 @@ export function AddAppointmentModal({
           </TSelect>
         </Field>
         <Field label="التاريخ">
-          <TInput type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+          <DateInput value={date} onChange={setDate} />
         </Field>
         <Field label="الوقت" hint={svc ? `المدة المتوقعة: ${svc.duration} دقيقة` : undefined}>
           <TSelect value={time} onChange={(e) => setTime(e.target.value)}>

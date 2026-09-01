@@ -65,7 +65,7 @@ import {
   IconWallet,
   IconXray,
 } from "../icons";
-import { Avatar, Badge, Drop, DropItem, EmptyState, Field, Modal, Switch, TArea, TInput, TSelect, TwoStepDelete, useToast } from "../components/ui";
+import { Avatar, Badge, DateInput, Drop, DropItem, EmptyState, Field, Modal, Switch, TArea, TInput, TSelect, TwoStepDelete, useToast } from "../components/ui";
 import DentalChart from "../components/DentalChart";
 import { InvoicePrint, PrintModal, RxPrint } from "../components/PrintSheet";
 
@@ -642,7 +642,7 @@ function Workstation({ session, readonly = false, onExit }: { session: ClinicalS
                 {fuEnabled ? (
                   <div className="flex gap-1.5 mt-1">
                     <TInput value={fuReason} onChange={(e) => setFuReason(e.target.value)} className="!h-8 !w-52 !text-[11px]" placeholder="سبب العودة" />
-                    <TInput type="date" value={fuDate} onChange={(e) => setFuDate(e.target.value)} className="!h-8 !w-36 !text-[11px]" />
+                    <DateInput value={fuDate} onChange={setFuDate} className="!h-8 !w-32 !text-[11px]" />
                   </div>
                 ) : (
                   <p className="text-[10px] text-soft mt-0.5">
@@ -1091,11 +1091,10 @@ function WorkPlanSection({
                         />
                       </td>
                       <td className="td !py-2">
-                        <input
-                          type="date"
+                        <DateInput
                           value={s.date}
-                          onChange={(e) => updateStage(s.id, { date: e.target.value })}
-                          className="text-soft stat-num bg-transparent border border-transparent hover:border-line focus:border-jade focus:bg-white rounded-md px-2 py-1 outline-none transition-all cursor-pointer"
+                          onChange={(iso) => updateStage(s.id, { date: iso })}
+                          className="!h-8 !w-32 !text-[11px] !bg-transparent !border-transparent hover:!border-line focus:!border-jade"
                           aria-label="التاريخ المقرر"
                         />
                       </td>
@@ -1839,7 +1838,7 @@ function ImplantModal({ patientId, tooth, onClose }: { patientId: string; tooth?
           </TSelect>
         </Field>
         <Field label="التاريخ">
-          <TInput type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+          <DateInput value={date} onChange={setDate} />
         </Field>
         <div className="col-span-2">
           <Field label="ملاحظات جراحية">
@@ -1944,7 +1943,7 @@ function ProstheticModal({ patientId, onClose }: { patientId: string; onClose: (
           </TSelect>
         </Field>
         <Field label="التاريخ">
-          <TInput type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+          <DateInput value={date} onChange={setDate} />
         </Field>
       </div>
       {err && <p className="mt-3 text-xs font-bold text-coral bg-coral-soft rounded-lg px-3 py-2.5 anim-pop">{err}</p>}
@@ -2045,10 +2044,10 @@ function OrthoModal({ patientId, initial, onClose }: { patientId: string; initia
           </TSelect>
         </Field>
         <Field label="تاريخ البدء">
-          <TInput type="date" value={started} onChange={(e) => setStarted(e.target.value)} />
+          <DateInput value={started} onChange={setStarted} />
         </Field>
         <Field label="موعد الشد القادم">
-          <TInput type="date" value={nextAdjust} onChange={(e) => setNextAdjust(e.target.value)} />
+          <DateInput value={nextAdjust} onChange={setNextAdjust} />
         </Field>
         <div className="col-span-2">
           <Field label={`التقدم العلاجي — ${progress}%`}>
@@ -2192,7 +2191,7 @@ function XrayModal({ patientId, onClose }: { patientId: string; onClose: () => v
           </TSelect>
         </Field>
         <Field label="التاريخ">
-          <TInput type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+          <DateInput value={date} onChange={setDate} />
         </Field>
         <div className="col-span-2">
           <Field label="التقرير الشعاعي *">
