@@ -241,6 +241,14 @@ export interface Service {
   color: string;
   active: boolean;
 }
+
+/** هل الفئة من فئات الكشف/التشخيص/الاستشارة؟ */
+export const isConsultCategory = (cat: string): boolean => /تشخيص|كشف|استشار/.test(cat ?? "");
+
+/** خدمة الكشف/الاستشارة المفعّلة الأولى — تُثبَّت تلقائياً عند الحجز */
+export const consultServiceOf = (services: Service[]): Service | null =>
+  services.find((s) => s.active && isConsultCategory(s.category)) ?? null;
+
 export interface Appointment {
   id: string;
   patientId: string;
@@ -1384,6 +1392,23 @@ function reducer(db: DB, action: Action): DB {
     /* ---------- جلسات العلاج ---------- */
     case "START_SESSION": {
       if (db.sessions.some((x) => x.status === "open")) return db;
+      const firstStage = { id: uid(), name: "الجلسة الأولى", date: today(0), done: false };
+      // خدمة الكشف/الاستشارة المحجوزة مع الموعد تُدرَج تلقائياً في الإجراءات المنفذة
+      const appt = action.apptId ? db.appointments.find((a) => a.id === action.apptId) : undefined;
+      const bookedSvc = appt ? db.services.find((s) => s.id === appt.serviceId) : undefined;
+      const autoProc: SessionProc[] =
+        bookedSvc && isConsultCategory(bookedSvc.category)
+          ? [{
+              id: uid(),
+              category: bookedSvc.category,
+              name: bookedSvc.name,
+              serviceId: bookedSvc.id,
+              price: bookedSvc.price,
+              teeth: [],
+              detail: bookedSvc.name,
+              stageId: firstStage.id,
+            }]
+          : [];
       const sess: ClinicalSession = {
         id: uid(),
         patientId: action.patientId,
@@ -1394,10 +1419,10 @@ function reducer(db: DB, action: Action): DB {
         status: "open",
         complaint: "",
         diagnosis: "",
-        procedures: [],
+        procedures: autoProc,
         teethTreated: [],
         workItems: [],
-        stages: [{ id: uid(), name: "الجلسة الأولى", date: today(0), done: false }],
+        stages: [firstStage],
         meds: [],
         medNotes: "",
         summary: "",
