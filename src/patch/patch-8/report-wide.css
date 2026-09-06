@@ -1,0 +1,66 @@
+/* ============================================================
+   الحزمة الثامنة — عرض التقارير الأوسع والأكثر احترافية
+   ألحق هذا الملف في نهاية src/index.css
+   ============================================================ */
+
+/* ====== إطار التقرير الواسع ====== */
+.report-wide {
+  width: 100%;
+  max-width: none;
+}
+
+/* رفع بطاقات التقارير وإبرازها */
+.report-wide .card {
+  border-radius: 16px;
+  box-shadow: 0 1px 3px rgba(19, 42, 64, 0.06), 0 8px 24px -12px rgba(10, 43, 71, 0.14);
+}
+
+/* ====== ترويسة التقرير الكبيرة ====== */
+.report-hero {
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(120deg, #ffffff 60%, rgba(18, 115, 196, 0.05) 100%);
+}
+.report-hero::after {
+  content: "";
+  position: absolute;
+  inset-inline-end: -40px;
+  top: -40px;
+  width: 220px;
+  height: 220px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(18, 115, 196, 0.08), transparent 70%);
+  pointer-events: none;
+}
+
+/* ====== جداول التقارير — صفوف أوسع وأوضح ====== */
+.report-table {
+  border-collapse: collapse;
+}
+.report-table th {
+  padding-top: 14px;
+  padding-bottom: 14px;
+  font-size: 12px;
+  letter-spacing: 0.02em;
+}
+.report-table td {
+  padding-top: 13px;
+  padding-bottom: 13px;
+  font-size: 14px;
+}
+
+/* ====== بطاقات المؤشرات أطول ====== */
+.report-wide .stat-num.text-3xl {
+  font-size: 2rem;
+}
+
+/* ====== عند الطباعة: نظّف الظلال والحواف ====== */
+@media print {
+  .report-wide .card {
+    box-shadow: none !important;
+    border-color: #d5e2ee !important;
+  }
+  .report-hero::after {
+    display: none;
+  }
+}

@@ -3,3 +3,25 @@ node_modules/
 dist/
 build/
 *.log
+# Environment / Secrets
+.env
+.env.*
+!.env.example
+
+# Node.js
+node_modules/
+
+# Build output
+dist/
+build/
+
+# Logs
+*.log
+
+# Local configuration
+hosts
+
+*.bat
+step.txt
+server/delete-all-sessions.js
+_backups/
