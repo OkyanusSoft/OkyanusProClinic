@@ -206,3 +206,103 @@ export async function checkDb(): Promise<{ stage: DbCheckStage; error?: string; 
     clearTimeout(timer);
   }
 }
+
+/* ============================ جلسات العلاج (Sessions) ============================ */
+
+/** حفظ جلسة واحدة في MySQL */
+export async function saveSession(session: any): Promise<{ ok: boolean; error?: string }> {
+  const { status, body } = await reqWithBody<{ ok?: boolean; error?: string }>("/api/sessions", {
+    method: "POST",
+    body: JSON.stringify(session),
+  });
+  if (status === 0) return { ok: false, error: "تعذّر الوصول إلى الخادم" };
+  if (status >= 200 && status < 300) return { ok: true };
+  return { ok: false, error: body?.error ?? `فشل الحفظ (HTTP ${status})` };
+}
+
+/** حفظ جميع الجلسات (دفعة واحدة) */
+export async function saveSessions(sessions: any[]): Promise<{ ok: boolean; error?: string }> {
+  const { status, body } = await reqWithBody<{ ok?: boolean; error?: string }>("/api/sessions/batch", {
+    method: "POST",
+    body: JSON.stringify({ sessions }),
+  });
+  if (status === 0) return { ok: false, error: "تعذّر الوصول إلى الخادم" };
+  if (status >= 200 && status < 300) return { ok: true };
+  return { ok: false, error: body?.error ?? `فشل الحفظ (HTTP ${status})` };
+}
+
+/** جلب جميع الجلسات من MySQL */
+export async function fetchSessions(): Promise<any[] | null> {
+  try {
+    const data = await req<{ sessions: any[] }>("/api/sessions");
+    return data?.sessions ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** جلب جلسة واحدة حسب المعرف */
+export async function fetchSessionById(id: string): Promise<any | null> {
+  try {
+    const data = await req<{ session: any }>(`/api/sessions/${id}`);
+    return data?.session ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** حذف جلسة (تحديث deleted = TRUE) */
+ 
+export async function deleteSession(id: string): Promise<{ ok: boolean; error?: string }> {
+  const { status, body } = await reqWithBody<{ ok?: boolean; error?: string }>(`/api/sessions/${id}`, {
+    method: "DELETE",
+  });
+  if (status === 0) return { ok: false, error: "تعذّر الوصول إلى الخادم" };
+  if (status >= 200 && status < 300) return { ok: true };
+  return { ok: false, error: body?.error ?? `فشل الحذف (HTTP ${status})` };
+}
+
+/** تحديث جلسة */
+export async function updateSession(id: string, session: any): Promise<{ ok: boolean; error?: string }> {
+  const { status, body } = await reqWithBody<{ ok?: boolean; error?: string }>(`/api/sessions/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(session),
+  });
+  if (status === 0) return { ok: false, error: "تعذّر الوصول إلى الخادم" };
+  if (status >= 200 && status < 300) return { ok: true };
+  return { ok: false, error: body?.error ?? `فشل التحديث (HTTP ${status})` };
+}
+
+/** حفظ جميع الجلسات دفعة واحدة */
+export async function saveSessionsBatch(sessions: any[]): Promise<{ ok: boolean; error?: string }> {
+    // ✅ تصفية الجلسات المغلقة
+  const openSessions = sessions.filter(s => s.status === "open");
+if (openSessions.length === 0) {
+    return { ok: true };
+  }
+
+  const { status, body } = await reqWithBody<{ ok?: boolean; error?: string }>("/api/sessions/batch", {
+    method: "POST",
+    body: JSON.stringify({ sessions }),
+  });
+  if (status === 0) return { ok: false, error: "تعذّر الوصول إلى الخادم" };
+  if (status >= 200 && status < 300) return { ok: true };
+  return { ok: false, error: body?.error ?? `فشل الحفظ (HTTP ${status})` };
+}
+// src/api.ts - أضف هذه الدالة
+
+/** حفظ staff و supplyMoves في MySQL */
+export async function syncStaffAndMoves(data: {
+  staff: any[];
+  supplyMoves: any[];
+}): Promise<{ ok: boolean; error?: string }> {
+  const { status, body } = await reqWithBody<{ ok?: boolean; error?: string }>("/api/sync/staff", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+  if (status === 0) return { ok: false, error: "تعذّر الوصول إلى الخادم" };
+  if (status >= 200 && status < 300) return { ok: true };
+  return { ok: false, error: body?.error ?? `فشل الحفظ (HTTP ${status})` };
+}
+
+/** حفظ الحالة مع بصمات الحذف */

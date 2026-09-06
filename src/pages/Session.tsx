@@ -69,7 +69,8 @@ import {
 import { Avatar, Badge, DateInput, Drop, DropItem, EmptyState, Field, Modal, Switch, TArea, TInput, TSelect, TwoStepDelete, useToast } from "../components/ui";
 import DentalChart from "../components/DentalChart";
 import { InvoicePrint, PrintModal, RxPrint } from "../components/PrintSheet";
-
+import { PrevWorkReview, ReturnQueueSection } from "../components/ReturnQueue";
+import { deleteSession } from "../api";
 const pad = (n: number) => String(n).padStart(2, "0");
 const FDI = [1, 2, 4, 3].flatMap((q) => Array.from({ length: 8 }, (_, i) => q * 10 + i + 1));
 
@@ -122,6 +123,9 @@ export default function SessionPage() {
   }, [apptScope]);
 
   const open = db.sessions.find((s) => s.status === "open");
+ // ====== داخل المكون ======
+ // في أعلى المكون
+const [forceUpdate, setForceUpdate] = useState(0);
 
   const queue = useMemo(
     () =>
@@ -136,13 +140,14 @@ export default function SessionPage() {
     [db.sessions]
   );
 
-  const start = (patientId: string, apptId?: string) => {
+ const start = (patientId: string, apptId?: string, fromFuId?: string) =>  {
     if (open) {
       push("warn", "توجد جلسة علاج مفتوحة بالفعل", "أنهِ جلسة المريض الحالي أولاً قبل إدخال مريض آخر.");
       return;
     }
-    dispatch({ type: "START_SESSION", patientId, doctorId, apptId });
+   dispatch({ type: "START_SESSION", patientId, doctorId, apptId, fromFuId });
     push("success", "بدأت الجلسة — المريض داخل الغرفة", patientById(patientId)?.name);
+ 
   };
 
   return (
@@ -186,14 +191,14 @@ export default function SessionPage() {
         <>
           {/* الجلسة المفتوحة */}
           {open ? (
-            <Workstation key={open.id} session={open} />
+            <Workstation key={open.id+ forceUpdate} session={open} />
           ) : (
             <div className="card p-4 flex items-center gap-3 bg-jade-soft/60 !border-jade/30 anim-fade">
               <span className="inline-flex items-center justify-center w-9 h-9 rounded-lg bg-jade text-white shrink-0"><IconPulse className="w-5 h-5" /></span>
               <p className="text-sm text-jade-deep font-semibold">الغرفة جاهزة — اختر مريضاً من قائمة الانتظار أدناه لبدء جلسة العلاج.</p>
             </div>
           )}
-
+<div className="grid xl:grid-cols-2 gap-5 items-start">
       {/* قائمة الانتظار */}
       <section className="anim-rise" style={{ animationDelay: "120ms" }}>
         <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
@@ -221,15 +226,15 @@ export default function SessionPage() {
               const meta = APPT_META[a.status];
               const allergy = p?.allergies && p.allergies !== "لا يوجد";
               return (
-                <div key={a.id} className="card card-hover p-4 anim-rise" style={{ animationDelay: `${160 + i * 60}ms`, borderInlineStartWidth: 4, borderInlineStartColor: s?.color }}>
+                <div key={a.id} className="card card-hover p-5 anim-rise" style={{ animationDelay: `${160 + i * 60}ms`, borderInlineStartWidth: 4, borderInlineStartColor: s?.color }}>
                   <div className="flex items-center gap-3">
                     <Avatar name={p?.name ?? "؟"} size="w-11 h-11 text-sm" />
-                    <div className="flex-1 min-w-0">
-                      <p className="font-bold text-sm text-ink truncate flex items-center gap-1.5">
+                    <div className="flex-1">
+                      <p className="font-bold text-sm text-ink  flex items-center gap-1.5">
                         {p?.name}
                         {allergy && <span title={`حساسية: ${p?.allergies}`}><IconAlert className="w-4 h-4 text-amber" /></span>}
                       </p>
-                      <p className="text-[11px] text-soft mt-0.5 truncate">{s?.name} · {d?.name}</p>
+                      <p className="text-[11px] text-soft mt-0.5 ">{s?.name} · {d?.name}</p>
                     </div>
                     <span className="stat-num font-display text-2xl text-jade-deep">{a.time}</span>
                   </div>
@@ -248,13 +253,18 @@ export default function SessionPage() {
                       دخول المريض
                     </button>
                   </div>
+               
                 </div>
+               
               );
             })}
           </div>
         )}
       </section>
-
+     
+  {/* قائمة العودات — جاهزون للدخول */}
+  <ReturnQueueSection onEnter={(pid, fuId) => start(pid, undefined, fuId)} />
+</div>
       {/* جلسات اليوم المكتملة */}
       <section className="anim-rise" style={{ animationDelay: "220ms" }}>
         <h2 className="font-display font-bold text-lg text-ink flex items-center gap-2.5 mb-3">
@@ -380,13 +390,16 @@ function Workstation({ session, readonly = false, onExit }: { session: ClinicalS
   const money = useMoney();
   const { push } = useToast();
   const p = patientById(session.patientId);
+  
   const [tab, setTab] = useState<WTab>("treatment");
   const [paid, setPaid] = useState("0");
-  const [fuEnabled, setFuEnabled] = useState(true);
+  const [fuEnabled, setFuEnabled] = useState(false);
   const [fuReason, setFuReason] = useState("");
   const [fuDate, setFuDate] = useState("");
   const [armCancel, setArmCancel] = useState(false);
-
+  // ✅ أضف هذا السطر بعدهم
+const [overrideTotal, setOverrideTotal] = useState("");
+const [forceUpdate, setForceUpdate] = useState<number>(0); // ← أضف هذا
   const now = useNowTick(readonly ? 0 : 1000);
   const elapsed = readonly
     ? Math.max(0, new Date(session.endedAt ?? session.startedAt).getTime() - new Date(session.startedAt).getTime())
@@ -413,9 +426,12 @@ function Workstation({ session, readonly = false, onExit }: { session: ClinicalS
   );
   const mergedTeeth = { ...p?.teeth, ...pendingTeeth };
 
-  const total = session.procedures.reduce((s, pr) => s + pr.price * Math.max(1, pr.teeth.length), 0);
-  const paidNum = Math.min(Math.max(0, Number(paid) || 0), total);
-  const remaining = total - paidNum;
+ // ✅ استبدله بـ:
+const computedTotal = session.procedures.reduce((s, pr) => s + pr.price * Math.max(1, pr.teeth.length), 0);
+const hasOverride = overrideTotal.trim() !== "" && Number(overrideTotal) >= 0;
+const total = hasOverride ? Number(overrideTotal) : computedTotal;
+const paidNum = Math.min(Math.max(0, Number(paid) || 0), total);
+const remaining = total - paidNum;
 
   /* اقتراح عودة المتابعة حسب الإجراءات المنفذة */
   const suggestion = useMemo(
@@ -483,7 +499,15 @@ function Workstation({ session, readonly = false, onExit }: { session: ClinicalS
         },
       });
     }
-    dispatch({ type: "END_SESSION", id: session.id, paid: paidNum, fuId });
+     // ✅ حساب الخصم النقدي
+  const calcTotal = session.procedures.reduce(
+    (s, pr) => s + pr.price * Math.max(1, pr.teeth.length),
+    0
+  );
+  const cashDiscount = Math.max(0, calcTotal - total); // total هو 
+    dispatch({ type: "END_SESSION", id: session.id, paid: paidNum, fuId, cashDiscount });
+      // ✅ حذف الجلسة من MySQL مباشرة
+  deleteSession(session.id).catch(() => {});
     push(
       "success",
       "انتهت الجلسة — خرج المريض",
@@ -495,11 +519,28 @@ function Workstation({ session, readonly = false, onExit }: { session: ClinicalS
     );
   };
 
-  const cancel = () => {
-    dispatch({ type: "CANCEL_SESSION", id: session.id });
-    push("info", "أُلغيت الجلسة", "أُعيد الموعد إلى قائمة الانتظار دون أي تغييرات.");
-  };
 
+// تتبع تغييرات الجلسات
+useEffect(() => {
+  // تحديث عند تغير الجلسات
+}, [db.sessions]);
+
+ const cancel = () => {
+  if (!armCancel) {
+    setArmCancel(true);
+    return;
+  }
+  
+  // إلغاء الجلسة (ستحذف من localStorage و MySQL)
+  dispatch({ type: "CANCEL_SESSION", id: session.id });
+   // ✅ حذف الجلسة من MySQL مباشرة
+  deleteSession(session.id).catch(() => {});
+  push("info", "أُلغيت الجلسة", "تم حذف الجلسة من النظام وقاعدة البيانات.");
+  setArmCancel(false);
+};
+
+
+ 
   if (!p) return null;
   const hasAllergy = p.allergies && p.allergies !== "لا يوجد";
 
@@ -567,7 +608,10 @@ function Workstation({ session, readonly = false, onExit }: { session: ClinicalS
           </p>
         )}
       </div>
-
+{/* وضع العودة — سجل الأعمال السابقة */}
+{session.fromFuId && (
+  <PrevWorkReview patientId={session.patientId} fuId={session.fromFuId} />
+)}
       {/* شريط التبويبات */}
       <div className="px-5 pt-4 pb-0 bg-mist/50 border-b border-line">
         <div className="flex gap-1.5 overflow-x-auto pb-3 -mx-1 px-1" role="tablist">
@@ -627,10 +671,38 @@ function Workstation({ session, readonly = false, onExit }: { session: ClinicalS
       <div className="border-t border-line bg-white px-5 py-4">
         <div className="flex flex-wrap items-center gap-4">
           <div className="flex items-center gap-5">
-            <div>
-              <p className="text-[10px] font-bold text-soft">إجمالي جلسة اليوم</p>
-              <p className="stat-num text-2xl text-ink leading-tight">{money(total)}</p>
-            </div>
+         <div>
+  <p className="text-[11px] font-bold text-soft flex items-center gap-2">
+    إجمالي الجلسة
+    {hasOverride && (
+      <button
+        onClick={() => setOverrideTotal("")}
+        className="text-[10px] font-bold text-jade-deep underline underline-offset-2 cursor-pointer"
+        title="استعادة الإجمالي المحسوب من الإجراءات"
+      >
+        استعادة المحسوب
+      </button>
+    )}
+  </p>
+  <div className="flex items-baseline gap-1.5">
+    <input
+      value={hasOverride ? overrideTotal : String(computedTotal)}
+      onChange={(e) => setOverrideTotal(e.target.value.replace(/[^\d]/g, ""))}
+      inputMode="numeric"
+      dir="ltr"
+      className="stat-num text-2xl font-bold text-ink bg-transparent border-b-2 border-dashed border-jade/40 w-32 outline-none focus:border-jade text-end"
+    />
+    <span className="text-xs font-bold text-soft">ر.ي</span>
+  </div>
+  {hasOverride && Number(overrideTotal) !== computedTotal && (
+    <p className="text-[10px] text-soft mt-1">
+      المحسوب من الإجراءات: <b className="stat-num">{money(computedTotal)}</b>
+      {Number(overrideTotal) < computedTotal && (
+        <span className="text-mint font-bold ms-1.5">خصم {money(computedTotal - Number(overrideTotal))}</span>
+      )}
+    </p>
+  )}
+</div>
             <span className="chip bg-mist text-soft stat-num">{session.procedures.length} إجراء</span>
             {session.teethTreated.length > 0 && (
               <span className="chip bg-amber-soft text-[#a06410]">{session.teethTreated.length} تعديل أسنان معلّق</span>
@@ -726,6 +798,10 @@ function WorkPlanSection({
   const [typing, setTyping] = useState(false);
   const [copied, setCopied] = useState(false);
   const typeTimer = useRef<number | null>(null);
+
+  // ✅ أضف بعدهم
+const [addedFlash, setAddedFlash] = useState(0);
+const [addedCount, setAddedCount] = useState(0);
   useEffect(() => () => { if (typeTimer.current) window.clearTimeout(typeTimer.current); }, []);
 
   const toothLabel = (n: number) => (dentitionOf(age) === "child" ? "ABCDE"[(n % 10) - 1] : String(n));
@@ -890,6 +966,7 @@ function WorkPlanSection({
     };
     patch({ procedures: [...session.procedures, proc] });
     push("success", `أُضيف «${name}» إلى الإجراءات`, `${selection.length ? selection.length + " سن · " : ""}${money(priceNum)} — ${stageName(stageId)}`);
+    /*
     setSelection([]);
     setSelectedServiceId(null);
     setCustomName("");
@@ -899,6 +976,10 @@ function WorkPlanSection({
     setColor("");
     setWireNum("");
     setLigature("");
+    */
+   // ✅ استبدلها بـ:
+setAddedFlash(Date.now());
+setAddedCount((c) => c + 1);
   };
 
   const setCanal = (tooth: number, field: "channels" | "length", v: number) =>
@@ -1002,6 +1083,14 @@ function WorkPlanSection({
             {mode === "child" ? "أسنان لبنية A–E" : "أسنان دائمة FDI"} · حسب العمر
           </span>
         </h3>
+
+   
+{addedCount > 0 && (
+  <span key={addedFlash} className="chip bg-mint-soft text-[#1d6b47] anim-pop !py-1">
+    <IconCheck className="w-3.5 h-3.5" />
+    أُضيفت إلى الإجراءات{addedCount > 1 ? ` (${addedCount}×)` : ""}
+  </span>
+)}
         {session.procedures.length > 0 && (
           <span className="chip bg-amber-soft text-[#a06410]">
             <IconClock className="w-3.5 h-3.5" />
@@ -1531,6 +1620,7 @@ function TreatmentTab(props: {
   const { patientById } = useStore();
   const { session, patch } = props;
   const p = patientById(session.patientId);
+  
 
   /* مخطط العمل السريري — يحوي: الخريطة، مراحل الجلسات، الفحص والتشخيص، تقرير العمل، الإجراءات (الأخيرة) */
   return (

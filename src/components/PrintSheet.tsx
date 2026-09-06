@@ -161,6 +161,8 @@ export function InvoicePrint({ inv }: { inv: Invoice }) {
   const p = patientById(inv.patientId);
   const total = invoiceTotal(inv);
   const rem = Math.max(0, total - inv.paid);
+  // ✅ أضف هذا السطر بعده مباشرة
+const gross = inv.items.reduce((s, i) => s + i.qty * i.price, 0);
   return (
     <div className="text-ink">
       <div className="flex items-center justify-between py-4">
@@ -205,18 +207,48 @@ export function InvoicePrint({ inv }: { inv: Invoice }) {
         </tbody>
       </table>
       <div className="flex justify-end mt-4">
-        <div className="w-72 text-sm space-y-1.5">
-          {inv.discount ? (
-            <>
-              <div className="flex justify-between"><span className="text-soft">الإجمالي قبل الخصم:</span><b className="stat-num">{money(total / (1 - inv.discount / 100))}</b></div>
-              <div className="flex justify-between text-[#a06410]"><span>الخصم ({inv.discount}%):</span><b className="stat-num">− {money(total / (1 - inv.discount / 100) - total)}</b></div>
-            </>
-          ) : null}
-          <div className="flex justify-between"><span className="text-soft">الإجمالي المستحق:</span><b className="stat-num">{money(total)}</b></div>
-          <div className="flex justify-between text-mint"><span>المدفوع:</span><b className="stat-num">{money(inv.paid)}</b></div>
-          <div className="flex justify-between border-t-2 border-pine pt-1.5 text-base"><span className="font-bold">المتبقي:</span><b className="stat-num text-coral">{money(rem)}</b></div>
-          <div className="flex justify-between text-[11px] pt-1"><span className="text-soft">طريقة الدفع:</span><b>{PAY_METHODS[inv.method ?? "cash"]}</b></div>
-        </div>
+     <div className="w-72 text-sm space-y-1.5">
+  {inv.discount ? (
+    <>
+      <div className="flex justify-between">
+        <span className="text-soft">الإجمالي قبل الخصم:</span>
+        <b className="stat-num">{money(gross)}</b>
+      </div>
+      <div className="flex justify-between text-[#a06410]">
+        <span>الخصم ({inv.discount}%):</span>
+        <b className="stat-num">− {money(gross - gross * (1 - inv.discount / 100))}</b>
+      </div>
+    </>
+  ) : null}
+  
+  {/* ✅ سطر الخصم النقدي - أضفه هنا */}
+  {inv.cashDiscount ? (
+    <div className="flex justify-between text-[#a06410]">
+      <span>خصم نقدي:</span>
+      <b className="stat-num">− {money(inv.cashDiscount)}</b>
+    </div>
+  ) : null}
+  
+  <div className="flex justify-between border-t border-line pt-1.5">
+    <span className="font-bold">الإجمالي المستحق:</span>
+    <b className="stat-num">{money(total)}</b>
+  </div>
+  <div className="flex justify-between text-mint">
+    <span>المدفوع:</span>
+    <b className="stat-num">{money(inv.paid)}</b>
+  </div>
+  {rem > 0 && (
+    <div className="flex justify-between border-t-2 border-pine pt-1.5 text-base">
+      <span className="font-bold">المتبقي:</span>
+      <b className="stat-num text-coral">{money(rem)}</b>
+    </div>
+  )}
+  <div className="flex justify-between text-[11px] pt-1">
+    <span className="text-soft">طريقة الدفع:</span>
+    <b>{PAY_METHODS[inv.method ?? "cash"]}</b>
+  </div>
+</div>
+
       </div>
       <p className="text-[10px] text-soft mt-5 leading-relaxed">{clinic.invoiceFooter}</p>
     </div>

@@ -26,9 +26,10 @@ CREATE TABLE IF NOT EXISTS staff (
   id    VARCHAR(32) PRIMARY KEY,
   name  VARCHAR(120) NOT NULL,
   role  VARCHAR(80),
-  phone VARCHAR(32)
+  phone VARCHAR(32),
+  active TINYINT(1) DEFAULT 1,
+  notes TEXT
 );
-
 CREATE TABLE IF NOT EXISTS patients (
   id        VARCHAR(32) PRIMARY KEY,
   name      VARCHAR(140) NOT NULL,
@@ -171,6 +172,37 @@ CREATE TABLE IF NOT EXISTS item_cats (
 CREATE TABLE IF NOT EXISTS expense_cats (
   name VARCHAR(80) PRIMARY KEY,
   sort INT DEFAULT 0
+);
+
+ CREATE TABLE sessions (
+  id VARCHAR(20) PRIMARY KEY,
+  patientId VARCHAR(20),
+  doctorId VARCHAR(20),
+  apptId VARCHAR(20),
+  DATE DATE,
+  startedAt DATETIME,
+  endedAt DATETIME,
+  STATUS ENUM('open', 'done'),
+  complaint TEXT,
+  diagnosis TEXT,
+  procedures JSON,
+  teethTreated JSON,
+  workItems JSON,
+  stages JSON,
+  meds JSON,
+  medNotes TEXT,
+  summary TEXT,
+  invoiceId VARCHAR(20),
+  rxId VARCHAR(20),
+  fuId VARCHAR(20),
+  fromFuId VARCHAR(20),
+  updatedAt BIGINT,
+  createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+  deleted BOOLEAN DEFAULT FALSE,
+  INDEX idx_patientId (patientId),
+  INDEX idx_doctorId (doctorId),
+  INDEX idx_date (DATE),
+  INDEX idx_status (STATUS)
 );
 
 -- ============================ السجلات السريرية ============================

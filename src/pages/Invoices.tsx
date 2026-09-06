@@ -12,7 +12,7 @@ import {
   type Invoice,
 } from "../store";
 import { IconPlus, IconPrinter, IconReceipt, IconTrash, IconWallet } from "../icons";
-import { AnimatedNumber, Avatar, Badge, EmptyState, Field, Modal, TInput, TSelect, useToast } from "../components/ui";
+import { AnimatedNumber, Avatar, Badge, EmptyState, Field, Modal, TInput, TSelect, useToast ,TwoStepDelete} from "../components/ui";
 import { InvoicePrint, PrintModal } from "../components/PrintSheet";
 
 export default function InvoicesPage() {
@@ -132,6 +132,13 @@ export default function InvoicesPage() {
                       <td className="td">
                         <span className="stat-num font-bold text-ink block">{money(total)}</span>
                         {inv.discount ? <span className="chip bg-amber-soft text-[#a06410] !py-0.5 mt-1">خصم {inv.discount}%</span> : null}
+                       {/* ✅ أضف هذا السطر */}
+  {inv.cashDiscount ? (
+    <span className="chip bg-amber-soft text-[#a06410] !py-0.5 mt-1">
+      خصم نقدي −{money(inv.cashDiscount)}
+    </span>
+  ) : null}
+                      
                       </td>
                       <td className="td">
                         {rem > 0 ? <span className="stat-num font-bold text-coral">{money(rem)}</span> : <span className="text-mint font-bold text-xs">—</span>}
@@ -140,23 +147,30 @@ export default function InvoicesPage() {
                         <Badge cls={INV_META[st].cls}>{INV_META[st].label}</Badge>
                         <span className="chip bg-mist text-soft mt-1.5 !py-0.5">{PAY_METHODS[inv.method ?? "cash"]}</span>
                       </td>
-                      <td className="td">
-                        <div className="flex items-center gap-1.5">
-                          {rem > 0 && (
-                            <button onClick={() => setPayInv(inv)} className="text-[11px] font-bold text-white bg-jade hover:bg-jade-deep rounded-lg px-3 py-2 cursor-pointer transition-colors">
-                              تحصيل
-                            </button>
-                          )}
-                          <button
-                            onClick={() => setPrintInv(inv)}
-                            className="icon-btn !w-8 !h-8"
-                            aria-label="طباعة"
-                            title="طباعة الفاتورة"
-                          >
-                            <IconPrinter className="w-4 h-4" />
-                          </button>
-                        </div>
-                      </td>
+                    <td className="td">
+  <div className="flex items-center gap-1.5">
+    {rem > 0 && (
+      <button onClick={() => setPayInv(inv)} className="text-[11px] font-bold text-white bg-jade hover:bg-jade-deep rounded-lg px-3 py-2 cursor-pointer transition-colors">
+        تحصيل
+      </button>
+    )}
+    <button
+      onClick={() => setPrintInv(inv)}
+      className="icon-btn !w-8 !h-8 hover:!bg-jade-soft hover:!text-jade-deep"
+      aria-label="طباعة"
+      title="طباعة الفاتورة"
+    >
+      <IconPrinter className="w-4 h-4" />
+    </button>
+    {/* ✅ زر حذف الفاتورة */}
+    <TwoStepDelete
+      onConfirm={() => {
+        dispatch({ type: "DELETE_INVOICE", id: inv.id });
+        push("warn", "حُذفت الفاتورة نهائياً", `الفاتورة ${inv.number} أُزيلت من النظام.`);
+      }}
+    />
+  </div>
+</td>
                     </tr>
                   );
                 })}

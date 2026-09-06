@@ -436,4 +436,145 @@ body {
 .tooth-btn { transform-box: fill-box; transform-origin: center; transition: transform 0.15s ease; cursor: pointer; }
 .tooth-btn:hover { transform: scale(1.05); }
 
-input[type="number"]::-webkit-inner-spin-button { opacity: 0.4; }
+input[type="number"]::-webkit-inner-spin-button { opacity: 0.4; 
+
+}
+
+
+
+/* ====== إطار التقرير الواسع ====== */
+.report-wide {
+  width: 100%;
+  max-width: none;
+}
+
+/* رفع بطاقات التقارير وإبرازها */
+.report-wide .card {
+  border-radius: 16px;
+  box-shadow: 0 1px 3px rgba(19, 42, 64, 0.06), 0 8px 24px -12px rgba(10, 43, 71, 0.14);
+}
+
+/* ====== ترويسة التقرير الكبيرة ====== */
+.report-hero {
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(120deg, #ffffff 60%, rgba(18, 115, 196, 0.05) 100%);
+}
+.report-hero::after {
+  content: "";
+  position: absolute;
+  inset-inline-end: -40px;
+  top: -40px;
+  width: 220px;
+  height: 220px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(18, 115, 196, 0.08), transparent 70%);
+  pointer-events: none;
+}
+
+/* ====== جداول التقارير — صفوف أوسع وأوضح ====== */
+.report-table {
+  border-collapse: collapse;
+}
+.report-table th {
+  padding-top: 14px;
+  padding-bottom: 14px;
+  font-size: 12px;
+  letter-spacing: 0.02em;
+}
+.report-table td {
+  padding-top: 13px;
+  padding-bottom: 13px;
+  font-size: 14px;
+}
+
+/* ====== بطاقات المؤشرات أطول ====== */
+.report-wide .stat-num.text-3xl {
+  font-size: 2rem;
+}
+
+/* ====== عند الطباعة: نظّف الظلال والحواف ====== */
+@media print {
+  .report-wide .card {
+    box-shadow: none !important;
+    border-color: #d5e2ee !important;
+  }
+  .report-hero::after {
+    display: none;
+  }
+}
+
+
+/* ====== توسيع عرض التقارير ====== */
+.report-wide {
+  max-width: 100% !important;
+  padding-left: 1.5rem;
+  padding-right: 1.5rem;
+}
+
+.report-wide .card {
+  width: 100% !important;
+  overflow-x: auto;
+}
+
+.report-wide table {
+  width: 100% !important;
+  min-width: 100% !important;
+}
+
+.report-wide .th,
+.report-wide .td {
+  padding: 0.75rem 1.25rem !important;
+  white-space: nowrap;
+}
+
+/* ====== تحسين عرض الجداول ====== */
+.report-table {
+  width: 100% !important;
+  border-collapse: collapse;
+}
+
+.report-table th {
+  padding: 14px 20px !important;
+  font-size: 12px;
+  letter-spacing: 0.02em;
+  text-align: right;
+  background: #f8fafb;
+  border-bottom: 2px solid #e5edf2;
+}
+
+.report-table td {
+  padding: 13px 20px !important;
+  font-size: 14px;
+  border-bottom: 1px solid #eef2f5;
+}
+
+/* ====== للشاشات الصغيرة ====== */
+@media (max-width: 768px) {
+  .report-wide {
+    padding-left: 0.75rem;
+    padding-right: 0.75rem;
+  }
+  
+  .report-wide .th,
+  .report-wide .td {
+    padding: 0.5rem 0.75rem !important;
+    font-size: 0.75rem;
+  }
+}
+
+/* ====== عند الطباعة ====== */
+@media print {
+  .report-wide {
+    padding: 0 !important;
+  }
+  .report-wide .card {
+    box-shadow: none !important;
+    border-color: #d5e2ee !important;
+  }
+  .report-hero::after {
+    display: none;
+  }
+}
+
+ 

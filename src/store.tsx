@@ -5,9 +5,11 @@ import {
   ping,
   pollState,
   saveState,
+  saveSession, updateSession, deleteSession, fetchSessions,saveSessionsBatch ,syncStaffAndMoves, // ← أضف هذا
   type ActivityEvent,
 } from "./api";
-
+// في أعلى الملف، تأكد من الاستيراد
+ 
 /* ============================== الهوية المحلية للجهاز ============================== */
 
 export function getDeviceId(): string {
@@ -36,6 +38,11 @@ export function setDeviceLabel(v: string) {
     /* تجاهل */
   }
 }
+
+
+
+ 
+
 
 /* ============================== سجل أحداث النشاط ============================== */
 
@@ -179,6 +186,9 @@ function queueActionEvent(a: Action, db: DB) {
     case "ADD_PROSTHETIC": add("إضافة", "المرضى", `سجّل تركيباً للمريض: ${pname(a.r.patientId)}`); break;
     case "ADD_ORTHO": add("إضافة", "المرضى", `فتح حالة تقويم للمريض: ${pname(a.r.patientId)}`); break;
     case "ADD_XRAY": add("إضافة", "المرضى", `أرفق أشعة للمريض: ${pname(a.r.patientId)}`); break;
+    case "UPDATE_SUPPLY_MOVE": add("تعديل", "المخزون", "عدّل حركة مخزنية"); break;
+   case "DELETE_SUPPLY_MOVE": add("حذف", "المخزون", "حذف حركة مخزنية", "supplyMoves", a.id); break;
+ 
     case "PATCH_SESSION":
     case "UPDATE_ORTHO":
     case "UPDATE_USER":
@@ -275,6 +285,7 @@ export interface Invoice {
   paid: number;
   discount?: number;
   method?: string;
+    cashDiscount?: number;   // ★ أضف هذا السطر
 }
 export interface Activity {
   id: string;
@@ -353,6 +364,9 @@ export interface ClinicalSession {
   invoiceId?: string;
   rxId?: string;
   fuId?: string; // العودة المرتبطة بالجلسة
+   /** العودة التي فُتحت منها الجلسة (وضع المتابعة) */
+  fromFuId?: string; // ← أضف هذا السطر
+    deleted?: boolean; // ← أضف هذا السطر
 }
 
 /* ============================== خطة العمل السريرية ============================== */
@@ -560,8 +574,35 @@ export const PERMISSIONS: { key: string; label: string; desc: string; scope?: bo
   { key: "guide", label: "دليل المستخدم", desc: "شرح شاشات النظام" },
   { key: "scope_all_patients", label: "كل المرضى", desc: "رؤية جميع ملفات المرضى — بدونها يرى الطبيب مرضاه فقط", scope: true },
   { key: "scope_all_appointments", label: "كل المواعيد", desc: "رؤية جدول مواعيد كل الأطباء — بدونها يرى الطبيب مواعيده فقط", scope: true },
+
 ];
 
+// ============================== صلاحيات التقارير الافتراضية لكل دور ==============================
+
+export const DOCTOR_REPORT_DEFAULTS = [
+  "report:overview",
+  "report:doctors",
+  "report:followups",
+  "report:activity",
+];
+
+export const SECRETARY_REPORT_DEFAULTS = [
+  "report:overview",
+  "report:patients",
+  "report:financial",
+  "report:followups",
+  "report:services",
+  "report:expenses",
+  "report:inventory",
+  "report:activity",
+];
+
+export const ASSISTANT_REPORT_DEFAULTS = [
+  "report:overview",
+  "report:followups",
+  "report:inventory",
+];
+/*
 export const ROLE_META: Record<Role, { label: string; cls: string; color: string; desc: string; defaults: string[] }> = {
   admin: {
     label: "مدير النظام",
@@ -590,6 +631,37 @@ export const ROLE_META: Record<Role, { label: string; cls: string; color: string
     color: "#e2952b",
     desc: "مساعدة الطبيب في الجلسات والملفات",
     defaults: ["appointments", "session", "patients", "inventory", "itemCats", "itemsData", "guide", "scope_all_patients", "scope_all_appointments"],
+  },
+};
+*/
+ export const ROLE_META: Record<Role, { label: string; cls: string; color: string; desc: string; defaults: string[] }> = {
+  admin: {
+    label: "مدير النظام",
+    cls: "bg-pine text-white",
+    color: "#0b2f2b",
+    desc: "وصول كامل لكل الشاشات والإعدادات",
+    defaults: PERMISSIONS.map((p) => p.key),
+  },
+  doctor: {
+    label: "طبيب",
+    cls: "bg-jade-soft text-jade-deep",
+    color: "#1273c4",
+    desc: "يرى مرضاه ومواعيده وجلسات علاجه فقط",
+    defaults: ["dashboard", "appointments", "session", "patients", "reports", "services", "serviceCats", "priceList", "guide", ...DOCTOR_REPORT_DEFAULTS],
+  },
+  secretary: {
+    label: "سكرتارية",
+    cls: "bg-sky-soft text-sky",
+    color: "#2f9fe0",
+    desc: "الاستقبال والحجوزات والفواتير حسب الممنوح",
+    defaults: ["dashboard", "appointments", "patients", "invoices", "services", "serviceCats", "priceList", "inventory", "itemCats", "itemsData", "expenses", "expenseCats", "reports", "guide", "scope_all_patients", "scope_all_appointments", ...SECRETARY_REPORT_DEFAULTS],
+  },
+  assistant: {
+    label: "مساعد طبيب",
+    cls: "bg-amber-soft text-[#a06410]",
+    color: "#e2952b",
+    desc: "مساعدة الطبيب في الجلسات والملفات",
+    defaults: ["appointments", "session", "patients", "inventory", "itemCats", "itemsData", "guide", "scope_all_patients", "scope_all_appointments", ...ASSISTANT_REPORT_DEFAULTS],
   },
 };
 
@@ -628,6 +700,7 @@ export interface DB {
   nextInv: number;
   /** طابع زمن آخر حفظ — للمقارنة بين localStorage و MySQL واختيار الأحدث */
   savedAt?: number;
+    tombstones?: Tombstone[]; // ← أضف هذا
 }
 
 export const CLINIC_NAME = "عيادة د. عبدالله الشرفي";
@@ -810,6 +883,10 @@ export const addMinutes = (time: string, mins: number) => {
 
 export const invoiceTotal = (inv: Invoice) => {
   const gross = inv.items.reduce((s, i) => s + i.qty * i.price, 0);
+    // 1) الخصم النسبي (إن وُجد)
+  const afterPct = gross * (1 - (inv.discount || 0) / 100);
+  // 2) الخصم النقدي الثابت (إن وُجد)
+  const afterCash = afterPct - (inv.cashDiscount || 0);
   return Math.max(0, Math.round(gross * (1 - (inv.discount || 0) / 100)));
 };
 export const PAY_METHODS: Record<string, string> = { cash: "نقداً", card: "بطاقة بنكية", transfer: "حوالة / تحويل" };
@@ -1089,7 +1166,7 @@ function seed(): DB {
   const U = (id: string, name: string, username: string, pin: string, role: Role, linkId: string | undefined, permissions: string[]): User =>
     ({ id, name, username, pin, role, linkId, active: true, permissions });
   const users: User[] = [
-    U("u-admin", "عبدالله الشرفي", "abdullah", "0000", "admin", undefined, ROLE_META.admin.defaults),
+    U("u-admin", "عبدالله الشرفي", "abdullah", "0000", "admin", undefined, ROLE_META.admin.defaults ),
     U("u-d1", "أحمد النجار", "najar", "1111", "doctor", "d1", ROLE_META.doctor.defaults),
     U("u-d2", "سارة الحكيمي", "hakimi", "2222", "doctor", "d2", ROLE_META.doctor.defaults),
     U("u-d3", "خالد باصهيب", "basuhaib", "3333", "doctor", "d3", ROLE_META.doctor.defaults),
@@ -1231,11 +1308,12 @@ export type Action =
   | { type: "SET_DEFAULT_CURRENCY"; code: string }
   | { type: "ADD_EXPENSE"; e: Expense }
   | { type: "DELETE_EXPENSE"; id: string }
+  | { type: "DELETE_INVOICE"; id: string }
   | { type: "ADD_PRESCRIPTION"; rx: Prescription }
   | { type: "DELETE_PRESCRIPTION"; id: string }
-  | { type: "START_SESSION"; patientId: string; doctorId: string; apptId?: string }
+ | { type: "START_SESSION"; patientId: string; doctorId: string; apptId?: string; fromFuId?: string }
   | { type: "PATCH_SESSION"; id: string; patch: Partial<ClinicalSession> }
-  | { type: "END_SESSION"; id: string; paid: number; fuId?: string }
+   | { type: "END_SESSION"; id: string; paid: number; fuId?: string; cashDiscount?: number }
   | { type: "CANCEL_SESSION"; id: string }
   | { type: "IMPORT"; db: DB }
   | { type: "HYDRATE"; db: DB }
@@ -1260,6 +1338,8 @@ export type Action =
   | { type: "ADD_SUPPLY"; item: SupplyItem }
   | { type: "MOVE_SUPPLY"; itemId: string; delta: number; note: string }
   | { type: "DELETE_SUPPLY"; id: string }
+  | { type: "UPDATE_SUPPLY_MOVE"; id: string; delta: number; note: string }
+|   { type: "DELETE_SUPPLY_MOVE"; id: string }
   | { type: "ADD_PLAN"; plan: TreatmentPlan }
   | { type: "UPDATE_PLAN"; plan: TreatmentPlan }
   | { type: "DELETE_PLAN"; id: string }
@@ -1279,6 +1359,8 @@ export type Action =
   | { type: "UPDATE_FOLLOWUP_REASON"; id: string; text: string }
   | { type: "DELETE_FOLLOWUP_REASON"; id: string }
   | { type: "UPDATE_EXPENSE"; e: Expense }
+   | { type: "ADD_TOMBSTONE"; entity: string; id: string }
+  | { type: "DELETE_SESSION"; id: string }
   | { type: "RESET" };
 
 const nowIso = () => new Date().toISOString();
@@ -1345,6 +1427,7 @@ function reducer(db: DB, action: Action): DB {
         activity: [act(`إنشاء فاتورة ${action.inv.number} للمريض ${p?.name ?? ""}`, "invoice"), ...db.activity].slice(0, 30),
       };
     }
+    
     case "PAY_INVOICE": {
       const inv = db.invoices.find((i) => i.id === action.id);
       return {
@@ -1403,7 +1486,11 @@ function reducer(db: DB, action: Action): DB {
       };
     case "DELETE_EXPENSE":
       return { ...db, expenses: db.expenses.filter((e) => e.id !== action.id) };
-    case "UPDATE_EXPENSE":
+    
+    case "DELETE_INVOICE": {
+  return { ...db, invoices: db.invoices.filter((i) => i.id !== action.id) };
+}
+      case "UPDATE_EXPENSE":
       return { ...db, expenses: db.expenses.map((e) => (e.id === action.e.id ? action.e : e)) };
     case "ADD_PRESCRIPTION": {
       const p = db.patients.find((x) => x.id === action.rx.patientId);
@@ -1440,6 +1527,7 @@ function reducer(db: DB, action: Action): DB {
         id: uid(),
         patientId: action.patientId,
         doctorId: action.doctorId,
+        fromFuId: action.fromFuId, // ← أضف هذا السطر
         apptId: action.apptId,
         date: today(0),
         startedAt: nowIso(),
@@ -1453,6 +1541,7 @@ function reducer(db: DB, action: Action): DB {
         meds: [],
         medNotes: "",
         summary: "",
+     
       };
       const appointments = action.apptId
         ? db.appointments.map((a) => (a.id === action.apptId ? { ...a, status: "inprogress" as ApptStatus } : a))
@@ -1485,19 +1574,27 @@ function reducer(db: DB, action: Action): DB {
           qty: Math.max(1, pr.teeth.length),
           price: pr.price,
         }));
-        const total = items.reduce((a, i) => a + i.qty * i.price, 0);
-        const inv: Invoice = {
-          id: uid(),
-          number: `${db.settings.invoicePrefix}-${nextInv}`,
-          patientId: s.patientId,
-          date: today(0),
-          items,
-          paid: Math.min(Math.max(0, action.paid), total),
-        };
-        invoices = [inv, ...invoices];
-        invoiceId = inv.id;
-        invNumber = inv.number;
-        nextInv += 1;
+      // ✅ حساب الإجمالي قبل الخصم
+    const total = items.reduce((a, i) => a + i.qty * i.price, 0);
+    
+    // ✅ الخصم النقدي: لا يتجاوز الإجمالي
+    const cash = Math.min(Math.max(0, action.cashDiscount || 0), total);
+    const finalTotal = Math.max(0, total - cash);
+    
+    const inv: Invoice = {
+      id: uid(),
+      number: `${db.settings.invoicePrefix}-${nextInv}`,
+      patientId: s.patientId,
+      date: today(0),
+      items,
+      paid: Math.min(Math.max(0, action.paid), finalTotal),
+      cashDiscount: cash > 0 ? cash : undefined,   // ★ الجديد
+    };
+    
+    invoices = [inv, ...invoices];
+    invoiceId = inv.id;
+    invNumber = inv.number;
+    nextInv += 1;
       }
       let prescriptions = db.prescriptions;
       let rxId: string | undefined;
@@ -1522,6 +1619,9 @@ function reducer(db: DB, action: Action): DB {
         });
         return { ...p, teeth };
       });
+
+       // ✅ أضف: حذف الجلسة من MySQL فوراً
+  
       const appointments = s.apptId
         ? db.appointments.map((a) => (a.id === s.apptId ? { ...a, status: "done" as ApptStatus } : a))
         : db.appointments;
@@ -1529,6 +1629,10 @@ function reducer(db: DB, action: Action): DB {
         x.id === s.id ? { ...x, status: "done" as const, endedAt: nowIso(), invoiceId, rxId, fuId: action.fuId } : x
       );
       const pName = db.patients.find((p) => p.id === s.patientId)?.name ?? "";
+      // جلسة متابعة: أكمل العودة المرتبطة تلقائياً
+     const returnFollowUps = s.fromFuId
+  ? db.followUps.map((f) => (f.id === s.fromFuId ? { ...f, status: "done" as FollowUpStatus } : f))
+  : db.followUps;
       return {
         ...db,
         patients,
@@ -1537,6 +1641,8 @@ function reducer(db: DB, action: Action): DB {
         prescriptions,
         sessions,
         nextInv,
+      
+         followUps: returnFollowUps, // ← أضف هذا السطر
         activity: [
           act(
             `خروج المريض ${pName} — ${s.procedures.length} إجراء${invNumber ? ` بفاتورة ${invNumber}` : ""}${rxId ? " وروشتة إلكترونية" : ""}`,
@@ -1546,7 +1652,7 @@ function reducer(db: DB, action: Action): DB {
         ].slice(0, 30),
       };
     }
-    case "CANCEL_SESSION": {
+    /*case "CANCEL_SESSION": {
       const s = db.sessions.find((x) => x.id === action.id);
       if (!s) return db;
       const appointments = s.apptId
@@ -1559,14 +1665,69 @@ function reducer(db: DB, action: Action): DB {
         appointments,
         activity: [act(`إلغاء جلسة العلاج للمريض ${pName} قبل اكتمالها`, "appt"), ...db.activity].slice(0, 30),
       };
-    }
+    }*/
+ 
+ case "CANCEL_SESSION": {
 
+  
+  const s = db.sessions.find((x) => x.id === action.id);
+  if (!s) return db;
+  
+
+
+  
+  // 1. تحديث الأسنان
+  const patients = db.patients.map((p) => {
+    if (p.id !== s.patientId || s.teethTreated.length === 0) return p;
+    const teeth = { ...p.teeth };
+    s.teethTreated.forEach((t) => {
+      if (t.status === "healthy") delete teeth[t.tooth];
+      else teeth[t.tooth] = t.status;
+    });
+    return { ...p, teeth };
+  });
+  
+  // 2. إعادة الموعد إلى confirmed
+  const appointments = s.apptId
+    ? db.appointments.map((a) => 
+        a.id === s.apptId 
+          ? { ...a, status: "confirmed" as ApptStatus, updatedAt: Date.now() } 
+          : a
+      )
+    : db.appointments;
+  
+  // 3. 🔽 وضع علامة deleted بدلاً من الحذف الفعلي
+  const sessions = db.sessions.map((x) => 
+    x.id === action.id 
+      ? { ...x, deleted: true, status: "done" as const, endedAt: new Date().toISOString() } 
+      : x
+  );
+  
+  const pName = db.patients.find((p) => p.id === s.patientId)?.name ?? "";
+  
+  // 4. حذف من MySQL
+  deleteSession(action.id).catch((err) => {
+    console.error("❌ خطأ في حذف الجلسة من MySQL:", err);
+  });
+  
+  return {
+    ...db,
+    patients,
+    sessions,
+    appointments,
+    activity: [act(`إلغاء جلسة العلاج للمريض ${pName} قبل اكتمالها`, "appt"), ...db.activity].slice(0, 30),
+  };
+}
     case "IMPORT":
       return action.db;
     case "HYDRATE":
       return normalizeDB(action.db);
-    case "MERGE":
-      return mergeDB(db, normalizeDB(action.db), action.tombstones);
+  case "MERGE": {
+  const remote = normalizeDB(action.db);
+  const stones = unionTombstones(db.tombstones ?? [], remote.tombstones ?? []);
+  const merged = { ...remote, tombstones: stones };
+  return applyTombstones(merged);
+}
     case "SYNCED":
       return { ...db, savedAt: action.savedAt };
     case "ADD_USER":
@@ -1623,6 +1784,35 @@ function reducer(db: DB, action: Action): DB {
     }
     case "DELETE_SUPPLY":
       return { ...db, supplies: db.supplies.filter((s) => s.id !== action.id) };
+
+          /* ---------- تعديل وحذف حركات المخزون ---------- */
+    case "UPDATE_SUPPLY_MOVE": {
+      const mv = db.supplyMoves.find((m) => m.id === action.id);
+      if (!mv) return db;
+      /* الفرق بين الكمية الجديدة والقديمة — يُضاف للرصيد فيضبطه تلقائياً */
+      const deltaDiff = action.delta - mv.delta;
+      return {
+        ...db,
+        supplyMoves: db.supplyMoves.map((m) =>
+          m.id === action.id ? { ...m, delta: action.delta, note: action.note } : m
+        ),
+        supplies: db.supplies.map((s) =>
+          s.id === mv.itemId ? { ...s, qty: Math.max(0, s.qty + deltaDiff) } : s
+        ),
+      };
+    }
+    case "DELETE_SUPPLY_MOVE": {
+      const mv = db.supplyMoves.find((m) => m.id === action.id);
+      if (!mv) return db;
+      /* حذف الحركة = عكس أثرها على الرصيد (توريد سابق يُخصم، صرف سابق يُرد) */
+      return {
+        ...db,
+        supplyMoves: db.supplyMoves.filter((m) => m.id !== action.id),
+        supplies: db.supplies.map((s) =>
+          s.id === mv.itemId ? { ...s, qty: Math.max(0, s.qty - mv.delta) } : s
+        ),
+      };
+    }
 
     /* ---------- خطط العلاج ---------- */
     case "ADD_PLAN":
@@ -1724,7 +1914,29 @@ function reducer(db: DB, action: Action): DB {
     case "DELETE_FOLLOWUP_REASON":
       return { ...db, followUpReasons: db.followUpReasons.filter((r) => r.id !== action.id) };
 
+// إضافة بصمة حذف دائم (تُزامَن لكل الأجهزة)
+case "ADD_TOMBSTONE": {
+  const exists = (db.tombstones ?? []).some(
+    (t) => t.entity === (action as any).entity && t.id === (action as any).id
+  );
+  if (exists) return db;
+  return {
+    ...db,
+    tombstones: [
+      ...(db.tombstones ?? []),
+      { entity: (action as any).entity, id: (action as any).id, at: Date.now() },
+    ],
+  };
+}
+
+// حذف جلسة علاج مكتملة نهائياً
+case "DELETE_SESSION": {
+  return { ...db, sessions: db.sessions.filter((s) => s.id !== action.id) };
+}
+
     case "RESET":
+
+
       return bootstrap();
     default:
       return db;
@@ -1756,6 +1968,7 @@ export function normalizeDB(raw: Partial<DB> | null | undefined): DB {
       summary: s.summary ?? "",
       workItems: s.workItems ?? [],
       stages: s.stages ?? [],
+       deleted: s.deleted ?? false, // ← أضف هذا السطر
       procedures: arr<SessionProc>(s.procedures).map((pr) => {
         const legacy = pr as SessionProc & { tooth?: number };
         return {
@@ -1792,14 +2005,39 @@ export function normalizeDB(raw: Partial<DB> | null | undefined): DB {
     staffRoles: arr<string>(db.staffRoles).length ? arr<string>(db.staffRoles) : base.staffRoles,
     followUpReasons: arr<FollowUpReason>(db.followUpReasons).length ? arr<FollowUpReason>(db.followUpReasons) : base.followUpReasons,
     settings: { ...DEFAULT_CLINIC_SETTINGS, ...(db.settings ?? {}) },
+    /*
     users: (arr<User>(db.users).length ? arr<User>(db.users) : base.users).map((u) =>
       u.role === "secretary" || u.role === "assistant"
         ? { ...u, permissions: [...new Set([...u.permissions, "scope_all_patients", "scope_all_appointments"])] }
         : u
     ),
+*/
+    users: (arr<User>(db.users).length ? arr<User>(db.users) : base.users).map((u) => {
+  // تحديد صلاحيات التقارير حسب الدور
+  let reportDefaults: string[] = [];
+  if (u.role === "doctor") reportDefaults = DOCTOR_REPORT_DEFAULTS;
+  else if (u.role === "secretary") reportDefaults = SECRETARY_REPORT_DEFAULTS;
+  else if (u.role === "assistant") reportDefaults = ASSISTANT_REPORT_DEFAULTS;
+  
+  // دمج الصلاحيات الحالية مع صلاحيات التقارير الافتراضية
+  let merged = u.permissions ?? [];
+  if (u.role !== "admin") {
+    merged = Array.from(new Set([...merged, ...reportDefaults]));
+  }
+  
+  // إضافة صلاحيات النطاق للسكرتارية والمساعد
+  if (u.role === "secretary" || u.role === "assistant") {
+    merged = Array.from(new Set([...merged, "scope_all_patients", "scope_all_appointments"]));
+  }
+  
+  return { ...u, permissions: merged };
+}),
     nextInv: typeof db.nextInv === "number" ? db.nextInv : base.nextInv,
     savedAt: typeof db.savedAt === "number" ? db.savedAt : 0,
   };
+    return applyTombstones({
+    // ... جميع الحقول ...
+  } as DB);
 }
 
 /** قراءة الحالة المحلية + طابع آخر حفظ */
@@ -1829,22 +2067,84 @@ interface Ctx {
 }
 
 const StoreCtx = createContext<Ctx | null>(null);
+// ============================== بصمات الحذف (Tombstones) ==============================
 
+export interface Tombstone {
+  entity: string;  // اسم المصفوفة (مثل "patients", "sessions")
+  id: string;      // معرف السجل المحذوف
+  at: number;      // وقت الحذف (طابع زمني)
+}
+
+/**
+ * خريطة: نوع فعل الحذف ← اسم المصفوفة في DB
+ * كل حذف من أي شاشة يمر هنا تلقائياً
+ */
+export const DELETE_ENTITY_MAP: Record<string, string> = {
+  DELETE_PATIENT: "patients",
+  DELETE_APPT: "appointments",
+  DELETE_SESSION: "sessions",
+  DELETE_INVOICE: "invoices",
+  DELETE_EXPENSE: "expenses",
+  DELETE_FOLLOWUP: "followUps",
+  DELETE_PRESCRIPTION: "prescriptions",
+  DELETE_SERVICE: "services",
+  DELETE_SUPPLY: "supplies",
+  DELETE_SUPPLY_MOVE: "supplyMoves",
+  DELETE_IMPLANT: "implants",
+  DELETE_PROSTHETIC: "prosthetics",
+  DELETE_ORTHO: "orthoCases",
+  DELETE_XRAY: "xrays",
+  DELETE_PLAN: "plans",
+  DELETE_USER: "users",
+  DELETE_FOLLOWUP_REASON: "followUpReasons",
+};
+
+/**
+ * تُفلتر كل مصفوفة في DB من أي سجل له بصمة حذف
+ * هذه الدالة تمنع "عودة" السجلات المحذوفة بعد المزامنة
+ */
+ // store.tsx - عدّل applyTombstones
+ export function applyTombstones(db: DB): DB {
+  const stones = db.tombstones ?? [];
+  if (stones.length === 0) return db;
+  
+  const result = { ...db };
+  for (const t of stones) {
+    // التأكد من أن entity هو مفتاح صحيح في DB
+    if (t.entity in result && Array.isArray((result as any)[t.entity])) {
+      (result as any)[t.entity] = (result as any)[t.entity].filter(
+        (r: any) => !(r && typeof r === "object" && r.id === t.id)
+      );
+    }
+  }
+  return result;
+}
+/** توحيد مصفوفتي شواهد (اتحاد حسب entity+id) */
+export function unionTombstones(a: Tombstone[] = [], b: Tombstone[] = []): Tombstone[] {
+  const map = new Map<string, Tombstone>();
+  for (const t of [...a, ...b]) {
+    map.set(`${t.entity}::${t.id}`, t);
+  }
+  return [...map.values()];
+}
 export function StoreProvider({ children }: { children: React.ReactNode }) {
-  const [db, baseDispatch] = useReducer(reducer, undefined as unknown as DB, () => loadLocal().db);
+   const [db, baseDispatch] = useReducer(reducer, undefined as unknown as DB, () => loadLocal().db);
   const [conn, setConn] = useState<ConnStatus>("checking");
   const [syncing, setSyncing] = useState(false);
   const connRef = useRef<ConnStatus>("checking");
   const dbRef = useRef<DB>(db);
   const bootedRef = useRef(false);
-  const dirtyRef = useRef(false); // هل توجد تغييرات محلية لم تُدفَع بعد؟
-  const wipeRef = useRef(false); // استبدال شامل قادم (RESET/IMPORT)
-  const genRef = useRef(0); // جيل المركزية — يرتفع عند الاستبدال الشامل
+  const dirtyRef = useRef(false);
+  const wipeRef = useRef(false);
+    // ✅ أضف هذين السطرين
+  const protectedRef = useRef<Map<string, "done" | "cancelled">>(new Map());
+  const flushNowRef = useRef(false);
+  const genRef = useRef(0);
   connRef.current = conn;
   dbRef.current = db;
 
   /* الموزّع الذكي: يختم السجلات + يسجّل أحداث المراقبة + يتتبع التغييرات المحلية */
-  const dispatch = useCallback((action: Action) => {
+ /* const dispatch = useCallback((action: Action) => {
     if (action.type !== "MERGE" && action.type !== "SYNCED" && action.type !== "HYDRATE") {
       stampAction(action);
       queueActionEvent(action, dbRef.current);
@@ -1852,8 +2152,80 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       if (action.type === "RESET" || action.type === "IMPORT") wipeRef.current = true;
     }
     baseDispatch(action);
-  }, []);
+  }, []);*/
+/*
+const dispatch = useCallback((action: Action) => {
+  const isInternal =
+    action.type === "MERGE" || 
+    action.type === "SYNCED" || 
+    action.type === "HYDRATE" || 
+    action.type === "ADD_TOMBSTONE";
 
+  if (!isInternal) {
+    stampAction(action);
+    queueActionEvent(action, dbRef.current);
+    dirtyRef.current = true;
+    if (action.type === "RESET" || action.type === "IMPORT") wipeRef.current = true;
+  }
+
+  baseDispatch(action);
+
+  // ★ قلب الحل: أي فعل حذف ← سجّل بصمته فوراً
+  const a = action as unknown as { type: string; id?: string };
+  const entity = DELETE_ENTITY_MAP[a.type];
+  if (entity && a.id) {
+    baseDispatch({ type: "ADD_TOMBSTONE", entity, id: a.id } as Action);
+  }
+}, []);
+*/
+
+const dispatch = useCallback((action: Action) => {
+  /* ① عند إغلاق جلسة: فعّل حمايتها واطلب دفعًا فوريًا */
+  const a = action as unknown as { type: string; id?: string };
+  if (a.type === "END_SESSION" && a.id) {
+    protectedRef.current.set(a.id, "done");
+    flushNowRef.current = true;
+    // مهلة أمان قصوى — تُرفع الحماية بعد 20 ثانية بأي حال
+    setTimeout(() => protectedRef.current.delete(a.id!), 20000);
+  } else if (a.type === "CANCEL_SESSION" && a.id) {
+    protectedRef.current.set(a.id, "cancelled");
+    flushNowRef.current = true;
+    setTimeout(() => protectedRef.current.delete(a.id!), 20000);
+  }
+
+  /* ② عند أي دمج قادم: افرض الحالة المحمية على الجلسات المغلقة حديثًا
+        حتى لا تسترجع حالتها القديمة من الخادم */
+  let act: Action = action;
+  if (a.type === "MERGE" && protectedRef.current.size > 0) {
+    const merged = (action as { db?: { sessions?: { id: string; status: string }[] } }).db;
+    if (merged?.sessions?.length) {
+      const guarded = merged.sessions.map((s) => {
+        const target = protectedRef.current.get(s.id);
+        return target && s.status !== target ? { ...s, status: target } : s;
+      });
+      act = { ...(action as object), db: { ...merged, sessions: guarded } } as Action;
+    }
+  }
+
+  /* ③ المنطق الأصلي (الختم + أحداث المراقبة + التغييرات المحلية) */
+  const isInternal =
+    act.type === "MERGE" || act.type === "SYNCED" || act.type === "HYDRATE" || act.type === "ADD_TOMBSTONE";
+  if (!isInternal) {
+    stampAction(act);
+    queueActionEvent(act, dbRef.current);
+    dirtyRef.current = true;
+    if (act.type === "RESET" || act.type === "IMPORT") wipeRef.current = true;
+  }
+
+  baseDispatch(act);
+
+  /* ④ شواهد الحذف الدائم (من الحزمة العاشرة) */
+  const entity = DELETE_ENTITY_MAP[act.type];
+  const aid = (act as { id?: string }).id;
+  if (entity && aid) {
+    baseDispatch({ type: "ADD_TOMBSTONE", entity, id: aid } as Action);
+  }
+}, []);
   /* عند الإقلاع: جلب الحالة المدمجة من القاعدة المركزية */
   useEffect(() => {
     let cancelled = false;
@@ -1911,13 +2283,91 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     return () => clearInterval(t);
   }, [dispatch]);
 
+  // ====== 🔽 أضف هذا الـ useEffect هنا ======
+   useEffect(() => {
+  // حفظ الجلسات في MySQL
+  if (!bootedRef.current || connRef.current !== "online") return;
+  
+  // 🔽 تجاهل الجلسات المحذوفة
+  const sessions = db.sessions.filter(s => !s.deleted);
+  if (sessions.length === 0) return;
+  
+  console.log(`📤 حفظ ${sessions.length} جلسة نشطة في MySQL`);
+  
+  // ✅ فقط الجلسات المفتوحة
+  const openSessions = db.sessions.filter(s => s.status === "open");
+  
+  console.log(`📤 حفظ ${openSessions.length} جلسة مفتوحة في MySQL`);
+
+  saveSessionsBatch(sessions).then((result) => {
+    if (result.ok) {
+      console.log(`✅ تم حفظ ${sessions.length} جلسة في MySQL`);
+    } else {
+      console.error("❌ خطأ في حفظ الجلسات:", result.error);
+    }
+  }).catch((err) => {
+    console.error("❌ خطأ في حفظ الجلسات:", err);
+  });
+
+
+}, [db.sessions]);
+  // ====== 🔼 انتهى الـ useEffect ======
+// في StoreProvider
+useEffect(() => {
+  // حفظ جميع البيانات في MySQL
+  if (!bootedRef.current || connRef.current !== "online") return;
+  
+  // فقط إذا كانت هناك تغييرات
+  if (!dirtyRef.current) return;
+  
+  console.log('📤 جاري حفظ جميع البيانات في MySQL...');
+  
+  saveState({ ...db, savedAt: Date.now() }).then((result) => {
+    if (result.ok) {
+      console.log(`✅ تم حفظ جميع البيانات`);
+      console.log(`   staff: ${db.staff?.length || 0}`);
+      console.log(`   supplyMoves: ${db.supplyMoves?.length || 0}`);
+      dirtyRef.current = false;
+    } else {
+      console.error('❌ فشل الحفظ:', result.error);
+    }
+  }).catch(err => console.error('❌ خطأ:', err));
+  
+}, [db]);
+
+  // ====== ✅ حفظ staff و supplyMoves في MySQL ======
+  useEffect(() => {
+    if (!bootedRef.current || connRef.current !== "online") return;
+    
+    const staff = db.staff || [];
+    const supplyMoves = db.supplyMoves || [];
+    
+    if (staff.length === 0 && supplyMoves.length === 0) return;
+    
+    console.log(`📤 حفظ staff (${staff.length}) و supplyMoves (${supplyMoves.length}) في MySQL...`);
+    
+    syncStaffAndMoves({ staff, supplyMoves })
+      .then((result) => {
+        if (result.ok) {
+          console.log(`✅ تم حفظ staff و supplyMoves في MySQL`);
+        } else {
+          console.error("❌ خطأ في حفظ staff:", result.error);
+        }
+      })
+      .catch((err) => {
+        console.error("❌ خطأ في حفظ staff:", err);
+      });
+      
+  }, [db.staff, db.supplyMoves]);
+
   /* حفظ محلي دائم + دفع التغييرات المحلية فقط إلى المركز */
+ /*
   useEffect(() => {
     const stamped = { ...db, savedAt: Date.now() };
     try {
       localStorage.setItem(KEY, JSON.stringify(stamped));
     } catch {
-      /* تجاهل */
+     
     }
     if (!bootedRef.current || connRef.current !== "online" || !dirtyRef.current) return;
     setSyncing(true);
@@ -1931,7 +2381,39 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     }, 700);
     return () => clearTimeout(t);
   }, [db]);
+*/
 
+useEffect(() => {
+  const stamped = { ...db, savedAt: Date.now() };
+  try {
+    localStorage.setItem(KEY, JSON.stringify(stamped));
+  } catch {
+    /* تجاهل */
+  }
+  if (!bootedRef.current || connRef.current !== "online" || !dirtyRef.current) return;
+
+  /* دفع فوري (بدون تأخير) عند إغلاق جلسة، وإلا التأخير المعتاد */
+  const delay = flushNowRef.current ? 0 : 700;
+  setSyncing(true);
+  const t = setTimeout(async () => {
+    flushNowRef.current = false;
+    const res = await saveState({ ...db, savedAt: Date.now(), wipe: wipeRef.current });
+    const ok = typeof res === "boolean" ? res : !!res?.ok;
+    setSyncing(false);
+    if (ok) {
+      dirtyRef.current = false;
+      wipeRef.current = false;
+      /* تأكد الحفظ → ارفع الحماية عن الجلسات التي حالتها صحيحة الآن */
+      for (const sid of [...protectedRef.current.keys()]) {
+        const sess = dbRef.current.sessions.find((s) => s.id === sid);
+        if (!sess || sess.status === protectedRef.current.get(sid)) {
+          protectedRef.current.delete(sid);
+        }
+      }
+    }
+  }, delay);
+  return () => clearTimeout(t);
+}, [db]);
   const value = useMemo<Ctx>(
     () => ({
       db,

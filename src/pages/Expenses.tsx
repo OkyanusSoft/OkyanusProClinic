@@ -1,8 +1,15 @@
 import React, { useMemo, useState } from "react";
-import { clinicOf, expCatColor, EXPENSE_CATS, fmtDate, today, uid, useMoney, useStore, type Expense } from "../store";
+import { expCatColor, EXPENSE_CATS, fmtDate, today, uid, useMoney, useStore, type Expense } from "../store";
 import { IconPencil, IconPlus, IconPrinter, IconReceipt, IconWallet } from "../icons";
 import { AnimatedNumber, DateInput, EmptyState, Field, Modal, TArea, TInput, TSelect, TwoStepDelete, useToast } from "../components/ui";
 import { PrintModal } from "../components/PrintSheet";
+import { ExpensePrint } from "../components/ExpensePrint";
+
+/* ============================================================================
+   شاشة المصروفات والمشتريات
+   التحديث 6: زرّا «تعديل» و«طباعة» بجانب زر الحذف في جدول المصروفات
+   — استبدل بهذا الملف: src/pages/Expenses.tsx
+   ========================================================================== */
 
 export default function ExpensesPage() {
   const { db, dispatch } = useStore();
@@ -12,6 +19,8 @@ export default function ExpensesPage() {
   const sym = cur?.symbol ?? "ر.ي";
   const [cat, setCat] = useState("all");
   const [showAdd, setShowAdd] = useState(false);
+  const [editExp, setEditExp] = useState<Expense | null>(null);
+  const [printExp, setPrintExp] = useState<Expense | null>(null);
 
   const monthPrefix = today(0).slice(0, 7);
   const monthExp = db.expenses.filter((e) => e.date.startsWith(monthPrefix));
@@ -103,7 +112,7 @@ export default function ExpensesPage() {
           <EmptyState icon={<IconReceipt className="w-6 h-6" />} title="لا مصروفات في هذه الفئة" desc="اضغط «تسجيل مصروف» لإضافة أول عملية صرف." />
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[720px]">
+            <table className="w-full min-w-[760px]">
               <thead className="bg-mist/70 border-b border-line">
                 <tr>
                   <th className="th">التاريخ</th>
@@ -111,7 +120,7 @@ export default function ExpensesPage() {
                   <th className="th">الفئة</th>
                   <th className="th">المبلغ</th>
                   <th className="th">ملاحظات</th>
-                  <th className="th"></th>
+                  <th className="th text-end">إجراءات</th>
                 </tr>
               </thead>
               <tbody>
@@ -128,12 +137,33 @@ export default function ExpensesPage() {
                     <td className="td"><span className="stat-num font-bold text-coral">{money(e.amount)}</span></td>
                     <td className="td text-soft text-xs max-w-52"><span className="block truncate">{e.notes || "—"}</span></td>
                     <td className="td">
-                      <TwoStepDelete
-                        onConfirm={() => {
-                          dispatch({ type: "DELETE_EXPENSE", id: e.id });
-                          push("warn", "حُذف المصروف", `${e.title} — ${money(e.amount)}`);
-                        }}
-                      />
+                      <div className="flex items-center gap-1 justify-end">
+                        {/* طباعة سند الصرف */}
+                        <button
+                          className="icon-btn !w-8 !h-8 hover:!bg-mist"
+                          onClick={() => setPrintExp(e)}
+                          aria-label="طباعة سند الصرف"
+                          title="طباعة سند الصرف (A4)"
+                        >
+                          <IconPrinter className="w-4 h-4" />
+                        </button>
+                        {/* تعديل المصروف */}
+                        <button
+                          className="icon-btn !w-8 !h-8 hover:!bg-jade-soft hover:!text-jade-deep"
+                          onClick={() => setEditExp(e)}
+                          aria-label="تعديل المصروف"
+                          title="تعديل"
+                        >
+                          <IconPencil className="w-4 h-4" />
+                        </button>
+                        {/* حذف بخطوتين */}
+                        <TwoStepDelete
+                          onConfirm={() => {
+                            dispatch({ type: "DELETE_EXPENSE", id: e.id });
+                            push("warn", "حُذف المصروف", `${e.title} — ${money(e.amount)}`);
+                          }}
+                        />
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -143,28 +173,49 @@ export default function ExpensesPage() {
         )}
       </div>
 
-      {showAdd && <AddExpenseModal onClose={() => setShowAdd(false)} />}
+      {/* النوافذ */}
+      {showAdd && <ExpenseModal onClose={() => setShowAdd(false)} />}
+      {editExp && <ExpenseModal initial={editExp} onClose={() => setEditExp(null)} />}
+      {printExp && (
+        <PrintModal open onClose={() => setPrintExp(null)} title={`طباعة سند الصرف — ${printExp.title}`}>
+          <ExpensePrint expense={printExp} />
+        </PrintModal>
+      )}
     </div>
   );
 }
 
-function AddExpenseModal({ onClose }: { onClose: () => void }) {
+/* ============================ نافذة تسجيل / تعديل مصروف ============================ */
+
+function ExpenseModal({ initial, onClose }: { initial?: Expense; onClose: () => void }) {
   const { dispatch } = useStore();
   const money = useMoney();
   const { push } = useToast();
-  const [title, setTitle] = useState("");
-  const [category, setCategory] = useState(EXPENSE_CATS[0].name);
-  const [amount, setAmount] = useState("");
-  const [date, setDate] = useState(today(0));
-  const [notes, setNotes] = useState("");
+  const [title, setTitle] = useState(initial?.title ?? "");
+  const [category, setCategory] = useState(initial?.category ?? EXPENSE_CATS[0].name);
+  const [amount, setAmount] = useState(initial ? String(initial.amount) : "");
+  const [date, setDate] = useState(initial?.date ?? today(0));
+  const [notes, setNotes] = useState(initial?.notes ?? "");
   const [err, setErr] = useState("");
 
   const save = () => {
     if (title.trim().length < 2) return setErr("أدخل بيان المصروف.");
     if (!Number(amount) || Number(amount) <= 0) return setErr("أدخل مبلغاً صحيحاً.");
-    const e: Expense = { id: uid(), title: title.trim(), category, amount: Number(amount), date, notes: notes.trim() || undefined };
-    dispatch({ type: "ADD_EXPENSE", e });
-    push("success", "سُجّل المصروف", `${e.title} — ${money(e.amount)}`);
+    const e: Expense = {
+      id: initial?.id ?? uid(),
+      title: title.trim(),
+      category,
+      amount: Number(amount),
+      date,
+      notes: notes.trim() || undefined,
+    };
+    if (initial) {
+      dispatch({ type: "UPDATE_EXPENSE", e });
+      push("success", "عُدّل المصروف", `${e.title} — ${money(e.amount)}`);
+    } else {
+      dispatch({ type: "ADD_EXPENSE", e });
+      push("success", "سُجّل المصروف", `${e.title} — ${money(e.amount)}`);
+    }
     onClose();
   };
 
@@ -172,12 +223,12 @@ function AddExpenseModal({ onClose }: { onClose: () => void }) {
     <Modal
       open
       onClose={onClose}
-      title="تسجيل مصروف جديد"
-      subtitle="سيظهر في التقارير المالية فور الحفظ"
+      title={initial ? `تعديل المصروف — ${initial.title}` : "تسجيل مصروف جديد"}
+      subtitle={initial ? "ستنعكس التعديلات في التقارير المالية فور الحفظ" : "سيظهر في التقارير المالية فور الحفظ"}
       footer={
         <>
           <button className="btn-ghost" onClick={onClose}>إلغاء</button>
-          <button className="btn-primary" onClick={save}>حفظ المصروف</button>
+          <button className="btn-primary" onClick={save}>{initial ? "حفظ التعديلات" : "حفظ المصروف"}</button>
         </>
       }
     >
@@ -210,7 +261,7 @@ function AddExpenseModal({ onClose }: { onClose: () => void }) {
       </div>
       {amount && Number(amount) > 0 && (
         <p className="mt-3 text-xs font-bold text-jade-deep bg-jade-soft rounded-lg px-3.5 py-2.5 anim-pop">
-          سيتم تسجيل: {money(Number(amount))} — {category}
+          {initial ? "سيُحدَّث المصروف إلى" : "سيتم تسجيل"}: {money(Number(amount))} — {category}
         </p>
       )}
       {err && <p className="mt-3 text-xs font-bold text-coral bg-coral-soft rounded-lg px-3 py-2.5 anim-pop">{err}</p>}

@@ -40,11 +40,14 @@ import {
   IconTooth,
   IconUserPlus,
   IconX,
+  IconPulse,
 } from "../icons";
 import { Avatar, Badge, DateInput, Drop, DropItem, EmptyState, Field, Modal, TArea, TInput, TSelect, TwoStepDelete, useToast } from "../components/ui";
 import { AppointmentCardPrint, AppointmentsDayPrint, CardPrintModal, CardSheet, FollowUpCardPrint, PrintModal } from "../components/PrintSheet";
 import { AddPatientModal } from "./Patients";
-
+import { DatePicker, TimePicker } from "../components/DateTimePickers";
+import { PatientPicker } from "../components/PatientPicker";
+import { PatientPickerNoBtn } from "../components/PatientPickerNoBtn";
 /* ساعات الحجز — تُشتق من إعدادات الدوام العامة */
 const hoursBetween = (start: string, end: string) => {
   const s = parseInt(start.slice(0, 2), 10);
@@ -133,20 +136,23 @@ export default function AppointmentsPage({ onOpenPatient, onBook }: Props) {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          {view === "followups" && (
-            <button className="btn-soft" onClick={() => setShowFu(true)}>
-              <IconPlus className="w-4 h-4" />
-              عودة جديدة
-            </button>
-          )}
-          <button className="btn-soft" onClick={() => setShowNewPatient(true)}>
-            <IconUserPlus className="w-4 h-4" />
-            مريض جديد
-          </button>
-          <button className="btn-primary" onClick={() => onBook()}>
-            <IconCalendarPlus className="w-4.5 h-4.5" />
-            موعد جديد
-          </button>
+        {view === "followups" && (
+ 
+
+ <button
+    className="btn !bg-amber !text-white hover:!bg-[#c77f1d] hover:-translate-y-px transition-all"
+    style={{ boxShadow: "0 8px 18px -6px rgba(226,149,43,.6)" }}
+    onClick={() => setShowFu(true)}
+  >
+    <IconPulse className="w-4 h-4" />
+    عودة  
+  </button>
+)}
+
+<button className="btn-primary" onClick={() => onBook()}>
+  <IconCalendarPlus className="w-4.5 h-4.5" />
+  موعد جديد
+</button>
         </div>
       </div>
 
@@ -360,6 +366,13 @@ function ScheduleView({
                               <button onClick={() => setRemindFor(a)} className="icon-btn !w-7 !h-7 hover:!bg-sky-soft hover:!text-sky" aria-label="رسالة تذكير" title="رسالة تذكير للمريض">
                                 <IconChat className="w-3.5 h-3.5" />
                               </button>
+                                 {/* ✅ زر حذف الموعد */}
+    <TwoStepDelete
+      onConfirm={() => {
+        dispatch({ type: "DELETE_APPT", id: a.id });
+        push("warn", "حُذف الموعد", `${p?.name} — ${a.time}`);
+      }}
+    />
                               {(a.status === "confirmed" || a.status === "waiting") && (
                                 <button onClick={() => setStatus(a, "inprogress")} className="text-[11px] font-bold text-jade-deep bg-jade-soft hover:bg-jade hover:text-white rounded-md px-2.5 py-1.5 cursor-pointer transition-colors">
                                   بدء العلاج
@@ -712,8 +725,9 @@ function FollowUpsView({ fus, onOpenPatient }: { fus: FollowUp[]; onOpenPatient:
 /* ============================ تبويب: الجلسات المكتملة ============================ */
 
 function HistoryView({ sessions, onOpenPatient }: { sessions: import("../store").ClinicalSession[]; onOpenPatient: (id: string) => void }) {
-  const { db, patientById, serviceById, doctorById } = useStore();
+  const { db, patientById, serviceById, doctorById , dispatch } = useStore();
   const money = useMoney();
+  const { push } = useToast();
   const [docFilter, setDocFilter] = useState("all");
   const [openId, setOpenId] = useState<string | null>(null);
   const [fuFor, setFuFor] = useState<string | null>(null);
@@ -772,6 +786,12 @@ function HistoryView({ sessions, onOpenPatient }: { sessions: import("../store")
                   <button onClick={(e) => { e.stopPropagation(); p && onOpenPatient(p.id); }} className="cursor-pointer shrink-0">
                     <Avatar name={p?.name ?? "؟"} size="w-11 h-11 text-sm" />
                   </button>
+                      <TwoStepDelete
+          onConfirm={() => {
+            dispatch({ type: "DELETE_SESSION", id: s.id });
+            push("warn", "حُذفت الجلسة نهائياً", `جلسة ${p?.name || "مريض"} أُزيلت من كل الأجهزة.`);
+          }}
+        />
                   <div className="flex-1 min-w-56">
                     <div className="flex items-center gap-2 flex-wrap">
                       <button onClick={() => p && onOpenPatient(p.id)} className="font-bold text-sm text-ink hover:text-jade-deep cursor-pointer transition-colors">
@@ -909,6 +929,9 @@ function HistoryView({ sessions, onOpenPatient }: { sessions: import("../store")
                             جدولة عودة متابعة
                           </button>
                         )}
+
+ 
+
                         <p className="text-[10px] text-soft mt-1.5">{fu ? fu.reason : "لم تُسجَّل عودة — يمكن جدولتها الآن وستظهر في تبويب العودات."}</p>
                       </div>
                     </div>
@@ -928,6 +951,7 @@ function HistoryView({ sessions, onOpenPatient }: { sessions: import("../store")
 
 export function FollowUpModal({
   patientId,
+ 
   onClose,
   defaultDoctor,
 }: {
@@ -939,6 +963,7 @@ export function FollowUpModal({
   const { apptScope } = useAuth();
   const { push } = useToast();
   const [pid, setPid] = useState(patientId ?? "");
+ 
   const [doctorId, setDoctorId] = useState(apptScope ?? defaultDoctor ?? "d1");
   const [reason, setReason] = useState("");
   const [dueDate, setDueDate] = useState(today(7));
@@ -999,18 +1024,14 @@ export function FollowUpModal({
       }
     >
       <div className="grid grid-cols-2 gap-4">
-        <div className="col-span-2">
-          <Field label="المريض *">
-            <TSelect value={pid} onChange={(e) => setPid(e.target.value)} disabled={!!patientId}>
-              <option value="">— اختر من السجل —</option>
-              {db.patients.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name} · {p.phone}
-                </option>
-              ))}
-            </TSelect>
-          </Field>
-        </div>
+      <div className="col-span-2">
+  <Field label="المريض *" hint="ابحث بالاسم أو الجوال — أو أضف مريضاً جديداً من الزر المجاور">
+    <PatientPickerNoBtn 
+      value={pid} 
+      onChange={(id: string) => setPid(id || "")} 
+    />
+  </Field>
+</div>
         <div className="col-span-2">
           <Field label="سبب العودة *">
             <TInput value={reason} onChange={(e) => setReason(e.target.value)} placeholder="اكتب السبب أو اختره من المكتبة أدناه…" />
@@ -1104,9 +1125,10 @@ export function FollowUpModal({
             ))}
           </TSelect>
         </Field>
-        <Field label="تاريخ الاستحقاق *">
-          <DateInput value={dueDate} onChange={setDueDate} />
-        </Field>
+     
+<Field label="تاريخ الاستحقاق *">
+  <DatePicker value={dueDate} onChange={setDueDate} />
+</Field>
         <div className="col-span-2">
           <Field label="ملاحظات">
             <TArea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="تفاصيل تهم فريق الاستقبال عند الاتصال بالمريض…" />
@@ -1137,7 +1159,9 @@ export function AddAppointmentModal({
   const { apptScope } = useAuth();
   const money = useMoney();
   const { push } = useToast();
-  const [patientId, setPatientId] = useState("");
+  const [patientId, setPatientId] = useState(defaultPatient ?? "");
+ 
+  //const [patientId, setPatientId] = useState("");
   const [doctorId, setDoctorId] = useState("d1");
   const [date, setDate] = useState(today(0));
   const [time, setTime] = useState("10:00");
@@ -1171,7 +1195,7 @@ export function AddAppointmentModal({
   }, [db]);
 
   const busy = (t: string) => db.appointments.some((a) => a.date === date && a.doctorId === doctorId && a.time === t && a.status !== "cancelled");
-
+const busySlots = times.filter((t) => busy(t));
   const save = () => {
     if (!patientId) return setErr("اختر المريض أولاً.");
     if (!consultSvc) return setErr("لا توجد خدمة كشف/استشارة مفعلة — فعّلها من شاشة «بيانات الخدمات».");
@@ -1199,13 +1223,12 @@ export function AddAppointmentModal({
     >
       <div className="grid grid-cols-2 gap-4">
         <div className="col-span-2">
-          <Field label="المريض *">
-            <TSelect value={patientId} onChange={(e) => setPatientId(e.target.value)}>
-              <option value="">— اختر من السجل —</option>
-              {db.patients.map((p) => (
-                <option key={p.id} value={p.id}>{p.name} · {p.phone}</option>
-              ))}
-            </TSelect>
+         <Field label="المريض *" hint="ابحث بالاسم أو الجوال — أو أضف مريضاً جديداً من الزر المجاور">
+            {/* ✅ استخدم patientId و setPatientId */}
+            <PatientPicker 
+              value={patientId} 
+              onChange={(id: string) => setPatientId(id || "")} 
+            />
           </Field>
         </div>
         <div className="col-span-2">
@@ -1236,18 +1259,18 @@ export function AddAppointmentModal({
             </TSelect>
           </Field>
         </div>
-        <Field label="التاريخ">
-          <DateInput value={date} onChange={setDate} />
-        </Field>
-        <Field label="الوقت" hint={svc ? `المدة المتوقعة: ${svc.duration} دقيقة` : undefined}>
-          <TSelect value={time} onChange={(e) => setTime(e.target.value)}>
-            {times.map((t) => (
-              <option key={t} value={t} disabled={busy(t)}>
-                {t} {busy(t) ? "— محجوز" : ""}
-              </option>
-            ))}
-          </TSelect>
-        </Field>
+     <Field label="التاريخ">
+  <DatePicker value={date} onChange={setDate} />
+</Field>
+<Field label="الوقت" hint={svc ? `المدة المتوقعة: ${svc.duration} دقيقة` : undefined}>
+  <TimePicker
+    value={time}
+    onChange={setTime}
+    start={clinicOf(db).workStart}
+    end={clinicOf(db).workEnd}
+    busyTimes={busySlots}
+  />
+</Field>
         <div className="col-span-2">
           <Field label="ملاحظات">
             <TArea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="أي تفاصيل إضافية للموعد…" />

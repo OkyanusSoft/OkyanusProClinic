@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState,useEffect  } from "react";
 import {
   clinicOf,
   expCatColor,
@@ -12,6 +12,7 @@ import {
   today,
   useMoney,
   useStore,
+  useAuth, 
 } from "../store";
 import {
   IconBox,
@@ -27,14 +28,15 @@ import {
   IconTrendUp,
   IconUsers,
   IconWallet,
+  IconShield ,
 } from "../icons";
 import { AnimatedNumber, Avatar, Badge, EmptyState } from "../components/ui";
-
+import ActivityReport from "./ActivityReport";
+ 
 const AR = "ar-EG-u-nu-latn";
 
 type Period = "month" | "last" | "q" | "year" | "all";
-type Tab = "overview" | "financial" | "doctors" | "followups" | "services" | "expenses" | "patients" | "inventory";
-
+ type Tab = "overview" | "financial" | "doctors" | "followups" | "services" | "expenses" | "patients" | "inventory" | "activity";
 const PERIODS: { key: Period; label: string }[] = [
   { key: "month", label: "هذا الشهر" },
   { key: "last", label: "الشهر السابق" },
@@ -59,12 +61,17 @@ function downloadCsv(name: string, rows: (string | number)[][]) {
 
 export default function ReportsPage() {
   const { db, serviceById, patientById, doctorById, patientBalance, lastVisit } = useStore();
+  const { can } = useAuth();
   const clinic = clinicOf(db);
   const money = useMoney();
   const cur = db.currencies.find((c) => c.code === db.defaultCurrency) ?? db.currencies[0];
   const sym = cur?.symbol ?? "ر.ي";
 
+      // ====== تعريف tab مع قيمة افتراضية ======
   const [tab, setTab] = useState<Tab>("overview");
+
+
+
   const [period, setPeriod] = useState<Period>("month");
 
   const monthPrefix = today(0).slice(0, 7);
@@ -194,7 +201,7 @@ export default function ReportsPage() {
   }, [exp]);
   const maxCat = Math.max(1, ...expByCat.map(([, v]) => v));
 
-  const TABS: { key: Tab; label: string; icon: (c: string) => React.ReactNode }[] = [
+  const ALL_TABS: { key: Tab; label: string; icon: (c: string) => React.ReactNode }[] = [
     { key: "overview", label: "نظرة عامة", icon: (c) => <IconTrendUp className={c} /> },
     { key: "patients", label: "المرضى", icon: (c) => <IconUsers className={c} /> },
     { key: "financial", label: "المالي", icon: (c) => <IconWallet className={c} /> },
@@ -203,7 +210,41 @@ export default function ReportsPage() {
     { key: "services", label: "الخدمات", icon: (c) => <IconTooth className={c} /> },
     { key: "expenses", label: "المصروفات", icon: (c) => <IconReceipt className={c} /> },
     { key: "inventory", label: "المخزون", icon: (c) => <IconBox className={c} /> },
+    { key: "activity", label: "حركة النظام", icon: (c) => <IconShield className={c} /> },
   ];
+
+  // ====== 🔼 انتهى الشرط ======
+ const REPORT_PERM: Record<string, string> = {
+  overview: "report:overview",
+  patients: "report:patients",
+  financial: "report:financial",
+  doctors: "report:doctors",
+  followups: "report:followups",
+  services: "report:services",
+  expenses: "report:expenses",
+  inventory: "report:inventory",
+  activity: "report:activity",
+};
+ const TABS = ALL_TABS.filter((t) => can(REPORT_PERM[t.key] ?? "reports"));
+  // ====== 🔽 الشرط موجود هنا ======
+if (TABS.length === 0) {
+  return (
+    <div className="card p-10 text-center">
+      <p className="font-display font-bold text-xl text-ink">لا تملك صلاحية لأي تقرير</p>
+      <p className="text-sm text-soft mt-2">راجع مدير النظام لمنحك صلاحيات التقارير من «المستخدمون والصلاحيات».</p>
+    </div>
+  );
+}
+  // ====== تحديث التبويب عند تغير TABS ======
+  useEffect(() => {
+    // إذا كان التبويب الحالي غير مسموح، غيّره إلى أول تبويب مسموح
+    if (TABS.length > 0 && !TABS.some(t => t.key === tab)) {
+      setTab(TABS[0].key);
+    }
+  }, [TABS, tab]);
+
+   //const [tab, setTab] = useState<Tab>(TABS[0]?.key ?? "overview");
+
 
   const exportCurrent = () => {
     if (tab === "patients")
@@ -238,8 +279,11 @@ export default function ReportsPage() {
         ["الصنف", "الفئة", "الوحدة", "الكمية", "الحد الأدنى", "التكلفة", "القيمة", "الصلاحية", "الحالة"],
         ...db.supplies.map((s) => [s.name, s.category, s.unit, s.qty, s.minQty, s.cost, s.qty * s.cost, s.expiry ?? "—", s.qty <= s.minQty ? "منخفض" : "جيد"]),
       ]);
+
+     
     else
       downloadCsv("ملخص-عام", [["المؤشر", "القيمة"], ["الإيراد المحصل", collected], ["المصروفات", expTotal], ["الصافي", net], ["المواعيد المكتملة", doneAppts], ["مرضى جدد", newPatients]]);
+  
   };
 
   const Kpi = ({ label, value, suffix, tint, icon, sub }: { label: string; value: number; suffix?: string; tint: string; icon: React.ReactNode; sub?: string }) => (
@@ -257,7 +301,7 @@ export default function ReportsPage() {
   );
 
   return (
-    <div className="space-y-5">
+    <div className="report-wide space-y-5">
       <div className="anim-rise flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="font-display font-bold text-3xl text-ink">مركز التقارير</h1>
@@ -311,7 +355,7 @@ export default function ReportsPage() {
         </div>
 
         {tab === "overview" && (
-          <div className="space-y-5">
+          <div className="report-wide space-y-5">
             <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
               <Kpi label={`إيراد محصل — ${periodLabel}`} value={collected} suffix={sym} tint="bg-mint-soft text-[#1d6b47]" icon={<IconWallet className="w-5 h-5" />} sub={`من ${money(billed)} مفوتر · تحصيل ${collectionRate}%`} />
               <Kpi label={`مصروفات — ${periodLabel}`} value={expTotal} suffix={sym} tint="bg-coral-soft text-coral" icon={<IconReceipt className="w-5 h-5" />} sub={`${exp.length} عملية صرف`} />
@@ -369,7 +413,7 @@ export default function ReportsPage() {
 
         {/* ====== تقرير المرضى ====== */}
         {tab === "patients" && (
-          <div className="space-y-5">
+          <div className="report-wide space-y-5">
             <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
               <Kpi label="إجمالي المرضى" value={patientRows.length} tint="bg-jade-soft text-jade-deep" icon={<IconUsers className="w-5 h-5" />} sub={`منهم ${newInPeriod} جديد ${periodLabel}`} />
               <Kpi label="لديهم تسوس نشط" value={withCaries} tint="bg-coral-soft text-coral" icon={<IconTooth className="w-5 h-5" />} sub="بحاجة لمتابعة علاجية" />
@@ -388,7 +432,7 @@ export default function ReportsPage() {
                 <EmptyState icon={<IconUsers className="w-6 h-6" />} title="لا مرضى مسجلون بعد" />
               ) : (
                 <div className="overflow-x-auto">
-                  <table className="w-full min-w-[880px]">
+          <table className="w-full report-table min-w-[880px]">
                     <thead className="bg-mist/70 border-b border-line">
                       <tr>
                         <th className="th">المريض</th>
@@ -467,7 +511,7 @@ export default function ReportsPage() {
               <EmptyState icon={<IconWallet className="w-6 h-6" />} title="لا فواتير في هذه الفترة" />
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full min-w-[720px]">
+                <table className="w-full report-table min-w-[880px]">
                   <thead className="bg-mist/70 border-b border-line">
                     <tr>
                       <th className="th">الفاتورة</th>
@@ -517,7 +561,7 @@ export default function ReportsPage() {
               <span className="chip bg-mist text-soft">{db.doctors.length} طبيب</span>
             </div>
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[760px]">
+              <table className="w-full report-table min-w-[880px]">
                 <thead className="bg-mist/70 border-b border-line">
                   <tr>
                     <th className="th">الطبيب</th>
@@ -565,7 +609,7 @@ export default function ReportsPage() {
         )}
 
         {tab === "followups" && (
-          <div className="space-y-5">
+          <div className="report-wide space-y-5">
             <div className="grid grid-cols-2 xl:grid-cols-5 gap-3">
               {[
                 { l: "معلقة", v: fuPending.length, cls: "bg-sky-soft text-sky", icon: <IconCalendarPlus className="w-4.5 h-4.5" /> },
@@ -593,7 +637,7 @@ export default function ReportsPage() {
                 <EmptyState icon={<IconCalendarPlus className="w-6 h-6" />} title="لا عودات مسجلة" desc="تُنشأ العودات من محطة العمل أو من ملف المريض." />
               ) : (
                 <div className="overflow-x-auto">
-                  <table className="w-full min-w-[700px]">
+                  <table className="w-full report-table min-w-[880px]">
                     <thead className="bg-mist/70 border-b border-line">
                       <tr>
                         <th className="th">المريض</th>
@@ -692,7 +736,7 @@ export default function ReportsPage() {
                 <EmptyState icon={<IconReceipt className="w-6 h-6" />} title="لا مصروفات مسجلة" />
               ) : (
                 <div className="overflow-x-auto max-h-[480px] overflow-y-auto">
-                  <table className="w-full min-w-[520px]">
+                  <table className="w-full report-table min-w-[880px]">
                     <thead className="bg-mist/70 border-b border-line sticky top-0">
                       <tr>
                         <th className="th">البند</th>
@@ -719,7 +763,7 @@ export default function ReportsPage() {
         )}
 
         {tab === "inventory" && (
-          <div className="space-y-5">
+          <div className="report-wide space-y-5">
             <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
               <Kpi label="إجمالي الأصناف" value={db.supplies.length} tint="bg-jade-soft text-jade-deep" icon={<IconBox className="w-5 h-5" />} sub={`${db.itemCats.length} فئة`} />
               <Kpi label="قيمة المخزون" value={Math.round(invValue)} suffix={sym} tint="bg-mint-soft text-[#1d6b47]" icon={<IconWallet className="w-5 h-5" />} sub="إجمالي الكميات × التكلفة" />
@@ -735,8 +779,8 @@ export default function ReportsPage() {
               {db.supplies.length === 0 ? (
                 <EmptyState icon={<IconBox className="w-6 h-6" />} title="لا أصناف مسجلة" />
               ) : (
-                <div className="overflow-x-auto max-h-[520px] overflow-y-auto">
-                  <table className="w-full min-w-[760px]">
+                <div className="overflow-x-auto w-full">
+                  <table className="w-full report-table min-w-[880px]">
                     <thead className="bg-mist/70 border-b border-line sticky top-0">
                       <tr>
                         <th className="th">الصنف</th>
@@ -774,7 +818,11 @@ export default function ReportsPage() {
             </div>
           </div>
         )}
+
+        {tab === "activity" && <ActivityReport />}
       </div>
     </div>
   );
 }
+
+ 
