@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { clinicOf, ROLE_META, useAuth, useStore, type Role } from "../store";
-import { IconChevronDown, IconShield, IconTooth, Logo } from "../icons";
+import { IconChevronDown, IconTooth, Logo } from "../icons";
 import { Avatar, useToast } from "../components/ui";
 
 const GROUPS: { role: Role; hint: string }[] = [
@@ -21,7 +21,6 @@ export default function Login() {
   const [error, setError] = useState("");
   const [shake, setShake] = useState(0);
   const [ok, setOk] = useState(false);
-  const [showHint, setShowHint] = useState(false);
   const [now, setNow] = useState(new Date());
 
   const selected = db.users.find((u) => u.id === selectedId) ?? null;
@@ -156,7 +155,7 @@ export default function Login() {
           {!selected ? (
             <div className="anim-rise">
               <h1 className="font-display font-bold text-3xl text-ink">من يستخدم النظام الآن؟</h1>
-              <p className="text-sm text-soft mt-2">اختر حسابك ثم أدخل رمز الدخول المكوّن من 4 أرقام.</p>
+              <p className="text-sm text-soft mt-2">اختر مساحة العمل المناسبة ثم أدخل رمز الدخول سرياً.</p>
 
               <div className="mt-8 space-y-6">
                 {GROUPS.map((g) => {
@@ -165,8 +164,8 @@ export default function Login() {
                   return (
                     <div key={g.role}>
                       <div className="flex items-center gap-2.5 mb-3">
-                        <span className={`chip ${ROLE_META[g.role].cls}`}>{ROLE_META[g.role].label}</span>
-                        <span className="text-[11px] font-semibold text-soft">{g.hint}</span>
+                        <span className={`chip ${ROLE_META[g.role].cls}`}>{g.role === "admin" ? "دخول الإدارة" : ROLE_META[g.role].label}</span>
+                        <span className="text-[11px] font-semibold text-soft">{g.role === "admin" ? "إدارة كاملة ومراقبة النظام" : g.hint}</span>
                         <span className="flex-1 h-px bg-line" />
                       </div>
                       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
@@ -183,7 +182,7 @@ export default function Login() {
                             <Avatar name={u.name} size="w-12 h-12 text-sm" />
                             <div>
                               <p className="text-[13px] font-bold text-ink leading-tight">{u.name}</p>
-                              <p className="text-[10px] text-soft mt-0.5" dir="ltr">@{u.username}</p>
+                              <p className="text-[10px] text-soft mt-0.5">{u.role === "admin" ? "حساب الإدارة الرئيسي" : "حساب مستخدم معتمد"}</p>
                             </div>
                           </button>
                         ))}
@@ -212,7 +211,7 @@ export default function Login() {
                 <Avatar name={selected.name} size="w-16 h-16 text-lg" />
                 <h2 className="font-display font-bold text-2xl text-ink mt-4">{selected.name}</h2>
                 <p className="text-xs text-soft mt-1">
-                  {ROLE_META[selected.role].label} · <span dir="ltr">@{selected.username}</span>
+                  {selected.role === "admin" ? "دخول الإدارة الرئيسي" : ROLE_META[selected.role].label}
                 </p>
 
                 {/* نقاط الرمز */}
@@ -269,34 +268,9 @@ export default function Login() {
             </div>
           )}
 
-          {/* تلميح رموز التجربة */}
-          <div className="mt-6">
-            <button
-              onClick={() => setShowHint((s) => !s)}
-              className="inline-flex items-center gap-2 text-[11px] font-bold text-soft hover:text-jade-deep transition-colors cursor-pointer"
-            >
-              <IconShield className="w-4 h-4" />
-              حسابات الدخول المتاحة {showHint ? "▲" : "▼"}
-            </button>
-            {showHint && (
-              <div className="anim-pop mt-3 card !rounded-xl p-4">
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-2.5">
-                  {db.users.map((u) => (
-                    <div key={u.id} className="flex items-center gap-2 text-[11px]">
-                      <span className="w-2 h-2 rounded-full shrink-0" style={{ background: ROLE_META[u.role].color }} />
-                      <span className="font-semibold text-ink truncate">{u.name}</span>
-                      <span className="stat-num ms-auto font-bold text-jade-deep" dir="ltr">{u.pin}</span>
-                    </div>
-                  ))}
-                </div>
-                {db.users.length <= 1 && (
-                  <p className="mt-3 pt-3 border-t border-line text-[10px] text-soft leading-relaxed">
-                    النظام جديد — ادخل بحساب المدير ثم أنشئ حسابات الأطباء والسكرتارية من «المستخدمون والصلاحيات».
-                  </p>
-                )}
-              </div>
-            )}
-          </div>
+          <p className="mt-6 text-center text-[11px] font-semibold text-soft">
+            رمز الدخول سري ولا يُعرض على الشاشة. عند نسيانه تواصل مع مدير النظام.
+          </p>
         </div>
       </main>
     </div>

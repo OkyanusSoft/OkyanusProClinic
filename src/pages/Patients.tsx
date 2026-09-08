@@ -279,14 +279,19 @@ export function AddPatientModal({
   }, [open]);
 
   const save = () => {
-    if (name.trim().length < 3) return setErr("أدخل الاسم الثلاثي على الأقل.");
+    const cleanName = name.trim().replace(/\s+/g, " ");
+    const nameKey = cleanName.toLocaleLowerCase("ar");
+    if (cleanName.length < 3) return setErr("أدخل الاسم الثلاثي على الأقل.");
+    if (db.patients.some((existing) => existing.name.trim().replace(/\s+/g, " ").toLocaleLowerCase("ar") === nameKey)) {
+      return setErr("هذا الاسم مسجل مسبقاً في سجل المرضى. اختر المريض الموجود بدلاً من إنشاء ملف مكرر.");
+    }
     const cleanPhone = phone.replace(/[\s\-().]/g, "");
     /* إن تُرك الجوال فارغاً يُسند الرقم الافتراضي — لا يُطلب من المستخدم */
     const finalPhone = cleanPhone === "" ? defaultPhone : cleanPhone;
     if (!/^7\d{8,14}$/.test(finalPhone)) return setErr("رقم الجوال يجب أن يبدأ بـ 7 ويتكون من 9 أرقام على الأقل (مثل 771234567).");
     const p: Patient = {
       id: uid(),
-      name: name.trim(),
+      name: cleanName,
       phone: finalPhone,
       age: Number(age) || 25,
       gender,

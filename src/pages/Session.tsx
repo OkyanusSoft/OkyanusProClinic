@@ -108,7 +108,7 @@ const allergyHit = (medName: string, allergy: string) =>
 
 export default function SessionPage() {
   const { db, dispatch, patientById, serviceById, doctorById } = useStore();
-  const { apptScope, patientScope } = useAuth();
+  const { apptScope, patientScope, isAdmin } = useAuth();
   const { push } = useToast();
   const [doctorId, setDoctorId] = useState(db.doctors[0]?.id ?? "d1");
   const [adHoc, setAdHoc] = useState(false);
@@ -122,7 +122,7 @@ export default function SessionPage() {
     if (apptScope) setDoctorId(apptScope);
   }, [apptScope]);
 
-  const open = db.sessions.find((s) => s.status === "open");
+  const open = db.sessions.find((s) => s.status === "open" && !s.deleted);
  // ====== داخل المكون ======
  // في أعلى المكون
 const [forceUpdate, setForceUpdate] = useState(0);
@@ -141,6 +141,10 @@ const [forceUpdate, setForceUpdate] = useState(0);
   );
 
  const start = (patientId: string, apptId?: string, fromFuId?: string) =>  {
+    if (isAdmin) {
+      push("info", "مدير النظام لا يعمل كطبيب", "يمكنك مشاهدة جميع الإجراءات والتقارير، ولإدخال مريض استخدم حساب طبيب أسنان مرتبطاً بملفه.");
+      return;
+    }
     if (open) {
       push("warn", "توجد جلسة علاج مفتوحة بالفعل", "أنهِ جلسة المريض الحالي أولاً قبل إدخال مريض آخر.");
       return;
@@ -191,12 +195,22 @@ const [forceUpdate, setForceUpdate] = useState(0);
         <>
           {/* الجلسة المفتوحة */}
           {open ? (
-            <Workstation key={open.id+ forceUpdate} session={open} />
+            <Workstation key={open.id+ forceUpdate} session={open} readonly={isAdmin} />
           ) : (
             <div className="card p-4 flex items-center gap-3 bg-jade-soft/60 !border-jade/30 anim-fade">
               <span className="inline-flex items-center justify-center w-9 h-9 rounded-lg bg-jade text-white shrink-0"><IconPulse className="w-5 h-5" /></span>
               <p className="text-sm text-jade-deep font-semibold">الغرفة جاهزة — اختر مريضاً من قائمة الانتظار أدناه لبدء جلسة العلاج.</p>
             </div>
+          )}
+          {open && (
+            <p className="text-xs font-semibold text-amber-deep bg-amber-soft/60 border border-amber/30 rounded-xl px-4 py-2.5" role="status">
+              لا يمكن دخول مريض آخر الآن: توجد جلسة مفتوحة للمريض الحالي. أنهِ الجلسة أو ألغِها أولاً لتفعيل أزرار الدخول.
+            </p>
+          )}
+          {isAdmin && !open && (
+            <p className="text-xs font-semibold text-sky bg-sky-soft/60 border border-sky/30 rounded-xl px-4 py-2.5" role="status">
+              حساب مدير النظام للإدارة والمشاهدة الكاملة فقط. إدخال المرضى ومحطة العلاج متاحان لحسابات أطباء الأسنان.
+            </p>
           )}
 <div className="grid xl:grid-cols-2 gap-5 items-start">
       {/* قائمة الانتظار */}
@@ -207,7 +221,7 @@ const [forceUpdate, setForceUpdate] = useState(0);
             قائمة الانتظار — جاهزون للدخول
             <span className="chip bg-mist text-soft stat-num">{queue.length}</span>
           </h2>
-          <button className="btn-ghost !h-9 !text-xs" onClick={() => { setAdHoc(true); setAdHocPatient(""); }}>
+          <button className="btn-ghost !h-9 !text-xs" disabled={isAdmin} title={isAdmin ? "استخدم حساب طبيب أسنان لإدخال مريض" : "إدخال مريض غير مجدول"} onClick={() => { setAdHoc(true); setAdHocPatient(""); }}>
             <IconUserPlus className="w-4 h-4" />
             مريض غير مجدول
           </button>
@@ -218,7 +232,7 @@ const [forceUpdate, setForceUpdate] = useState(0);
             <EmptyState icon={<IconPulse className="w-6 h-6" />} title="لا مرضى بالانتظار" desc="كل مواعيد اليوم اكتملت أو قيد العلاج — يمكنك إدخال مريض غير مجدول." />
           </div>
         ) : (
-          <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-4">
+          <div className="grid sm:grid-cols-2 gap-4">
             {queue.map((a, i) => {
               const p = patientById(a.patientId);
               const s = serviceById(a.serviceId);
@@ -245,8 +259,9 @@ const [forceUpdate, setForceUpdate] = useState(0);
                     </Badge>
                     <button
                       className="btn-primary !h-9 !px-3.5 !text-xs"
-                      disabled={!!open}
-                      style={open ? { opacity: 0.45, cursor: "not-allowed" } : undefined}
+                      disabled={!!open || isAdmin}
+                      title={isAdmin ? "استخدم حساب طبيب أسنان لإدخال المريض" : open ? "أنه جلسة المريض الحالي أو ألغِها أولاً" : "إدخال المريض إلى محطة العمل"}
+                      style={open || isAdmin ? { opacity: 0.45, cursor: "not-allowed" } : undefined}
                       onClick={() => start(a.patientId, a.id)}
                     >
                       <IconPulse className="w-4 h-4" />
@@ -263,7 +278,7 @@ const [forceUpdate, setForceUpdate] = useState(0);
       </section>
      
   {/* قائمة العودات — جاهزون للدخول */}
-  <ReturnQueueSection onEnter={(pid, fuId) => start(pid, undefined, fuId)} />
+  <ReturnQueueSection disabled={!!open || isAdmin} onEnter={(pid, fuId) => start(pid, undefined, fuId)} />
 </div>
       {/* جلسات اليوم المكتملة */}
       <section className="anim-rise" style={{ animationDelay: "220ms" }}>
@@ -425,13 +440,17 @@ const [forceUpdate, setForceUpdate] = useState<number>(0); // ← أضف هذا
     [session.teethTreated]
   );
   const mergedTeeth = { ...p?.teeth, ...pendingTeeth };
+  const invoices = db.invoices.filter((i) => i.patientId === session.patientId);
+  const previousPaid = invoices.reduce((sum, invoice) => sum + Math.min(invoice.paid, invoiceTotal(invoice)), 0);
+  const previousBalance = Math.max(0, invoices.reduce((sum, invoice) => sum + invoiceTotal(invoice), 0) - previousPaid);
 
  // ✅ استبدله بـ:
+const billableProcedures = session.procedures.filter((pr) => !pr.copiedFromPrevious);
 const computedTotal = session.procedures.reduce((s, pr) => s + pr.price * Math.max(1, pr.teeth.length), 0);
 const hasOverride = overrideTotal.trim() !== "" && Number(overrideTotal) >= 0;
 const total = hasOverride ? Number(overrideTotal) : computedTotal;
-const paidNum = Math.min(Math.max(0, Number(paid) || 0), total);
-const remaining = total - paidNum;
+const paidNum = Math.min(Math.max(0, Number(paid) || 0), Math.max(0, total - (session.fromFuId ? previousPaid : 0)));
+const sessionRemaining = Math.max(0, total - (session.fromFuId ? previousPaid : 0) - paidNum);
 
   /* اقتراح عودة المتابعة حسب الإجراءات المنفذة */
   const suggestion = useMemo(
@@ -453,7 +472,6 @@ const remaining = total - paidNum;
     { label: "الفاتورة والخروج", done: false },
   ];
 
-  const invoices = db.invoices.filter((i) => i.patientId === session.patientId);
   const appts = db.appointments.filter((a) => a.patientId === session.patientId);
   const implants = db.implants.filter((r) => r.patientId === session.patientId);
   const prosthetics = db.prosthetics.filter((r) => r.patientId === session.patientId);
@@ -482,7 +500,7 @@ const remaining = total - paidNum;
   };
 
   const end = () => {
-    const invNo = session.procedures.length > 0 ? `${db.settings.invoicePrefix}-${db.nextInv}` : null;
+    const invNo = billableProcedures.length > 0 ? `${db.settings.invoicePrefix}-${db.nextInv}` : null;
     const withFu = fuEnabled && fuReason.trim() && fuDate;
     const fuId = withFu ? uid() : undefined;
     if (withFu) {
@@ -541,7 +559,28 @@ useEffect(() => {
 
 
  
-  if (!p) return null;
+  if (!p) {
+    return (
+      <div className="card !border-amber/50 bg-amber-soft/40 p-5 anim-pop">
+        <div className="flex flex-wrap items-center gap-4">
+          <span className="inline-flex items-center justify-center w-11 h-11 rounded-xl bg-amber text-white shrink-0">
+            <IconAlert className="w-5 h-5" />
+          </span>
+          <div className="flex-1 min-w-60">
+            <p className="font-display font-bold text-base text-ink">جلسة معلقة تحتاج إلى إغلاق</p>
+            <p className="text-xs text-soft mt-1">بيانات المريض المرتبطة بهذه الجلسة غير متاحة حالياً، لذلك لم تظهر تفاصيل محطة العمل. يمكنك إلغاء الجلسة لتحرير المحطة.</p>
+          </div>
+          <button
+            className={`btn !h-10 ${armCancel ? "bg-coral text-white" : "btn-danger"}`}
+            onClick={() => (armCancel ? (cancel(), setArmCancel(false)) : setArmCancel(true))}
+            title="إلغاء الجلسة المعلقة وتحرير محطة العمل"
+          >
+            {armCancel ? "متأكد؟ إلغاء الجلسة" : "إلغاء الجلسة المعلقة"}
+          </button>
+        </div>
+      </div>
+    );
+  }
   const hasAllergy = p.allergies && p.allergies !== "لا يوجد";
 
   return (
@@ -612,6 +651,9 @@ useEffect(() => {
 {session.fromFuId && (
   <PrevWorkReview patientId={session.patientId} fuId={session.fromFuId} />
 )}
+
+ 
+ 
       {/* شريط التبويبات */}
       <div className="px-5 pt-4 pb-0 bg-mist/50 border-b border-line">
         <div className="flex gap-1.5 overflow-x-auto pb-3 -mx-1 px-1" role="tablist">
@@ -703,6 +745,18 @@ useEffect(() => {
     </p>
   )}
 </div>
+            {session.fromFuId && (
+              <div className="flex items-center gap-3 rounded-xl border border-amber/40 bg-amber-soft/50 px-3.5 py-2.5">
+                <div>
+                  <p className="text-[10px] font-bold text-[#7a4c08]">الرصيد السابق</p>
+                  <p className="text-[10px] text-soft mt-0.5">المدفوع: <b className="stat-num text-mint">{money(previousPaid)}</b></p>
+                </div>
+                <div className="border-s border-amber/30 ps-3">
+                  <p className="text-[10px] font-bold text-[#7a4c08]">المتبقي</p>
+                  <p className={`stat-num text-sm font-bold ${previousBalance > 0 ? "text-coral" : "text-mint"}`}>{money(previousBalance)}</p>
+                </div>
+              </div>
+            )}
             <span className="chip bg-mist text-soft stat-num">{session.procedures.length} إجراء</span>
             {session.teethTreated.length > 0 && (
               <span className="chip bg-amber-soft text-[#a06410]">{session.teethTreated.length} تعديل أسنان معلّق</span>
@@ -731,8 +785,13 @@ useEffect(() => {
               <TInput type="number" min={0} value={paid} onChange={(e) => setPaid(e.target.value)} placeholder="0" className="!w-32 !text-center" />
             </div>
             <div className="pb-1">
-              <p className="text-[10px] font-bold text-soft">المتبقي</p>
-              <p className={`stat-num text-lg leading-tight ${remaining > 0 ? "text-coral" : "text-mint"}`}>{money(remaining)}</p>
+              <p className="text-[10px] font-bold text-soft">المتبقي الإجمالي</p>
+              <p className={`stat-num text-lg leading-tight ${sessionRemaining > 0 ? "text-coral" : "text-mint"}`}>
+                {money(sessionRemaining)}
+              </p>
+              {session.fromFuId && previousPaid > 0 && (
+                <p className="text-[9px] text-soft mt-0.5">الإجمالي {money(total)} − المدفوع السابق {money(previousPaid)}</p>
+              )}
             </div>
             <button className="btn-primary !h-11 !px-6 !text-base" onClick={end}>
               <IconCheck className="w-5 h-5" />

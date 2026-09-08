@@ -45,7 +45,7 @@ const fmtDur = (ms: number) => {
    1) قائمة العودات — جاهزون للدخول
    ════════════════════════════════════════════════════════════════ */
 
-export function ReturnQueueSection({ onEnter }: { onEnter: (patientId: string, fuId: string) => void }) {
+export function ReturnQueueSection({ onEnter, disabled = false }: { onEnter: (patientId: string, fuId: string) => void; disabled?: boolean }) {
   const { db, patientById, doctorById } = useStore();
   const { doctorScopeId } = useAuth();
 
@@ -141,9 +141,11 @@ export function ReturnQueueSection({ onEnter }: { onEnter: (patientId: string, f
 
                 <div className="flex items-center gap-2 mt-3.5 pt-3 border-t border-line/70">
                   <button
+                    disabled={disabled}
                     onClick={() => onEnter(f.patientId, f.id)}
-                    className="btn-primary !h-9 !px-3.5 !text-xs flex-1 !bg-amber hover:!bg-[#c77f1d]"
-                    style={{ boxShadow: "0 8px 18px -6px rgba(226,149,43,.55)" }}
+                    title={disabled ? "أنه جلسة المريض الحالي أو ألغِها أولاً" : "فتح جلسة العودة مع كامل السجل السابق"}
+                    className={`btn-primary !h-9 !px-3.5 !text-xs flex-1 !bg-amber hover:!bg-[#c77f1d] ${disabled ? "opacity-45 !cursor-not-allowed" : ""}`}
+                    style={{ boxShadow: disabled ? "none" : "0 8px 18px -6px rgba(226,149,43,.55)" }}
                   >
                     <IconPulse className="w-4 h-4" />
                     دخول ومتابعة العمل السابق

@@ -57,7 +57,7 @@ const hoursBetween = (start: string, end: string) => {
   return arr.length ? arr : ["09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00", "18:00", "19:00", "20:00"];
 };
 
-type View = "schedule" | "followups" | "history";
+type View = "schedule" | "followups" | "history" | "previous";
 
 /* أدوات التاريخ */
 const dayDiff = (d: string) =>
@@ -113,11 +113,16 @@ export default function AppointmentsPage({ onOpenPatient, onBook }: Props) {
     () => db.sessions.filter((s) => s.status === "done" && (!doctorScopeId || s.doctorId === doctorScopeId)),
     [db.sessions, doctorScopeId]
   );
+  const previousAppointments = useMemo(
+    () => db.appointments.filter((a) => a.date < today(0) && (!doctorScopeId || a.doctorId === doctorScopeId)),
+    [db.appointments, doctorScopeId]
+  );
 
   const TABS: { key: View; label: string; count: number; icon: (c: string) => React.ReactNode }[] = [
     { key: "schedule", label: "جدول اليوم", count: dayCount, icon: (c) => <IconClock className={c} /> },
     { key: "followups", label: "العودات والمتابعة", count: pendingCount, icon: (c) => <IconCalendarPlus className={c} /> },
     { key: "history", label: "الجلسات المكتملة", count: doneSessions.length, icon: (c) => <IconCheck className={c} /> },
+    { key: "previous", label: "الحجوزات السابقة", count: previousAppointments.length, icon: (c) => <IconCalendar className={c} /> },
   ];
 
   return (
@@ -178,6 +183,7 @@ export default function AppointmentsPage({ onOpenPatient, onBook }: Props) {
       {view === "schedule" && <ScheduleView day={day} setDay={setDay} onOpenPatient={onOpenPatient} onBook={onBook} />}
       {view === "followups" && <FollowUpsView fus={fuScoped} onOpenPatient={onOpenPatient} />}
       {view === "history" && <HistoryView sessions={doneSessions} onOpenPatient={onOpenPatient} />}
+      {view === "previous" && <PreviousAppointmentsSection appointments={previousAppointments} onOpenPatient={onOpenPatient} />}
 
       {showFu && <FollowUpModal onClose={() => setShowFu(false)} />}
       {showNewPatient && (
@@ -726,6 +732,7 @@ function FollowUpsView({ fus, onOpenPatient }: { fus: FollowUp[]; onOpenPatient:
 
 function HistoryView({ sessions, onOpenPatient }: { sessions: import("../store").ClinicalSession[]; onOpenPatient: (id: string) => void }) {
   const { db, patientById, serviceById, doctorById , dispatch } = useStore();
+  const { doctorScopeId } = useAuth();
   const money = useMoney();
   const { push } = useToast();
   const [docFilter, setDocFilter] = useState("all");
@@ -751,7 +758,7 @@ function HistoryView({ sessions, onOpenPatient }: { sessions: import("../store")
         >
           كل الأطباء
         </button>
-        {db.doctors.map((d) => (
+            {db.doctors.filter((d) => d.active).map((d) => (
           <button
             key={d.id}
             onClick={() => setDocFilter(d.id)}
@@ -947,6 +954,68 @@ function HistoryView({ sessions, onOpenPatient }: { sessions: import("../store")
   );
 }
 
+function PreviousAppointmentsSection({
+  appointments,
+  onOpenPatient,
+}: {
+  appointments: import("../store").Appointment[];
+  onOpenPatient: (id: string) => void;
+}) {
+  const { patientById, serviceById, doctorById } = useStore();
+  const previous = useMemo(
+    () => [...appointments].sort((a, b) => (b.date + b.time).localeCompare(a.date + a.time)),
+    [appointments]
+  );
+
+  return (
+    <section className="card overflow-hidden anim-rise" style={{ animationDelay: "120ms" }}>
+      <div className="flex flex-wrap items-center justify-between gap-3 px-5 pt-4 pb-3 border-b border-line">
+        <div>
+          <h2 className="font-display font-bold text-lg text-ink flex items-center gap-2">
+            <IconCalendar className="w-5 h-5 text-jade-deep" />
+            الحجوزات السابقة
+          </h2>
+          <p className="text-[11px] text-soft mt-1">سجل المواعيد السابقة للمراجعة والرجوع إلى ملف المريض.</p>
+        </div>
+        <span className="chip bg-mist text-soft stat-num">{previous.length} حجز</span>
+      </div>
+      {previous.length === 0 ? (
+        <p className="text-xs text-soft text-center py-8">لا توجد حجوزات سابقة في نطاقك.</p>
+      ) : (
+        <ul className="divide-y divide-line/60">
+          {previous.map((appointment) => {
+            const patient = patientById(appointment.patientId);
+            const service = serviceById(appointment.serviceId);
+            const doctor = doctorById(appointment.doctorId);
+            const meta = APPT_META[appointment.status];
+            return (
+              <li key={appointment.id} className="flex flex-wrap items-center gap-3 px-5 py-3.5 hover:bg-mist/50 transition-colors">
+                <button onClick={() => patient && onOpenPatient(patient.id)} className="shrink-0 cursor-pointer">
+                  <Avatar name={patient?.name ?? "؟"} size="w-10 h-10 text-xs" />
+                </button>
+                <div className="flex-1 min-w-48">
+                  <button onClick={() => patient && onOpenPatient(patient.id)} className="font-bold text-sm text-ink hover:text-jade-deep cursor-pointer">
+                    {patient?.name ?? "مريض غير موجود"}
+                  </button>
+                  <p className="text-[11px] text-soft mt-0.5">{service?.name ?? "موعد علاجي"} · {doctor?.name ?? "طبيب غير محدد"}</p>
+                </div>
+                <div className="text-end shrink-0">
+                  <p className="stat-num text-sm text-ink">{fmtDate(appointment.date)}</p>
+                  <p className="stat-num text-[11px] text-soft mt-0.5" dir="ltr">{appointment.time}</p>
+                </div>
+                <Badge cls={meta.cls}>
+                  <span className="w-1.5 h-1.5 rounded-full" style={{ background: meta.dot }} />
+                  {meta.label}
+                </Badge>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </section>
+  );
+}
+
 /* ============================ نافذة: عودة جديدة ============================ */
 
 export function FollowUpModal({
@@ -964,7 +1033,7 @@ export function FollowUpModal({
   const { push } = useToast();
   const [pid, setPid] = useState(patientId ?? "");
  
-  const [doctorId, setDoctorId] = useState(apptScope ?? defaultDoctor ?? "d1");
+  const [doctorId, setDoctorId] = useState(apptScope ?? defaultDoctor ?? "");
   const [reason, setReason] = useState("");
   const [dueDate, setDueDate] = useState(today(7));
   const [notes, setNotes] = useState("");
@@ -993,6 +1062,7 @@ export function FollowUpModal({
 
   const save = () => {
     if (!pid) return setErr("اختر المريض أولاً.");
+    if (!db.doctors.some((d) => d.id === doctorId && d.active !== false)) return setErr("اختر طبيب أسنان فعّالاً — لا يمكن تحويل العودة إلى مدير النظام أو موظف غير طبي.");
     if (reason.trim().length < 3) return setErr("اكتب سبب العودة.");
     if (!dueDate) return setErr("حدد تاريخ الاستحقاق.");
     /* حفظ تلقائي: إن كان السبب جديداً يُضاف للمكتبة */
@@ -1118,7 +1188,7 @@ export function FollowUpModal({
         </div>
         <Field label="طبيب المتابعة">
           <TSelect value={doctorId} onChange={(e) => setDoctorId(e.target.value)} disabled={!!apptScope}>
-            {db.doctors.map((d) => (
+            {db.doctors.filter((d) => d.active !== false).map((d) => (
               <option key={d.id} value={d.id}>
                 {d.name} — {d.specialty}
               </option>
@@ -1162,7 +1232,7 @@ export function AddAppointmentModal({
   const [patientId, setPatientId] = useState(defaultPatient ?? "");
  
   //const [patientId, setPatientId] = useState("");
-  const [doctorId, setDoctorId] = useState("d1");
+  const [doctorId, setDoctorId] = useState("");
   const [date, setDate] = useState(today(0));
   const [time, setTime] = useState("10:00");
   const [notes, setNotes] = useState("");
@@ -1174,7 +1244,7 @@ export function AddAppointmentModal({
   useEffect(() => {
     if (open) {
       setPatientId(defaultPatient ?? "");
-      setDoctorId(apptScope ?? "d1");
+      setDoctorId(apptScope ?? db.doctors.find((d) => d.active !== false)?.id ?? "");
       setDate(defaultDate ?? today(0));
       setTime(defaultTime ?? "10:00");
       setNotes("");
@@ -1198,6 +1268,8 @@ export function AddAppointmentModal({
 const busySlots = times.filter((t) => busy(t));
   const save = () => {
     if (!patientId) return setErr("اختر المريض أولاً.");
+    if (!db.patients.some((p) => p.id === patientId)) return setErr("اختر مريضاً مسجلاً من السجل قبل تأكيد الموعد.");
+    if (!db.doctors.some((d) => d.id === doctorId && d.active !== false)) return setErr("اختر طبيب أسنان فعّالاً قبل تأكيد الموعد.");
     if (!consultSvc) return setErr("لا توجد خدمة كشف/استشارة مفعلة — فعّلها من شاشة «بيانات الخدمات».");
     if (busy(time)) return setErr("هذا الوقت محجوز لدى الطبيب نفسه — اختر وقتاً آخر.");
     const a: Appointment = { id: uid(), patientId, serviceId: consultSvc.id, doctorId, date, time, status: "confirmed", notes: notes.trim() || undefined };
@@ -1253,7 +1325,7 @@ const busySlots = times.filter((t) => busy(t));
         <div className="col-span-2">
           <Field label="الطبيب" hint={apptScope ? "مقيّد بطبيبك حسب صلاحياتك — تغيّره الإدارة" : undefined}>
             <TSelect value={doctorId} onChange={(e) => setDoctorId(e.target.value)} disabled={!!apptScope} className={apptScope ? "opacity-70 cursor-not-allowed" : ""}>
-              {db.doctors.map((d) => (
+              {db.doctors.filter((d) => d.active !== false).map((d) => (
                 <option key={d.id} value={d.id}>{d.name} — {d.specialty}</option>
               ))}
             </TSelect>

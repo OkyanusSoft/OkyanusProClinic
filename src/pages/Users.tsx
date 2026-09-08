@@ -154,7 +154,7 @@ export default function UsersPage() {
                     {u.name}
                     {isMe && <span className="chip bg-jade-soft text-jade-deep !text-[9px] !px-1.5 !py-0.5">أنت</span>}
                   </p>
-                  <p className="text-[11px] text-soft mt-0.5" dir="ltr">@{u.username} · رمز {u.pin.replace(/./g, "•")}</p>
+                  <p className="text-[11px] text-soft mt-0.5" dir="ltr">@{u.username}</p>
                 </div>
                 <Badge cls={ROLE_META[u.role].cls}>{ROLE_META[u.role].label}</Badge>
                 {linked && (
@@ -223,7 +223,7 @@ function UserModal({ user, onClose }: { user?: User; onClose: () => void }) {
   const { push } = useToast();
   const [name, setName] = useState(user?.name ?? "");
   const [username, setUsername] = useState(user?.username ?? "");
-  const [pin, setPin] = useState(user?.pin ?? "");
+  const [pin, setPin] = useState("");
   const [role, setRole] = useState<Role>(user?.role ?? "doctor");
   const [linkId, setLinkId] = useState(user?.linkId ?? "");
   const [active, setActive] = useState(user?.active ?? true);
@@ -243,15 +243,20 @@ function UserModal({ user, onClose }: { user?: User; onClose: () => void }) {
   const save = () => {
     if (name.trim().length < 2) return setErr("أدخل اسم المستخدم.");
     if (username.trim().length < 3) return setErr("اسم الدخول قصير جداً (3 أحرف على الأقل).");
-    if (!/^[0-9]{4}$/.test(pin)) return setErr("رمز الدخول يجب أن يكون 4 أرقام بالضبط.");
+    if (!user && !/^[0-9]{4}$/.test(pin)) return setErr("رمز الدخول يجب أن يكون 4 أرقام بالضبط.");
+    if (user && pin && !/^[0-9]{4}$/.test(pin)) return setErr("رمز الدخول الجديد يجب أن يكون 4 أرقام بالضبط.");
     const dup = db.users.some((u) => u.username.toLowerCase() === username.trim().toLowerCase() && u.id !== user?.id);
     if (dup) return setErr("اسم الدخول مستخدم من قبل — اختر اسماً آخر.");
+    if (role === "doctor" && !linkId) return setErr("اربط الحساب بملف طبيب أسنان فعّال قبل الحفظ.");
+    if (role === "doctor" && !db.doctors.some((d) => d.id === linkId && d.active !== false)) {
+      return setErr("ملف الطبيب المحدد غير موجود أو موقوف. اختر طبيباً فعّالاً من القائمة.");
+    }
 
     const u: User = {
       id: user?.id ?? uid(),
       name: name.trim(),
       username: username.trim().toLowerCase(),
-      pin,
+      pin: pin || user?.pin || "",
       role,
       linkId: role === "admin" ? undefined : linkId || undefined,
       active,
@@ -263,7 +268,7 @@ function UserModal({ user, onClose }: { user?: User; onClose: () => void }) {
     onClose();
   };
 
-  const linkOptions = role === "doctor" ? db.doctors.map((d) => ({ id: d.id, label: `${d.name} — ${d.specialty}` })) : db.staff.map((s) => ({ id: s.id, label: `${s.name} — ${s.role}` }));
+  const linkOptions = role === "doctor" ? db.doctors.filter((d) => d.active !== false).map((d) => ({ id: d.id, label: `${d.name} — ${d.specialty}` })) : db.staff.filter((s) => s.active !== false).map((s) => ({ id: s.id, label: `${s.name} — ${s.role}` }));
 
   return (
     <Modal
@@ -286,8 +291,8 @@ function UserModal({ user, onClose }: { user?: User; onClose: () => void }) {
         <Field label="اسم الدخول *">
           <TInput value={username} onChange={(e) => setUsername(e.target.value)} placeholder="amal" dir="ltr" />
         </Field>
-        <Field label="رمز الدخول (4 أرقام) *">
-          <TInput value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 4))} placeholder="1234" dir="ltr" />
+        <Field label={isEdit ? "تغيير رمز الدخول (اختياري)" : "رمز الدخول (4 أرقام) *"} hint={isEdit ? "اتركه فارغاً للحفاظ على الرمز الحالي — لا يظهر الرمز الحالي للأمان." : "لن يظهر الرمز بعد الحفظ."}>
+          <TInput type="password" value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 4))} placeholder={isEdit ? "اتركه فارغاً دون تغيير" : "أدخل 4 أرقام"} dir="ltr" autoComplete="new-password" />
         </Field>
         <Field label="الحالة">
           <div className="flex items-center gap-3 h-10">
@@ -299,7 +304,7 @@ function UserModal({ user, onClose }: { user?: User; onClose: () => void }) {
         <div className="col-span-2">
           <label className="label">الدور</label>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-            {(Object.keys(ROLE_META) as Role[]).map((r) => (
+            {(Object.keys(ROLE_META) as Role[]).filter((r) => !user || user.role !== "admin" || r === "admin").map((r) => (
               <button
                 key={r}
                 onClick={() => setPreset(r)}
@@ -315,12 +320,17 @@ function UserModal({ user, onClose }: { user?: User; onClose: () => void }) {
               </button>
             ))}
           </div>
+          {user?.role === "admin" && (
+            <p className="text-[11px] font-semibold text-jade-deep bg-jade-soft/60 border border-jade/30 rounded-lg px-3 py-2 mt-2">
+              حساب مدير النظام محمي للحفاظ على الوصول إلى المستخدمين والصلاحيات. أنشئ حساب طبيب منفصلاً واربطه بملف الطبيب.
+            </p>
+          )}
         </div>
 
         {role !== "admin" && (
           <Field label={role === "doctor" ? "ربط بملف الطبيب *" : "ربط بملف الموظف"} hint={role === "doctor" ? "يُستخدم لتقييد الطبيب بمرضاه ومواعيده" : undefined}>
             <TSelect value={linkId} onChange={(e) => setLinkId(e.target.value)}>
-              <option value="">— بدون ربط —</option>
+              {role !== "doctor" && <option value="">— بدون ربط —</option>}
               {linkOptions.map((o) => (
                 <option key={o.id} value={o.id}>{o.label}</option>
               ))}
