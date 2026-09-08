@@ -1,0 +1,145 @@
+/* =====================================================================
+   الحزمة السادسة عشرة — تحسينات CSS اختيارية
+   ---------------------------------------------------------------------
+   ألصق هذا في src/index.css (اختياري — يحسّن المظهر)
+   ===================================================================== */
+
+/* بطاقات الإجراءات السابقة — تأثير hover */
+.card.border-amber\/20:hover {
+  border-color: rgba(245, 158, 11, 0.4) !important;
+  box-shadow: 0 2px 8px rgba(245, 158, 11, 0.1);
+  transform: translateY(-1px);
+  transition: all 0.2s ease;
+}
+
+/* أزرار النسخ — تأثير نشط */
+.icon-btn:active {
+  transform: scale(0.9);
+  transition: transform 0.1s ease;
+}
+
+/* شريط التقدم في لوحة العودة */
+.card.bg-amber-soft\/30 {
+  background: linear-gradient(135deg, rgba(254, 243, 199, 0.3) 0%, rgba(253, 230, 138, 0.2) 100%);
+}
+
+/* خط فاصل بين الأقسام */
+.card.bg-amber-soft\/30 > div:not(:last-child) {
+  border-bottom: 1px solid rgba(245, 158, 11, 0.1);
+  padding-bottom: 1rem;
+  margin-bottom: 1rem;
+}
+
+/* تأثير النبض على أيقونة التقويم */
+.card.bg-amber-soft\/30 .inline-flex.items-center.justify-center.w-10 {
+  animation: pulse-amber 2s ease-in-out infinite;
+}
+
+@keyframes pulse-amber {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 0 8px rgba(245, 158, 11, 0);
+  }
+}
+
+/* تحسين قراءة النصوص الطويلة */
+.line-clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* تحسين مظهر الأزرار في الوضع الكهرماني */
+.card.bg-amber-soft\/30 .btn-primary {
+  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+  box-shadow: 0 2px 8px rgba(245, 158, 11, 0.3);
+}
+
+.card.bg-amber-soft\/30 .btn-primary:hover {
+  background: linear-gradient(135deg, #d97706 0%, #b45309 100%);
+  box-shadow: 0 4px 12px rgba(245, 158, 11, 0.4);
+  transform: translateY(-1px);
+}
+
+/* تحسين مظهر البطاقات الداخلية */
+.card.bg-amber-soft\/30 .card {
+  transition: all 0.2s ease;
+}
+
+.card.bg-amber-soft\/30 .card:hover {
+  background: rgba(255, 255, 255, 0.9) !important;
+}
+
+/* شارة "وضع التحرير" */
+.card.bg-amber-soft\/30::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, #f59e0b 0%, #d97706 100%);
+  border-radius: 1rem 1rem 0 0;
+}
+
+/* تحسين المسافات */
+.card.bg-amber-soft\/30 {
+  position: relative;
+  overflow: hidden;
+}
+
+.card.bg-amber-soft\/30 > div:first-child {
+  padding-top: 0.5rem;
+}
+
+/* تحسين مظهر الأيقونات */
+.card.bg-amber-soft\/30 .icon-btn {
+  background: rgba(254, 243, 199, 0.5);
+}
+
+.card.bg-amber-soft\/30 .icon-btn:hover {
+  background: rgba(253, 230, 138, 0.8);
+}
+
+/* تحسين مظهر النصوص */
+.card.bg-amber-soft\/30 .text-amber {
+  color: #d97706;
+  font-weight: 700;
+}
+
+/* تحسين مظهر الفاتورة السابقة */
+.card.bg-white\/50 {
+  background: rgba(255, 255, 255, 0.6) !important;
+  backdrop-filter: blur(4px);
+}
+
+/* تحسين مظهر رسالة المساعدة */
+.card.bg-amber-soft\/30 > p:last-child {
+  background: linear-gradient(135deg, rgba(254, 243, 199, 0.5) 0%, rgba(253, 230, 138, 0.3) 100%);
+  border: 1px solid rgba(245, 158, 11, 0.2);
+}
+
+/* تحسين الاستجابة للشاشات الصغيرة */
+@media (max-width: 640px) {
+  .card.bg-amber-soft\/30 {
+    padding: 1rem !important;
+  }
+
+  .card.bg-amber-soft\/30 .grid.sm\:grid-cols-2 {
+    grid-template-columns: 1fr !important;
+  }
+
+  .card.bg-amber-soft\/30 .flex.items-center.justify-between {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.75rem;
+  }
+
+  .card.bg-amber-soft\/30 .btn-primary {
+    width: 100%;
+    justify-content: center;
+  }
+}

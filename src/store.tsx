@@ -342,6 +342,7 @@ export interface SessionProc {
   ligature?: string;         // تقويم: نوع الربل
   stageId?: string;          // المرحلة (الجلسة) المرتبطة
   note?: string;
+  copiedFromPrevious?: boolean;
 }
 export interface ClinicalSession {
   id: string;
@@ -1369,6 +1370,7 @@ const act = (text: string, kind: Activity["kind"]): Activity => ({ id: uid(), te
 function reducer(db: DB, action: Action): DB {
   switch (action.type) {
     case "ADD_PATIENT":
+      if (!action.p.name.trim() || db.patients.some((p) => p.name.trim().replace(/\s+/g, " ").toLocaleLowerCase("ar") === action.p.name.trim().replace(/\s+/g, " ").toLocaleLowerCase("ar"))) return db;
       return {
         ...db,
         patients: [action.p, ...db.patients],
@@ -1399,6 +1401,8 @@ function reducer(db: DB, action: Action): DB {
       };
     }
     case "ADD_APPT": {
+      if (!action.a.patientId || !db.patients.some((p) => p.id === action.a.patientId)) return db;
+      if (!db.doctors.some((d) => d.id === action.a.doctorId && d.active !== false)) return db;
       const p = db.patients.find((x) => x.id === action.a.patientId);
       const s = db.services.find((x) => x.id === action.a.serviceId);
       return {
@@ -1505,8 +1509,23 @@ function reducer(db: DB, action: Action): DB {
 
     /* ---------- جلسات العلاج ---------- */
     case "START_SESSION": {
-      if (db.sessions.some((x) => x.status === "open")) return db;
+      if (db.sessions.some((x) => x.status === "open" && !x.deleted)) return db;
+      if (!db.doctors.some((d) => d.id === action.doctorId && d.active !== false)) return db;
       const firstStage = { id: uid(), name: "الجلسة الأولى", date: today(0), done: false };
+      const previousSession = action.fromFuId
+        ? db.sessions
+            .filter((s) => s.patientId === action.patientId && s.status === "done")
+            .sort((a, b) => (b.endedAt ?? b.startedAt).localeCompare(a.endedAt ?? a.startedAt))[0]
+        : undefined;
+      const previousStageIds = new Map<string, string>();
+      const previousStages = (previousSession?.stages ?? []).map((stage) => {
+        const id = uid();
+        previousStageIds.set(stage.id, id);
+        return { ...stage, id };
+      });
+      const stages = previousStages.length > 0
+        ? [...previousStages, { id: firstStage.id, name: "جلسة المتابعة", date: today(0), done: false }]
+        : [firstStage];
       // خدمة الكشف/الاستشارة المحجوزة مع الموعد تُدرَج تلقائياً في الإجراءات المنفذة
       const appt = action.apptId ? db.appointments.find((a) => a.id === action.apptId) : undefined;
       const bookedSvc = appt ? db.services.find((s) => s.id === appt.serviceId) : undefined;
@@ -1532,15 +1551,30 @@ function reducer(db: DB, action: Action): DB {
         date: today(0),
         startedAt: nowIso(),
         status: "open",
-        complaint: "",
-        diagnosis: "",
-        procedures: autoProc,
-        teethTreated: [],
-        workItems: [],
-        stages: [firstStage],
-        meds: [],
-        medNotes: "",
-        summary: "",
+        complaint: previousSession?.complaint ?? "",
+        diagnosis: previousSession?.diagnosis ?? "",
+        procedures: [
+          ...(previousSession?.procedures ?? []).map((proc) => ({
+            ...proc,
+            id: uid(),
+              copiedFromPrevious: true,
+            teeth: [...proc.teeth],
+            canals: proc.canals?.map((canal) => ({ ...canal })),
+            stageId: previousStageIds.get(proc.stageId ?? "") ?? firstStage.id,
+          })),
+          ...autoProc,
+        ],
+        teethTreated: previousSession?.teethTreated.map((tooth) => ({ ...tooth })) ?? [],
+        workItems: previousSession?.workItems.map((item) => ({
+          ...item,
+          id: uid(),
+          teeth: [...item.teeth],
+          stageId: previousStageIds.get(item.stageId) ?? firstStage.id,
+        })) ?? [],
+        stages,
+        meds: previousSession?.meds.map((med) => ({ ...med })) ?? [],
+        medNotes: previousSession?.medNotes ?? "",
+        summary: previousSession?.summary ?? "",
      
       };
       const appointments = action.apptId
@@ -1566,9 +1600,9 @@ function reducer(db: DB, action: Action): DB {
       let nextInv = db.nextInv;
       let invoiceId: string | undefined;
       let invNumber: string | undefined;
-      if (s.procedures.length > 0) {
+      if (s.procedures.some((pr) => !pr.copiedFromPrevious)) {
         // كل إجراء يصبح بنداً مستقلاً باسمه وسعره القابل للتعديل
-        const items: InvoiceItem[] = s.procedures.map((pr) => ({
+        const items: InvoiceItem[] = s.procedures.filter((pr) => !pr.copiedFromPrevious).map((pr) => ({
           serviceId: pr.serviceId ?? "",
           name: pr.name,
           qty: Math.max(1, pr.teeth.length),
@@ -1668,51 +1702,27 @@ function reducer(db: DB, action: Action): DB {
     }*/
  
  case "CANCEL_SESSION": {
-
-  
   const s = db.sessions.find((x) => x.id === action.id);
   if (!s) return db;
-  
 
-
-  
-  // 1. تحديث الأسنان
-  const patients = db.patients.map((p) => {
-    if (p.id !== s.patientId || s.teethTreated.length === 0) return p;
-    const teeth = { ...p.teeth };
-    s.teethTreated.forEach((t) => {
-      if (t.status === "healthy") delete teeth[t.tooth];
-      else teeth[t.tooth] = t.status;
-    });
-    return { ...p, teeth };
-  });
-  
-  // 2. إعادة الموعد إلى confirmed
+  // إلغاء جلسة مفتوحة لا يعتمد أي تغييرات سريرية غير مكتملة.
   const appointments = s.apptId
-    ? db.appointments.map((a) => 
-        a.id === s.apptId 
-          ? { ...a, status: "confirmed" as ApptStatus, updatedAt: Date.now() } 
+    ? db.appointments.map((a) =>
+        a.id === s.apptId
+          ? { ...a, status: "confirmed" as ApptStatus, updatedAt: Date.now() }
           : a
       )
     : db.appointments;
-  
-  // 3. 🔽 وضع علامة deleted بدلاً من الحذف الفعلي
-  const sessions = db.sessions.map((x) => 
-    x.id === action.id 
-      ? { ...x, deleted: true, status: "done" as const, endedAt: new Date().toISOString() } 
-      : x
-  );
-  
+
+  const sessions = db.sessions.filter((x) => x.id !== action.id);
   const pName = db.patients.find((p) => p.id === s.patientId)?.name ?? "";
-  
-  // 4. حذف من MySQL
+
   deleteSession(action.id).catch((err) => {
     console.error("❌ خطأ في حذف الجلسة من MySQL:", err);
   });
-  
+
   return {
     ...db,
-    patients,
     sessions,
     appointments,
     activity: [act(`إلغاء جلسة العلاج للمريض ${pName} قبل اكتمالها`, "appt"), ...db.activity].slice(0, 30),
@@ -1732,10 +1742,24 @@ function reducer(db: DB, action: Action): DB {
       return { ...db, savedAt: action.savedAt };
     case "ADD_USER":
       return { ...db, users: [...db.users, action.u] };
-    case "UPDATE_USER":
+    case "UPDATE_USER": {
+      const current = db.users.find((x) => x.id === action.u.id);
+      if (current?.role === "admin") {
+        return {
+          ...db,
+          users: db.users.map((x) =>
+            x.id === action.u.id
+              ? { ...action.u, role: "admin", linkId: undefined, permissions: ROLE_META.admin.defaults }
+              : x
+          ),
+        };
+      }
       return { ...db, users: db.users.map((x) => (x.id === action.u.id ? action.u : x)) };
-    case "DELETE_USER":
-      return { ...db, users: db.users.filter((x) => x.id !== action.id) };
+    }
+    case "DELETE_USER": {
+      const target = db.users.find((x) => x.id === action.id);
+      return target?.role === "admin" ? db : { ...db, users: db.users.filter((x) => x.id !== action.id) };
+    }
 
     /* ---------- السجلات السريرية ---------- */
     case "ADD_IMPLANT":
@@ -1759,7 +1783,9 @@ function reducer(db: DB, action: Action): DB {
 
     /* ---------- العودات والمتابعة ---------- */
     case "ADD_FOLLOWUP":
-      return { ...db, followUps: [action.f, ...db.followUps] };
+      return db.doctors.some((d) => d.id === action.f.doctorId && d.active !== false)
+        ? { ...db, followUps: [action.f, ...db.followUps] }
+        : db;
     case "UPDATE_FOLLOWUP":
       return { ...db, followUps: db.followUps.map((x) => (x.id === action.f.id ? action.f : x)) };
     case "DELETE_FOLLOWUP":
@@ -1953,7 +1979,10 @@ export function normalizeDB(raw: Partial<DB> | null | undefined): DB {
   const db = (raw ?? {}) as Partial<DB>;
   return {
     patients: arr<Patient>(db.patients),
-    doctors: arr<Doctor>(db.doctors).length ? arr<Doctor>(db.doctors) : base.doctors,
+    doctors: (arr<Doctor>(db.doctors).length ? arr<Doctor>(db.doctors) : base.doctors).map((d) => ({
+      ...d,
+      active: d.active !== false,
+    })),
     staff: arr<Staff>(db.staff),
     currencies: arr<Currency>(db.currencies).length ? arr<Currency>(db.currencies) : base.currencies,
     defaultCurrency: db.defaultCurrency ?? base.defaultCurrency,
@@ -1986,6 +2015,7 @@ export function normalizeDB(raw: Partial<DB> | null | undefined): DB {
           ligature: pr.ligature,
           stageId: pr.stageId,
           note: pr.note,
+          copiedFromPrevious: pr.copiedFromPrevious,
         };
       }),
     })),
@@ -2012,7 +2042,25 @@ export function normalizeDB(raw: Partial<DB> | null | undefined): DB {
         : u
     ),
 */
-    users: (arr<User>(db.users).length ? arr<User>(db.users) : base.users).map((u) => {
+    users: (() => {
+      const users = arr<User>(db.users).length ? arr<User>(db.users) : base.users;
+      const admins = users.filter((u) => u.role === "admin");
+      const doctorName = (name: string) => name.replace(/^د\.?\s*/, "").replace(/^دكتور\s*/, "").replace(/\s+/g, " ").trim().toLowerCase();
+      const validDoctor = (id?: string) => id && db.doctors.some((d) => d.id === id && d.active !== false);
+      const repairDoctorLink = (u: User) => {
+        if (u.role !== "doctor" || validDoctor(u.linkId)) return u;
+        const match = db.doctors.find((d) => doctorName(d.name) === doctorName(u.name) && d.active !== false);
+        return match ? { ...u, linkId: match.id } : u;
+      };
+      if (admins.length > 0) return users.map((u) => ({ ...(u.role === "admin" ? { ...u, permissions: ROLE_META.admin.defaults } : repairDoctorLink(u)) }));
+
+      const recoveryId = users.some((u) => u.id === "u-admin") ? "u-admin" : users.find((u) => u.active)?.id;
+      return users.map((u) =>
+        u.id === recoveryId
+          ? { ...u, role: "admin" as Role, linkId: undefined, permissions: ROLE_META.admin.defaults }
+          : repairDoctorLink(u)
+      );
+    })().map((u) => {
   // تحديد صلاحيات التقارير حسب الدور
   let reportDefaults: string[] = [];
   if (u.role === "doctor") reportDefaults = DOCTOR_REPORT_DEFAULTS;
@@ -2136,6 +2184,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const bootedRef = useRef(false);
   const dirtyRef = useRef(false);
   const wipeRef = useRef(false);
+  const saveInFlightRef = useRef(false);
     // ✅ أضف هذين السطرين
   const protectedRef = useRef<Map<string, "done" | "cancelled">>(new Map());
   const flushNowRef = useRef(false);
@@ -2256,6 +2305,8 @@ const dispatch = useCallback((action: Action) => {
   useEffect(() => {
     const t = setInterval(async () => {
       if (connRef.current !== "online" || !bootedRef.current) return;
+      // لا نستبدل تعديلات محلية ما زالت في طابور الحفظ.
+      if (dirtyRef.current || saveInFlightRef.current) return;
       const res = await pollState(dbRef.current.savedAt ?? 0);
       if (!res) return;
 
@@ -2397,19 +2448,24 @@ useEffect(() => {
   setSyncing(true);
   const t = setTimeout(async () => {
     flushNowRef.current = false;
-    const res = await saveState({ ...db, savedAt: Date.now(), wipe: wipeRef.current });
-    const ok = typeof res === "boolean" ? res : !!res?.ok;
-    setSyncing(false);
-    if (ok) {
-      dirtyRef.current = false;
-      wipeRef.current = false;
-      /* تأكد الحفظ → ارفع الحماية عن الجلسات التي حالتها صحيحة الآن */
-      for (const sid of [...protectedRef.current.keys()]) {
-        const sess = dbRef.current.sessions.find((s) => s.id === sid);
-        if (!sess || sess.status === protectedRef.current.get(sid)) {
-          protectedRef.current.delete(sid);
+    saveInFlightRef.current = true;
+    try {
+      const res = await saveState({ ...db, savedAt: Date.now(), wipe: wipeRef.current });
+      const ok = typeof res === "boolean" ? res : !!res?.ok;
+      if (ok) {
+        dirtyRef.current = false;
+        wipeRef.current = false;
+        /* تأكد الحفظ → ارفع الحماية عن الجلسات التي حالتها صحيحة الآن */
+        for (const sid of [...protectedRef.current.keys()]) {
+          const sess = dbRef.current.sessions.find((s) => s.id === sid);
+          if (!sess || sess.status === protectedRef.current.get(sid)) {
+            protectedRef.current.delete(sid);
+          }
         }
       }
+    } finally {
+      saveInFlightRef.current = false;
+      setSyncing(false);
     }
   }, delay);
   return () => clearTimeout(t);

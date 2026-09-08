@@ -160,12 +160,27 @@ function Shell() {
     }, 5000);
     return () => clearInterval(t);
   }, [conn, user]);
-  const [tab, setTab] = useState<Tab>("dashboard");
+  const [tab, setTab] = useState<Tab>(() => {
+    try {
+      return (localStorage.getItem("dental-active-tab") as Tab) || "dashboard";
+    } catch {
+      return "dashboard";
+    }
+  });
   const [drawerId, setDrawerId] = useState<string | null>(null);
   const [addPatientSignal, setAddPatientSignal] = useState(0);
   const [mobileNav, setMobileNav] = useState(false);
   const [book, setBook] = useState<{ open: boolean; patientId?: string; time?: string; date?: string }>({ open: false });
   const [guideFocus, setGuideFocus] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!user) return;
+    try {
+      localStorage.setItem("dental-active-tab", tab);
+    } catch {
+      /* بيئات بلا تخزين */
+    }
+  }, [tab, user]);
 
   // تصفية القائمة حسب الصلاحيات — الدليل والتفضيلات متاحان لكل الأدوار
   const openForAll = (k: Tab) => k === "guide" || k === "preferences";
@@ -189,8 +204,16 @@ function Shell() {
   // الشاشة الافتراضية من تفضيلات المستخدم — تُطبَّق عند الدخول
   useEffect(() => {
     if (!user) return;
+    const savedTab = (() => {
+      try {
+        return localStorage.getItem("dental-active-tab") as Tab | null;
+      } catch {
+        return null;
+      }
+    })();
     const def = loadPrefs().defaultTab as Tab;
-    if (def && def !== "guide" && (can(def) || def === "preferences")) setTab(def);
+    if (savedTab && (can(savedTab) || savedTab === "preferences" || savedTab === "guide")) setTab(savedTab);
+    else if (def && def !== "guide" && (can(def) || def === "preferences")) setTab(def);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id]);
 
@@ -278,7 +301,7 @@ function Shell() {
           }}
         />
         <main className="flex-1 w-full">
-          <div className="w-full max-w-[1400px] ps-4 sm:ps-5 lg:ps-6 pe-4 sm:pe-6 lg:pe-8 py-6">
+          <div className={`w-full ${tab === "reports" ? "max-w-none" : "max-w-[1400px]"} ps-4 sm:ps-5 lg:ps-6 pe-4 sm:pe-6 lg:pe-8 py-6`}>
           {tab === "dashboard" && (
             <Dashboard
               onOpenPatient={setDrawerId}

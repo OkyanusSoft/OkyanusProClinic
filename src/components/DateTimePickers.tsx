@@ -11,6 +11,13 @@ import { IconCalendar, IconClock, IconX } from "../icons";
 
 /* ---------- أدوات تاريخ محلية ---------- */
 const p2 = (n: number) => String(n).padStart(2, "0");
+const time12 = (time: string) => {
+  const [hours, minutes] = time.split(":").map(Number);
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return time;
+  const suffix = hours < 12 ? "ص" : "م";
+  const hour = hours % 12 || 12;
+  return `${hour}:${p2(minutes)} ${suffix}`;
+};
 const isoOf = (d: Date) => `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}`;
 const toDisplay = (iso: string) => {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(iso ?? "")) return iso ?? "";
@@ -295,7 +302,7 @@ export function TimePicker({
         className="input !h-10 flex items-center justify-between gap-2 !cursor-pointer hover:!border-jade/60 transition-colors w-full"
       >
         <span className={`stat-num text-sm ${value ? "text-ink font-bold" : "text-soft/60"}`} dir="ltr">
-          {value || placeholder || "— : —"}
+          {value ? time12(value) : placeholder || "— : —"}
         </span>
         <span className="inline-flex items-center justify-center w-6 h-6 rounded-md bg-sky-soft text-sky shrink-0">
           <IconClock className="w-3.5 h-3.5" />
@@ -318,7 +325,7 @@ export function TimePicker({
                     <div>
                       <p className="font-display font-bold text-lg leading-tight">اختر وقت الموعد</p>
                       <p className="text-[10px] text-white/60 font-semibold mt-0.5">
-                        الدوام: <span className="stat-num" dir="ltr">{start} – {end}</span>
+                        الدوام: <span className="stat-num" dir="ltr">{time12(start)} – {time12(end)}</span>
                       </p>
                     </div>
                   </div>
@@ -331,9 +338,9 @@ export function TimePicker({
                   <span className="flex items-center gap-2 text-[11px] font-bold text-white/80">
                     <span className="w-1.5 h-1.5 rounded-full bg-mint pulse-dot" />
                     الآن
-                    <span className="stat-num text-[#7fe0d4]" dir="ltr">{nowStr}</span>
+                    <span className="stat-num text-[#7fe0d4]" dir="ltr">{time12(nowStr.slice(0, 5))}</span>
                   </span>
-                  <span className="stat-num font-display font-bold text-2xl text-white" dir="ltr">{value || "--:--"}</span>
+                  <span className="stat-num font-display font-bold text-2xl text-white" dir="ltr">{value ? time12(value) : "--:--"}</span>
                 </div>
               </div>
 
@@ -364,7 +371,7 @@ export function TimePicker({
                             `}
                             dir="ltr"
                           >
-                            {t}
+                            {time12(t)}
                           </button>
                         );
                       })}
