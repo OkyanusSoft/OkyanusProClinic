@@ -12,7 +12,7 @@ import {
 import { IconAlert, IconBook, IconBox, IconCalendar, IconCheck, IconCoins, IconPulse, IconReceipt, IconShield, IconSpark, IconTrash, IconWallet, Logo } from "../icons";
 import { Field, Modal, TArea, TInput, TSelect, useToast } from "../components/ui";
 import { IconSettings } from "../icons";
-import { checkDb, ping, saveState, type DbCheckStage } from "../api";
+import { checkDb, ping, saveState, listBackups, createBackup, restoreBackup, type DbCheckStage } from "../api";
 
 type SetTab = "identity" | "work" | "invoice" | "data";
 
@@ -26,9 +26,39 @@ const TABS: { key: SetTab; label: string; desc: string; icon: (c: string) => Rea
 /* سجل التغييرات — تاريخ تطور النظام */
 const CHANGELOG: { v: string; date: string; current?: boolean; items: { tag: "جديد" | "تحسين" | "إصلاح"; text: string }[] }[] = [
   {
+    v: "5.0",
+    date: "أكتوبر 2026",
+    current: true,
+    items: [
+      { tag: "جديد", text: "نظام الحسابات العامة (GL): دليل حسابات 5 مستويات (Yemen COA) — 4 فئات (صول/خصوم/مصروفات/إيرادات)، 65+ حساب" },
+      { tag: "جديد", text: "السندات المالية: قيد يومي / صرف / قبض / تحويل / افتتاح — قيد مزدوج (مدين=دائن) + ترحيل/مسودة/إلغاء" },
+      { tag: "جديد", text: "التقارير المحاسبية: كشف حساب، ميزان المراجعة، ميزان العمومية، P&L، الميزانية، التدفق النقدي، مراكز التكلفة" },
+      { tag: "جديد", text: "الفترات المالية: إنشاء سنة + 12 فترة (شهر)، قفل/فتح، إقفال سنوي (Year-end closing)، أرصدة افتتاحية" },
+      { tag: "جديد", text: "Auto-posting: ترحيل تلقائي (فواتير → إيرادات/ذمم، مصروفات → مصروف/نقد)" },
+      { tag: "جديد", text: "التأمين (Insurance): شركات + مطالبات (submitted/approved/partial/denied/paid) + AR-aging" },
+      { tag: "جديد", text: "نماذج الموافقة (Consent Forms): 4 قوالب + توقيع إلكتروني (Canvas) + طباعة" },
+      { tag: "جديد", text: "Patient Portal: حجز ذاتي (بدون login) عبر /book" },
+      { tag: "جديد", text: "PWA: manifest + service worker (offline-first, installable)" },
+      { tag: "جديد", text: "WhatsApp reminders: زر تذكير على كل موعد (wa.me link)" },
+      { tag: "جديد", text: "طباعة دليل الحسابات (A4 احترافي) + توليد تلقائي للرمز (auto-code)" },
+      { tag: "جديد", text: "CRUD صفحات: مراكز التكلفة، صناديق، وحدات، مخازن، موردون، مشتريات، مرتجعات، تقارير مشتريات، حركات مخزون" },
+      { tag: "جديد", text: "Default seed data: COA Yemen + مراكز تكلفة + سنة مالية + 12 فترة" },
+      { tag: "جديد", text: "DB: 30 جدول MySQL (accounts, vouchers, fiscal_*, insurance_*, perio_charts, staff, cost_centers) + migrations 2.0.0 + syncNormalized" },
+      { tag: "جديد", text: "Sync improvements: دفع أولي (initial push) + زر 'مزامنة الآن' + تسجيل أخطاء sync + self-heal tables" },
+      { tag: "تحسين", text: "Sidebar restructure: 7 أقسام (الإجراءات الطبية، المالية، الحسابات العامة، المخازن، المشتريات، التقارير، الإعدادات) + sub-sections مرئية" },
+      { tag: "تحسين", text: "دليل الحسابات: فلترة 'الحساب الأب' حسب 'النوع' + 'حساب حركي' تلقائي (مستوى 5 → نعم)" },
+      { tag: "تحسين", text: "دليل الحسابات: ترتيب الحقول (نوع → مستوى → أب → رمز → اسم)" },
+      { tag: "تحسين", text: "COA Yemen: 1 أصول · 2 خصوم (23 حقوق ملكية) · 3 مصروفات · 4 إيرادات (لا يوجد 5)" },
+      { tag: "تحسين", text: "اسم العيادة: عيادة الدكتور سفير الصري / AL-SARI DENTAL CLINIC" },
+      { tag: "إصلاح", text: "ERR_HTTP_HEADERS_SENT: حذف معالج مكرر GET /api/state" },
+      { tag: "إصلاح", text: "server/index.js: إزالة const path مكرر" },
+      { tag: "تحسين", text: "ترقية رقم الإصدار إلى 5.0" },
+    ],
+  },
+  {
     v: "4.0",
     date: "أغسطس 2026",
-    current: true,
+    current: false,
     items: [
       { tag: "جديد", text: "مزامنة الدمج المركزي متعددة الأجهزة: إدخال السكرتارية يظهر للدكتور لحظياً، ولا يحذف جهازٌ بياناتَ آخر" },
       { tag: "جديد", text: "شاشة مراقبة النشاط للمدير: بث حي لكل عمليات الموظفين مع الفلاتر ورسم التوزيع وقائمة أجهزة الشبكة" },
@@ -157,6 +187,13 @@ function DeviceLabelField() {
 export default function SettingsPage() {
   const { db, dispatch, conn, syncing } = useStore();
   const { push } = useToast();
+  const [serverBackups, setServerBackups] = useState<{ name: string; size: number; mtime: number }[]>([]);
+  const [backupBusy, setBackupBusy] = useState(false);
+  const refreshBackups = async () => {
+    const list = await listBackups();
+    if (list) setServerBackups(list);
+  };
+  React.useEffect(() => { refreshBackups(); }, []);
   const clinic = clinicOf(db);
   const [tab, setTab] = useState<SetTab>("identity");
 
@@ -537,6 +574,61 @@ export default function SettingsPage() {
                 <div className="flex flex-wrap gap-3">
                   <button className="btn-primary" onClick={exportBackup}><IconSpark className="w-4.5 h-4.5" /> تصدير نسخة احتياطية</button>
                   <button className="btn-soft" onClick={() => fileRef.current?.click()}><IconShield className="w-4.5 h-4.5" /> استيراد نسخة</button>
+                  <button className="btn-soft" onClick={async () => {
+                    const res = await saveState({ ...db, savedAt: Date.now() });
+                    if (res.ok) push("success", "تمت المزامنة", "تم دفع جميع البيانات (بما في ذلك الجداول الجديدة) إلى الخادم.");
+                    else push("error", "فشل المزامنة", res.error);
+                  }}><IconPulse className="w-4.5 h-4.5" /> مزامنة الآن</button>
+                </div>
+
+                {/* نسخ احتياطية على الخادم (تلقائية) */}
+                <div className="mt-6 border-t border-line pt-5">
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="font-display font-bold text-base text-ink">نسخ احتياطية على الخادم (تلقائية يومياً)</h3>
+                    <button
+                      className="btn-soft !h-9 !text-xs"
+                      disabled={backupBusy}
+                      onClick={async () => {
+                        setBackupBusy(true);
+                        const res = await createBackup();
+                        setBackupBusy(false);
+                        if (res.ok) { push("success", "تم إنشاء نسخة", res.name); refreshBackups(); }
+                        else push("error", "فشل", res.error);
+                      }}
+                    >
+                      {backupBusy ? "جارٍ…" : "إنشاء الآن"}
+                    </button>
+                  </div>
+                  {serverBackups.length === 0 ? (
+                    <p className="text-xs text-soft">لا توجد نسخ على الخادم (أو الخادم غير متصل).</p>
+                  ) : (
+                    <ul className="divide-y divide-line/60 max-h-48 overflow-y-auto">
+                      {serverBackups.map((b) => (
+                        <li key={b.name} className="flex items-center gap-3 py-2">
+                          <span className="stat-num text-xs text-ink flex-1 truncate" dir="ltr">{b.name}</span>
+                          <span className="text-[10px] text-soft">{(b.size / 1024).toFixed(1)} KB</span>
+                          <button
+                            className="text-[11px] font-bold text-jade-deep hover:underline"
+                            onClick={async () => {
+                              if (!confirm(`استعادة النسخة ${b.name}؟ سيتم استبدال البيانات الحالية.`)) return;
+                              const res = await restoreBackup(b.name);
+                              if (res.ok) { push("success", "تمت الاستعادة", "أعد تحميل الصفحة."); }
+                              else push("error", "فشل", res.error);
+                            }}
+                          >
+                            استعادة
+                          </button>
+                          <a
+                            className="text-[11px] font-bold text-soft hover:text-ink"
+                            href={`${(localStorage.getItem("dental-api-url") || "http://localhost:4000").replace(/\/$/, "")}/api/backups/${encodeURIComponent(b.name)}`}
+                            target="_blank" rel="noreferrer"
+                          >
+                            تنزيل
+                          </a>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                 </div>
               </div>
 
@@ -705,7 +797,7 @@ export default function SettingsPage() {
                 <div className="grid sm:grid-cols-3 gap-3 text-xs">
                   <div className="rounded-lg bg-mist/70 border border-line p-3.5">
                     <p className="font-bold text-soft">الإصدار</p>
-                    <p className="stat-num text-lg text-ink mt-1">4.0</p>
+                    <p className="stat-num text-lg text-ink mt-1">5.0</p>
                   </div>
                   <div className="rounded-lg bg-mist/70 border border-line p-3.5">
                     <p className="font-bold text-soft">التخزين</p>
@@ -767,7 +859,7 @@ export default function SettingsPage() {
       </Modal>
 
       {/* ====== سجل التغييرات ====== */}
-      <Modal open={showChangelog} onClose={() => setShowChangelog(false)} title="سجل التغييرات" subtitle="تاريخ تطور نظام عيادة د. عبدالله الشرفي" width="max-w-2xl">
+      <Modal open={showChangelog} onClose={() => setShowChangelog(false)} title="سجل التغييرات" subtitle="تاريخ تطور نظام إدارة عيادات الأسنان" width="max-w-2xl">
         <div className="relative ms-3">
           <span className="absolute top-1 bottom-1 start-[9px] w-0.5 bg-gradient-to-b from-jade via-line to-transparent rounded-full" />
           <div className="space-y-7">

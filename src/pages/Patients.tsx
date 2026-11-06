@@ -16,6 +16,9 @@ import {
   YEMEN_CITIES,
   type FollowUp,
   type Patient,
+  type PatientImage,
+  type PerioChart,
+  type PerioSite,
 } from "../store";
 import { IconCalendar, IconCalendarPlus, IconChevronDown, IconClock, IconIdCard, IconPencil, IconPhone, IconPlus, IconPrinter, IconSearch, IconSpark, IconUserPlus, IconUsers, IconAlert } from "../icons";
 import { Avatar, Badge, EmptyState, Field, Modal, SmartCombo, TArea, TInput, TSelect, TwoStepDelete, useToast } from "../components/ui";
@@ -251,12 +254,14 @@ export function AddPatientModal({
   onSaved,
   onBook,
   dispatch,
+  patient,
 }: {
   open: boolean;
   onClose: () => void;
   onSaved: (p: Patient) => void;
   onBook: (patientId: string) => void;
   dispatch: React.Dispatch<any>;
+  patient?: Patient | null;
 }) {
   const { db } = useStore();
   const { push } = useToast();
@@ -270,25 +275,48 @@ export function AddPatientModal({
   const [city, setCity] = useState("");
   const [allergies, setAllergies] = useState("لا يوجد");
   const [notes, setNotes] = useState("");
+  const [photo, setPhoto] = useState<string | undefined>(undefined);
   const [err, setErr] = useState("");
 
   useEffect(() => {
     if (open) {
-      setName(""); setPhone(""); setAge(""); setGender("m"); setBlood("O+"); setCity(""); setAllergies("لا يوجد"); setNotes(""); setErr("");
+      if (patient) {
+        setName(patient.name); setPhone(patient.phone); setAge(String(patient.age)); setGender(patient.gender); setBlood(patient.blood); setCity(patient.city); setAllergies(patient.allergies); setNotes(patient.notes); setPhoto(patient.photo); setErr("");
+      } else {
+        setName(""); setPhone(""); setAge(""); setGender("m"); setBlood("O+"); setCity(""); setAllergies("لا يوجد"); setNotes(""); setPhoto(undefined); setErr("");
+      }
     }
-  }, [open]);
+  }, [open, patient]);
 
   const save = () => {
     const cleanName = name.trim().replace(/\s+/g, " ");
     const nameKey = cleanName.toLocaleLowerCase("ar");
     if (cleanName.length < 3) return setErr("أدخل الاسم الثلاثي على الأقل.");
-    if (db.patients.some((existing) => existing.name.trim().replace(/\s+/g, " ").toLocaleLowerCase("ar") === nameKey)) {
+    if (!patient && db.patients.some((existing) => existing.name.trim().replace(/\s+/g, " ").toLocaleLowerCase("ar") === nameKey)) {
       return setErr("هذا الاسم مسجل مسبقاً في سجل المرضى. اختر المريض الموجود بدلاً من إنشاء ملف مكرر.");
     }
     const cleanPhone = phone.replace(/[\s\-().]/g, "");
     /* إن تُرك الجوال فارغاً يُسند الرقم الافتراضي — لا يُطلب من المستخدم */
     const finalPhone = cleanPhone === "" ? defaultPhone : cleanPhone;
     if (!/^7\d{8,14}$/.test(finalPhone)) return setErr("رقم الجوال يجب أن يبدأ بـ 7 ويتكون من 9 أرقام على الأقل (مثل 771234567).");
+    if (patient) {
+      const p: Patient = {
+        ...patient,
+        name: cleanName,
+        phone: finalPhone,
+        age: Number(age) || patient.age || 25,
+        gender,
+        blood,
+        allergies: allergies.trim() || "لا يوجد",
+        city: city.trim(),
+        notes: notes.trim(),
+        photo,
+      };
+      dispatch({ type: "UPDATE_PATIENT", p });
+      onSaved(p);
+      return;
+    }
+
     const p: Patient = {
       id: uid(),
       name: cleanName,
@@ -301,6 +329,7 @@ export function AddPatientModal({
       notes: notes.trim(),
       joined: today(0),
       teeth: {},
+      photo,
     };
     dispatch({ type: "ADD_PATIENT", p });
     onSaved(p);
@@ -310,8 +339,8 @@ export function AddPatientModal({
     <Modal
       open={open}
       onClose={onClose}
-      title="مريض جديد"
-      subtitle="أدخل البيانات الأساسية لفتح ملف في العيادة"
+      title={patient ? "تعديل ملف المريض" : "مريض جديد"}
+      subtitle={patient ? "عدّل البيانات ثم احفظ" : "أدخل البيانات الأساسية لفتح ملف في العيادة"}
       footer={
         <>
           <button className="btn-ghost" onClick={onClose}>إلغاء</button>
@@ -319,6 +348,40 @@ export function AddPatientModal({
         </>
       }
     >
+      <div className="flex items-center gap-4 mb-4">
+        <div className="relative">
+          {photo ? (
+            <img src={photo} alt="صورة المريض" className="w-20 h-20 rounded-full object-cover border-2 border-line" />
+          ) : (
+            <Avatar name={name || "مريض"} size="w-20 h-20 text-xl" />
+          )}
+        </div>
+        <div className="flex flex-col gap-2">
+          <label className="btn-ghost !py-2 !px-3 cursor-pointer text-xs">
+            <input
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (!f) return;
+                if (f.size > 2 * 1024 * 1024) { setErr("حجم الصورة يجب أن لا يتجاوز 2MB"); return; }
+                const reader = new FileReader();
+                reader.onload = () => setPhoto(String(reader.result));
+                reader.readAsDataURL(f);
+                e.target.value = "";
+              }}
+            />
+            {photo ? "تغيير الصورة" : "رفع صورة"}
+          </label>
+          {photo && (
+            <button type="button" className="text-xs text-coral hover:underline" onClick={() => setPhoto(undefined)}>
+              حذف الصورة
+            </button>
+          )}
+        </div>
+      </div>
+
       <div className="grid grid-cols-2 gap-4">
         <div className="col-span-2">
           <Field label="الاسم الكامل *">
@@ -397,6 +460,7 @@ export function PatientDrawer({
   const [showFu, setShowFu] = useState(false);
   const [showPrint, setShowPrint] = useState(false);
   const [showCard, setShowCard] = useState(false);
+  const [showEdit, setShowEdit] = useState(false);
   const [printRx, setPrintRx] = useState<Prescription | null>(null);
 
   useEffect(() => {
@@ -471,7 +535,11 @@ export function PatientDrawer({
         <div className="bg-pine sidebar-texture text-white px-6 pt-6 pb-5">
           <div className="flex items-start justify-between gap-3">
             <div className="flex items-center gap-4">
-              <Avatar name={p.name} size="w-14 h-14 text-lg" />
+              {p.photo ? (
+                <img src={p.photo} alt={p.name} className="w-14 h-14 rounded-full object-cover border-2 border-white/30" />
+              ) : (
+                <Avatar name={p.name} size="w-14 h-14 text-lg" />
+              )}
               <div>
                 <h2 className="font-display font-bold text-2xl leading-tight">{p.name}</h2>
                 <p className="text-white/60 text-xs mt-1 flex items-center gap-1.5" dir="ltr">
@@ -480,6 +548,9 @@ export function PatientDrawer({
                 </p>
               </div>
             </div>
+            <button onClick={() => setShowEdit(true)} className="icon-btn !text-white/70 hover:!bg-white/10 hover:!text-white" aria-label="تعديل">
+              <IconPencil className="w-5 h-5" />
+            </button>
             <button onClick={onClose} className="icon-btn !text-white/70 hover:!bg-white/10 hover:!text-white" aria-label="إغلاق">
               <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><path d="m6 6 12 12M18 6 6 18" /></svg>
             </button>
@@ -541,6 +612,81 @@ export function PatientDrawer({
                 push("success", `تم تحديث السن ${tooth}`, status === "healthy" ? "عُدِّلت الحالة إلى سليم." : undefined);
               }}
             />
+          </section>
+
+          {/* مخطط دواعم (Periodontal Chart) */}
+          <section className="card p-5">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="font-display font-bold text-lg text-ink flex items-center gap-2">
+                <IconSpark className="w-5 h-5 text-jade-deep" />
+                مخطط دواعم (Periodontal)
+              </h3>
+            </div>
+            <PerioSection patientId={p.id} />
+          </section>
+
+          {/* صور وملفات المريض */}
+          <section className="card p-5">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="font-display font-bold text-lg text-ink flex items-center gap-2">
+                <IconSpark className="w-5 h-5 text-jade-deep" />
+                صور وملفات المريض
+              </h3>
+              <label className="btn-soft !h-9 !text-xs cursor-pointer">
+                <input
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  className="hidden"
+                  onChange={(e) => {
+                    const files = Array.from(e.target.files ?? []);
+                    if (files.length === 0) return;
+                    const readerPromises = files.map((f) => new Promise<string>((resolve) => {
+                      const r = new FileReader();
+                      r.onload = () => resolve(String(r.result));
+                      r.readAsDataURL(f);
+                    }));
+                    Promise.all(readerPromises).then((urls) => {
+                      const newImgs: PatientImage[] = urls.map((u, i) => ({
+                        id: uid(),
+                        patientId: p.id,
+                        kind: "intraoral",
+                        date: today(0),
+                        dataUrl: u,
+                        note: files[i].name,
+                      }));
+                      const updated: Patient = { ...p, images: [...(p.images ?? []), ...newImgs] };
+                      dispatch({ type: "UPDATE_PATIENT", p: updated });
+                      push("success", "أُضيفت الصور", `${urls.length} صورة.`);
+                    });
+                    e.target.value = "";
+                  }}
+                />
+                رفع صور
+              </label>
+            </div>
+            {(p.images ?? []).length === 0 ? (
+              <p className="text-xs text-soft">لا توجد صور مرفقة. ارفع صور داخل الفم/أشعة/قبل-بعد.</p>
+            ) : (
+              <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
+                {(p.images ?? []).map((img) => (
+                  <div key={img.id} className="relative group">
+                    <img src={img.dataUrl} alt={img.note ?? "صورة"} className="w-full h-24 object-cover rounded-lg border border-line" />
+                    <button
+                      onClick={() => {
+                        const updated: Patient = { ...p, images: (p.images ?? []).filter((x) => x.id !== img.id) };
+                        dispatch({ type: "UPDATE_PATIENT", p: updated });
+                      }}
+                      className="absolute top-1 end-1 w-6 h-6 rounded-full bg-coral text-white text-xs opacity-0 group-hover:opacity-100 transition-opacity"
+                      aria-label="حذف"
+                    >
+                      ×
+                    </button>
+                    {img.note && <p className="text-[9px] text-soft mt-1 truncate">{img.note}</p>}
+                  </div>
+                ))}
+              </div>
+            )}
           </section>
 
           {/* الروشتات الإلكترونية */}
@@ -765,6 +911,17 @@ export function PatientDrawer({
           <RxPrint rx={printRx} />
         </PrintModal>
       )}
+      {showEdit && p && (
+        <AddPatientModal
+          open={showEdit}
+          onClose={() => setShowEdit(false)}
+          onSaved={(pp) => { setShowEdit(false); push("success", "تم تحديث الملف", `${pp.name} حُدِّث بنجاح.`); }}
+          onBook={onBook}
+          dispatch={dispatch}
+          patient={p}
+        />
+      )}
+
     </div>
   );
 }
@@ -775,6 +932,9 @@ function RxModal({ patientId, onClose }: { patientId: string; onClose: () => voi
   const { db, dispatch, patientById } = useStore();
   const { push } = useToast();
   const [doctorId, setDoctorId] = useState(db.doctors[0]?.id ?? "");
+
+
+
   const [rows, setRows] = useState<RxItem[]>([{ name: "", dose: "", freq: "مرتين يومياً", duration: "5 أيام" }]);
   const [notes, setNotes] = useState("");
   const [err, setErr] = useState("");
@@ -866,5 +1026,99 @@ function RxModal({ patientId, onClose }: { patientId: string; onClose: () => voi
       )}
       {err && <p className="mt-3 text-xs font-bold text-coral bg-coral-soft rounded-lg px-3 py-2.5 anim-pop">{err}</p>}
     </Modal>
+  );
+}
+
+/* ============================ مخطط دواعم ============================ */
+function PerioSection({ patientId }: { patientId: string }) {
+  const { db, dispatch } = useStore();
+  const { push } = useToast();
+  const charts = db.perioCharts.filter((c) => c.patientId === patientId).sort((a, b) => b.date.localeCompare(a.date));
+  const [tooth, setTooth] = useState("11");
+  const [pd, setPd] = useState("3");
+  const [cal, setCal] = useState("");
+  const [bop, setBop] = useState(false);
+  const [mob, setMob] = useState("0");
+  const [fur, setFur] = useState("0");
+  const [sites, setSites] = useState<PerioSite[]>([]);
+  const [notes, setNotes] = useState("");
+
+  const addSite = () => {
+    const t = Number(tooth);
+    if (!t) return;
+    setSites((s) => [...s.filter((x) => x.tooth !== t), { tooth: t, pd: Number(pd) || 0, cal: cal ? Number(cal) : undefined, bop, mob: Number(mob) || 0, furcation: Number(fur) || 0 }]);
+  };
+  const removeSite = (t: number) => setSites((s) => s.filter((x) => x.tooth !== t));
+  const save = () => {
+    if (sites.length === 0) { push("error", "أضف موقعاً واحداً على الأقل"); return; }
+    const c: PerioChart = { id: uid(), patientId, date: today(0), doctorId: db.doctors[0]?.id ?? "d1", sites, notes: notes.trim() || undefined };
+    dispatch({ type: "ADD_PERIO", c });
+    setSites([]); setNotes("");
+    push("success", "تم حفظ مخطط الدواعم");
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+        <Field label="السن"><TInput value={tooth} onChange={(e) => setTooth(e.target.value)} /></Field>
+        <Field label="PD (mm)"><TInput type="number" value={pd} onChange={(e) => setPd(e.target.value)} /></Field>
+        <Field label="CAL (mm)"><TInput type="number" value={cal} onChange={(e) => setCal(e.target.value)} /></Field>
+        <Field label="Mobility"><TInput type="number" min={0} max={3} value={mob} onChange={(e) => setMob(e.target.value)} /></Field>
+        <Field label="Furcation"><TInput type="number" min={0} max={3} value={fur} onChange={(e) => setFur(e.target.value)} /></Field>
+        <div className="flex items-end">
+          <label className="flex items-center gap-2 text-xs font-bold text-ink cursor-pointer pb-2">
+            <input type="checkbox" checked={bop} onChange={(e) => setBop(e.target.checked)} />
+            BOP (نزيف)
+          </label>
+        </div>
+        <div className="sm:col-span-2 flex items-end">
+          <button className="btn-soft !h-9 !text-xs" onClick={addSite}>+ إضافة موقع</button>
+        </div>
+      </div>
+      {sites.length > 0 && (
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead><tr className="text-soft"><th className="text-start py-1">سن</th><th>PD</th><th>CAL</th><th>BOP</th><th>Mob</th><th>Furc</th><th></th></tr></thead>
+            <tbody>
+              {sites.map((s) => (
+                <tr key={s.tooth} className="border-t border-line/60">
+                  <td className="py-1 font-bold">{s.tooth}</td>
+                  <td className="text-center">{s.pd}</td>
+                  <td className="text-center">{s.cal ?? "—"}</td>
+                  <td className="text-center">{s.bop ? "●" : "—"}</td>
+                  <td className="text-center">{s.mob}</td>
+                  <td className="text-center">{s.furcation}</td>
+                  <td className="text-end"><button onClick={() => removeSite(s.tooth)} className="text-coral text-[10px]">حذف</button></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <Field label="ملاحظات"><TArea value={notes} onChange={(e) => setNotes(e.target.value)} /></Field>
+      <button className="btn-primary !h-9 !text-xs" onClick={save}>حفظ مخطط الدواعم</button>
+
+      {charts.length > 0 && (
+        <div className="mt-4 space-y-2">
+          <p className="text-xs font-bold text-soft">السجلات السابقة ({charts.length})</p>
+          {charts.map((c) => (
+            <div key={c.id} className="rounded-lg border border-line p-3 text-xs">
+              <div className="flex items-center justify-between mb-1">
+                <span className="font-bold">{c.date}</span>
+                <button onClick={() => dispatch({ type: "DELETE_PERIO", id: c.id })} className="text-coral text-[10px]">حذف</button>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {c.sites.map((s) => (
+                  <span key={s.tooth} className="chip bg-mist text-ink !text-[9px]">
+                    {s.tooth}: PD{s.pd}{s.bop ? " (BOP)" : ""}
+                  </span>
+                ))}
+              </div>
+              {c.notes && <p className="text-soft mt-1">{c.notes}</p>}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }

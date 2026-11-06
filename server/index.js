@@ -1,49 +1,43 @@
 /**
- * خادم قاعدة البيانات المركزية — عيادة د. عبدالله الشرفي
- * مزامنة دمج (Merge Sync): كل الأجهزة تدمج بياناتها في قاعدة واحدة — لا حذف ولا استبدال.
- * التشغيل: node index.js  (يصلح جداوله بنفسه عند الإقلاع)
+ * .'/E B'9/) 'D(J'F'* 'DE1C2J)   9J'/) /. 9(/'DDG 'D41AJ
+ * E2'EF) /E, (Merge Sync): CD 'D#,G2) */E, (J'F'*G' AJ B'9/) H'-/)   D' -0A HD' '3*(/'D.
+ * 'D*4:JD: node index.js  (J5D- ,/'HDG (FA3G 9F/ 'D%BD'9)
  */
 require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
 const mysql = require("mysql2/promise");
-
+const fs = require("fs");
+const path = require("path");
+function requireEnv(name){const v=process.env[name]; if(v===undefined||v==="") throw new Error(`متغير البيئة مطلوب: ${name} (ضعه في server/.env)`); return v;}
+const DB_HOST=requireEnv("DB_HOST"),DB_PORT=Number(requireEnv("DB_PORT")),DB_USER=requireEnv("DB_USER"),DB_PASSWORD=requireEnv("DB_PASSWORD"),DB_NAME=requireEnv("DB_NAME"),API_PORT=Number(requireEnv("API_PORT"));
+if(!Number.isFinite(DB_PORT)||DB_PORT<=0) throw new Error("DB_PORT غير صالح");
+if(!Number.isFinite(API_PORT)||API_PORT<=0) throw new Error("API_PORT غير صالح");
 const app = express();
 app.use(cors());
 app.use(express.json({ limit: "20mb" }));
 
-const DB_NAME = process.env.DB_NAME || "sharafi_dental";
-
-const pool = mysql.createPool({
-  host: process.env.DB_HOST || "localhost",
-  port: Number(process.env.DB_PORT || 3306),
-  user: process.env.DB_USER || "root",
-  password: process.env.DB_PASSWORD || '123456@os',
-  database: DB_NAME,
-  waitForConnections: true,
-  connectionLimit: 10,
-  charset: "utf8mb4_unicode_ci",
-});
+const pool = mysql.createPool({host:DB_HOST,port:DB_PORT,user:DB_USER,password:DB_PASSWORD,database:DB_NAME,waitForConnections:true,connectionLimit:10,charset:"utf8mb4_unicode_ci"});
 
  
   // server/index.js
 
-// ====== حارس الحالات النهائية ======
+// ====== -'13 'D-'D'* 'DFG'&J) ======
 
 /**
- * الحالات التي تُعد «نهائية» ولا يجوز التراجع عنها عبر الدمج.
- * مفتاح: اسم المصفوفة → مجموعة الحالات النهائية فيها.
+ * 'D-'D'* 'D*J *O9/ �FG'&J)� HD' J,H2 'D*1',9 9FG' 9(1 'D/E,.
+ * EA*'-: '3E 'DE5AHA) �! E,EH9) 'D-'D'* 'DFG'&J) AJG'.
  */
 const TERMINAL_STATES = {
   sessions: new Set(["done", "cancelled"]),
-  // يمكن توسيعها مستقبلًا، مثال:
+  // JECF *H3J9G' E3*B(DK' E+'D:
   // invoices: new Set(["void"]),
 };
 
 /**
- * تحمي السجلات ذات الحالة النهائية من التراجع.
- * لكل سجل في النسخة القادمة (incoming): إذا كان له نظير في النسخة
- * المخزنة (stored) بحالة نهائية، نحتفظ بحالة النسخة المخزنة.
+ * *-EJ 'D3,D'* 0'* 'D-'D) 'DFG'&J) EF 'D*1',9.
+ * DCD 3,D AJ 'DF3.) 'DB'/E) (incoming): %0' C'F DG F8J1 AJ 'DF3.)
+ * 'DE.2F) (stored) (-'D) FG'&J) F-*A8 (-'D) 'DF3.) 'DE.2F).
  */
 function guardTerminalStates(stored, incoming) {
   if (!incoming || typeof incoming !== "object") return incoming;
@@ -53,7 +47,7 @@ function guardTerminalStates(stored, incoming) {
     const storedList = stored?.[entity];
     if (!Array.isArray(incomingList) || !Array.isArray(storedList)) continue;
 
-    // فهرس النسخة المخزنة حسب المعرف
+    // AG13 'DF3.) 'DE.2F) -3( 'DE91A
     const storedById = new Map(storedList.map((r) => [r && r.id, r]));
 
     incoming[entity] = incomingList.map((inc) => {
@@ -61,9 +55,9 @@ function guardTerminalStates(stored, incoming) {
       const prev = storedById.get(inc.id);
       if (!prev) return inc;
 
-      // إذا كانت النسخة المخزنة في حالة نهائية…
+      // %0' C'F* 'DF3.) 'DE.2F) AJ -'D) FG'&J)& 
       if (finals.has(prev.status) && !finals.has(inc.status)) {
-        // …فالناتج يبقى على الحالة النهائية (لا تراجع)
+        // & A'DF'*, J(BI 9DI 'D-'D) 'DFG'&J) (D' *1',9)
         return { ...inc, status: prev.status, endedAt: prev.endedAt ?? inc.endedAt };
       }
       return inc;
@@ -71,32 +65,13 @@ function guardTerminalStates(stored, incoming) {
   }
   return incoming;
 }
-const path = require('path');
- 
-
 const { runMigrations } = require('./migrations');
 
  
-app.use(cors());
-app.use(express.json({ limit: '50mb' }));
-
- 
-// ====== تشغيل الترحيلات عند بدء الخادم ======
-(async () => {
-  try {
-    await runMigrations(pool);
-    console.log('✅ قاعدة البيانات جاهزة');
-  } catch (error) {
-    console.error('❌ فشل في تحديث القاعدة:', error);
-    process.exit(1);
-  }
-})();
-
-
-/* نوع عمود updated_at الفعلي في القاعدة: DATETIME (قواعد schema.sql القديمة) أو BIGINT (جديدة) */
+/* FH9 9EH/ updated_at 'DA9DJ AJ 'DB'9/): DATETIME (BH'9/ schema.sql 'DB/JE)) #H BIGINT (,/J/)) */
 let updatedAtIsDatetime = false;
 
-/* ============================ ترميم ذاتي للجداول عند الإقلاع ============================ */
+/* ============================ *1EJE 0'*J DD,/'HD 9F/ 'D%BD'9 ============================ */
 async function ensureSchema() {
   const c = await pool.getConnection();
   try {
@@ -109,12 +84,12 @@ async function ensureSchema() {
     await c.query(
       "ALTER TABLE clinic_state ADD COLUMN IF NOT EXISTS gen INT DEFAULT 0"
     ).catch(() => {});
-    // كشف نوع العمود الموجود فعلياً — القواعد المنشأة من schema.sql القديم عمودها DATETIME
+    // C4A FH9 'D9EH/ 'DEH,H/ A9DJ'K   'DBH'9/ 'DEF4#) EF schema.sql 'DB/JE 9EH/G' DATETIME
     try {
       const [cols] = await c.query("SHOW COLUMNS FROM clinic_state LIKE 'updated_at'");
       updatedAtIsDatetime = !!cols.length && /^datetime|timestamp/i.test(cols[0].Type);
-      console.log(`   عمود updated_at: ${updatedAtIsDatetime ? "DATETIME (قاعدة قديمة)" : "BIGINT"}`);
-    } catch { /* تجاهل */ }
+      console.log(`   9EH/ updated_at: ${updatedAtIsDatetime ? "DATETIME (B'9/) B/JE))" : "BIGINT"}`);
+    } catch { /* *,'GD */ }
     await c.query(
       "CREATE TABLE IF NOT EXISTS activity_log (id BIGINT AUTO_INCREMENT PRIMARY KEY, at BIGINT, device_id VARCHAR(64), device_label VARCHAR(120), user_name VARCHAR(120), user_role VARCHAR(30), action VARCHAR(60), cat VARCHAR(30), entity VARCHAR(30), record_id VARCHAR(32), description TEXT, INDEX idx_at (at))"
     );
@@ -124,7 +99,7 @@ async function ensureSchema() {
     await c.query(
       "CREATE TABLE IF NOT EXISTS device_registry (device_id VARCHAR(64) PRIMARY KEY, label VARCHAR(120), last_user VARCHAR(120), last_seen BIGINT)"
     );
-    // الجداول العلائقية (للتقارير الخارجية)
+    // 'D,/'HD 'D9D'&BJ) (DD*B'1J1 'D.'1,J))
     await c.query("CREATE TABLE IF NOT EXISTS patients (id VARCHAR(32) PRIMARY KEY, name VARCHAR(140), phone VARCHAR(30), age INT, gender VARCHAR(10), blood VARCHAR(10), allergies VARCHAR(255), city VARCHAR(80), notes TEXT, joined VARCHAR(20), teeth JSON)");
     await c.query("CREATE TABLE IF NOT EXISTS doctors (id VARCHAR(32) PRIMARY KEY, name VARCHAR(120), specialty VARCHAR(120), color VARCHAR(20))");
     await c.query("CREATE TABLE IF NOT EXISTS services (id VARCHAR(32) PRIMARY KEY, name VARCHAR(140), category VARCHAR(60), price DECIMAL(12,2), duration INT, color VARCHAR(20), active TINYINT)");
@@ -145,14 +120,14 @@ async function ensureSchema() {
   }
 }
 
-/* ============================ محرك الدمج ============================ */
+/* ============================ E-1C 'D/E, ============================ */
 const COLLECTIONS = [
   "patients", "doctors", "staff", "services", "appointments", "invoices", "expenses",
   "followUps", "supplies", "supplyMoves", "sessions", "implants", "prosthetics",
   "orthoCases", "xrays", "plans", "users", "prescriptions",
 ];
 
-/** دمج قائمتين على مستوى السجل: الأحدث updatedAt يفوز */
+/** /E, B'&E*JF 9DI E3*HI 'D3,D: 'D#-/+ updatedAt JAH2 */
 function mergeList(a = [], b = []) {
   const map = new Map();
   for (const r of b) if (r && r.id) map.set(r.id, r);
@@ -164,7 +139,7 @@ function mergeList(a = [], b = []) {
   return [...map.values()];
 }
 
-/** تطبيق سجل الحذف (tombstones) على الحالة */
+/** *7(JB 3,D 'D-0A (tombstones) 9DI 'D-'D) */
 function applyTombstones(doc, tombs = []) {
   for (const t of tombs) {
     const coll = doc[t.entity];
@@ -174,8 +149,8 @@ function applyTombstones(doc, tombs = []) {
 }
 
 /**
- * يحوّل مللي ثانية إلى قيمة تطابق نوع عمود updated_at الفعلي:
- * DATETIME (قواعد schema.sql القديمة) ← نص بتاريخ صالح — BIGINT (الجديدة) ← الرقم مباشرة
+ * J-HQD EDDJ +'FJ) %DI BJE) *7'(B FH9 9EH/ updated_at 'DA9DJ:
+ * DATETIME (BH'9/ schema.sql 'DB/JE)) �! F5 (*'1J. 5'D-   BIGINT ('D,/J/)) �! 'D1BE E('41)
  */
 function updatedAtValue(ms) {
   const v = Number(ms) || Date.now();
@@ -197,7 +172,7 @@ async function loadTombstones() {
   return rows;
 }
 
-/* ============================ مزامنة الجداول العلائقية (من الحالة المدمجة) ============================ */
+/* ============================ E2'EF) 'D,/'HD 'D9D'&BJ) (EF 'D-'D) 'DE/E,)) ============================ */
 async function syncNormalized(conn, db) {
   const clear = [
     "invoice_items", "invoices", "appointments", "patients",
@@ -242,22 +217,9 @@ async function syncNormalized(conn, db) {
     await conn.query("INSERT INTO expense_cats (name,sort) VALUES (?,?)", [name, i]).catch(() => {});
 }
 
-// ====== بصمات الحذف (Tombstones) ======
+// ====== (5E'* 'D-0A (Tombstones) ======
 
-/** بصمة حذف: { entity, id, at } */
-function applyTombstones(doc) {
-  const stones = Array.isArray(doc.tombstones) ? doc.tombstones : [];
-  if (stones.length === 0) return doc;
-  for (const t of stones) {
-    const coll = doc[t.entity];
-    if (Array.isArray(coll)) {
-      doc[t.entity] = coll.filter((r) => !(r && typeof r === "object" && r.id === t.id));
-    }
-  }
-  return doc;
-}
 
-/** اتحاد مصفوفتي شواهد حسب entity+id */
 function unionTombstones(a = [], b = []) {
   const map = new Map();
   for (const t of [...a, ...b]) map.set(`${t.entity}::${t.id}`, t);
@@ -265,10 +227,10 @@ function unionTombstones(a = [], b = []) {
 }
 
 
-/* ============================ الواجهات ============================ */
+/* ============================ 'DH',G'* ============================ */
 app.get("/api/health", (_req, res) => res.json({ ok: true, db: DB_NAME, time: new Date().toISOString() }));
 
-/** فحص قاعدة البيانات الفعلي */
+/** A-5 B'9/) 'D(J'F'* 'DA9DJ */
 app.get("/api/db-check", async (_req, res) => {
   try {
     await ensureSchema();
@@ -279,11 +241,11 @@ app.get("/api/db-check", async (_req, res) => {
   }
 });
 
-/** استطلاع: هل تغيّر شيء منذ لحظة معينة؟ (gen يرتفع عند الاستبدال الشامل) */
+/** '3*7D'9: GD *:JQ1 4J! EF0 D-8) E9JF) (gen J1*A9 9F/ 'D'3*(/'D 'D4'ED) */
 app.get("/api/poll", async (req, res) => {
   try {
     const since = Number(req.query.since || 0);
-    // كشف التغيير من savedAt الدقيق داخل الوثيقة (مللي ثانية) — لا يتأثر بدقة عمود DATETIME
+    // C4A 'D*:JJ1 EF savedAt 'D/BJB /'.D 'DH+JB) (EDDJ +'FJ))   D' J*#+1 (/B) 9EH/ DATETIME
     const { doc, gen } = await loadDoc();
     const at = Number(doc?.savedAt || 0);
     res.json({ changed: at > since, at, gen });
@@ -292,79 +254,29 @@ app.get("/api/poll", async (req, res) => {
   }
 });
 
-/** جلب الحالة الكاملة المدمجة */
+/** ,D( 'D-'D) 'DC'ED) 'DE/E,) */
 app.get("/api/state", async (_req, res) => {
-  try {
-    const { doc, at, gen } = await loadDoc();
-    const tombstones = await loadTombstones();
-    res.json({ db: doc, tombstones, serverAt: at, gen });
-  } catch (err) {
-    res.status(500).json({ error: String(err.message) });
-  }
-
-try {
-    const [rows] = await pool.query(
-      'SELECT doc, updated_at FROM clinic_state ORDER BY updated_at DESC LIMIT 1'
-    );
-    
-    if (rows.length === 0) {
-      return res.json({ db: null, tombstones: [], gen: 0 });
-    }
-    
-    const doc = rows[0].doc;
-    
-    // ✅ تطبيق الحارس عند القراءة أيضاً
-    const guardedDoc = guardTerminalStates(doc, doc);
-    
-    res.json({
-      db: guardedDoc,
-      tombstones: [],
-      gen: 1
-    });
-  } catch (error) {
-    console.error('❌ خطأ في جلب الحالة:', error);
-    res.status(500).json({ error: error.message });
-  }
- 
-
+  try { const { doc, at, gen } = await loadDoc(); const tombstones = await loadTombstones(); res.json({ db: guardTerminalStates(doc, doc), tombstones, serverAt: at, gen }); }
+  catch (err) { console.error("GET /api/state:", err); if (!res.headersSent) res.status(500).json({ error: String(err.message) }); }
 });
 
-/** حفظ + دمج: يدمج بيانات الجهاز القادم مع المركزية — لا استبدال (إلا بطلب wipe) */
-app.put("/api/stateOld", async (req, res) => {
+app.put("/api/state", async (req, res) => {
   const incoming = req.body;
-
-  
-  if (!incoming || !Array.isArray(incoming.patients)) return res.status(400).json({ error: "invalid payload" });
+  if (!incoming || typeof incoming !== "object" || !Array.isArray(incoming.patients)) return res.status(400).json({ error: "invalid payload" });
   const wipe = incoming.wipe === true;
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
     const { doc: current, gen } = await loadDoc();
     const tombs = await loadTombstones();
-
-    let merged;
-    let newGen = gen;
-    const storedDoc = rows.length > 0 ? rows[0].doc : {};
-    
-  
-
-
-    if (wipe || !current) {
-      // استبدال شامل (RESET/IMPORT) أو أول تأسيس — يرفع الجيل ليحل محل كل الأجهزة
-      merged = { ...incoming };
-      delete merged.wipe;
-      if (wipe) {
-        newGen = gen + 1;
-        await conn.query("DELETE FROM deletions"); // بداية نظيفة
-      }
-    } else {
+    let merged; let newGen = gen;
+    if (wipe || !current) { merged = { ...incoming }; delete merged.wipe; if (wipe) { newGen = gen + 1; await conn.query("DELETE FROM deletions"); } }
+    else {
       merged = { ...current };
       for (const coll of COLLECTIONS) merged[coll] = mergeList(current[coll], incoming[coll]);
-      // العملات بمفتاح code
       const curMap = new Map((current.currencies || []).map((c) => [c.code, c]));
       for (const c of incoming.currencies || []) curMap.set(c.code, c);
       merged.currencies = [...curMap.values()];
-      // الفئات: اتحاد
       merged.serviceCats = [...new Set([...(current.serviceCats || []), ...(incoming.serviceCats || [])])];
       merged.itemCats = [...new Set([...(current.itemCats || []), ...(incoming.itemCats || [])])];
       merged.expenseCats = [...new Set([...(current.expenseCats || []), ...(incoming.expenseCats || [])])];
@@ -373,128 +285,21 @@ app.put("/api/stateOld", async (req, res) => {
       delete merged.wipe;
     }
     merged = applyTombstones(merged, tombs);
-    merged.savedAt = incoming.savedAt || Date.now();
-
-try {
-
-  // جلب النسخة المخزنة
-    const [rows] = await pool.query(
-      'SELECT doc FROM clinic_state ORDER BY updated_at DESC LIMIT 1'
-    );
-    const storedDoc = rows.length > 0 ? rows[0].doc : {};
-    
-    // ✅ تطبيق الحارس
-    const guardedDoc = guardTerminalStates(storedDoc, incomingDoc);
-    
-    // حفظ
-    await pool.query(
-      `INSERT INTO clinic_state (id, doc, updated_at) 
-       VALUES (1, ?, ?) 
-       ON DUPLICATE KEY UPDATE doc = VALUES(doc), updated_at = VALUES(updated_at)`,
-      [JSON.stringify(guardedDoc), Date.now()]
-    );
-    // تطبيق الفلترة قبل الحفظ
-    applyTombstones(doc);
-    /*
-    await pool.query(
-      `INSERT INTO clinic_state (id, doc, updated_at) 
-       VALUES (1, ?, ?) 
-       ON DUPLICATE KEY UPDATE doc = VALUES(doc), updated_at = VALUES(updated_at)`,
-      [JSON.stringify(doc), Date.now()]
-    );
-    */
-    res.json({ ok: true });
-  } catch (error) {
-    console.error('❌ خطأ:', error);
-    res.status(500).json({ error: error.message });
-  }
-
-    await conn.query(
-      "INSERT INTO clinic_state (id,doc,updated_at,gen) VALUES (1,?,?,?) ON DUPLICATE KEY UPDATE doc = VALUES(doc), updated_at = VALUES(updated_at), gen = VALUES(gen)",
-      [JSON.stringify(merged), updatedAtValue(merged.savedAt), newGen]
-    );
+    merged.savedAt = Number(incoming.savedAt || Date.now());
+    merged = guardTerminalStates(current || {}, merged);
+    await conn.query("INSERT INTO clinic_state (id,doc,updated_at,gen) VALUES (1,?,?,?) ON DUPLICATE KEY UPDATE doc = VALUES(doc), updated_at = VALUES(updated_at), gen = VALUES(gen)", [JSON.stringify(merged), updatedAtValue(merged.savedAt), newGen]);
     await syncNormalized(conn, merged);
     await conn.commit();
     res.json({ ok: true, savedAt: merged.savedAt, merged: true, gen: newGen });
   } catch (err) {
     await conn.rollback();
-    res.status(500).json({ error: String(err.message) });
-  } finally {
-    conn.release();
-  }
-});
-app.put('/api/state', async (req, res) => {
-  try {
-    const incomingDoc = req.body;
-    
-    // ✅ تحويل updated_at إلى تنسيق MySQL DATETIME
-    function toMySQLDateTime(timestamp) {
-      if (!timestamp) return null;
-      const date = new Date(timestamp);
-      return date.toISOString().slice(0, 19).replace('T', ' ');
-    }
-    
-    // جلب النسخة المخزنة
-    const [rows] = await pool.query(
-      'SELECT doc FROM clinic_state ORDER BY updated_at DESC LIMIT 1'
-    );
-    const storedDoc = rows.length > 0 ? rows[0].doc : {};
-    
-    // تطبيق الحارس
-    const guardedDoc = guardTerminalStates(storedDoc, incomingDoc);
-    
-    // ✅ تحويل updated_at
-    const updatedAt = toMySQLDateTime(guardedDoc.savedAt || Date.now());
-    
-    // حفظ
-    await pool.query(
-      `INSERT INTO clinic_state (id, doc, updated_at) 
-       VALUES (1, ?, ?) 
-       ON DUPLICATE KEY UPDATE doc = VALUES(doc), updated_at = VALUES(updated_at)`,
-      [JSON.stringify(guardedDoc), updatedAt || new Date().toISOString().slice(0, 19).replace('T', ' ')]
-    );
-    
-    res.json({ ok: true });
-  } catch (error) {
-    console.error('❌ خطأ:', error);
-    res.status(500).json({ error: error.message });
-  }
-});
-/** استقبال أحداث النشاط (سجل مراقبة الموظفين) + تسجيل الحذف */
-app.post("/api/events", async (req, res) => {
-  const { deviceId, deviceLabel, userName, userRole, events } = req.body || {};
-  if (!Array.isArray(events)) return res.status(400).json({ error: "invalid" });
-  try {
-    for (const ev of events) {
-      await pool.query(
-        "INSERT INTO activity_log (at, device_id, device_label, user_name, user_role, action, cat, entity, record_id, description) VALUES (?,?,?,?,?,?,?,?,?,?)",
-        [ev.at || Date.now(), deviceId ?? "?", deviceLabel ?? "", userName ?? "", userRole ?? "", ev.action ?? "", ev.cat ?? "عام", ev.entity ?? null, ev.recordId ?? null, ev.desc ?? ""]
-      );
-      // عمليات الحذف → سجل tombstone لينتشر الحذف لكل الأجهزة
-      if (ev.entity && ev.recordId && String(ev.action).startsWith("حذف")) {
-        await pool.query("INSERT IGNORE INTO deletions (entity, record_id, deleted_at) VALUES (?,?,?)", [ev.entity, ev.recordId, ev.at || Date.now()]);
-        // احذف السجل من الحالة المدمجة فوراً
-        const { doc, at } = await loadDoc();
-        if (doc && Array.isArray(doc[ev.entity])) {
-          doc[ev.entity] = doc[ev.entity].filter((r) => r.id !== ev.recordId);
-          await pool.query("UPDATE clinic_state SET doc = ?, updated_at = ? WHERE id = 1", [JSON.stringify(doc), updatedAtValue(Date.now())]);
-        }
-      }
-    }
-    // تحديث سجل الجهاز
-    if (deviceId) {
-      await pool.query(
-        "INSERT INTO device_registry (device_id,label,last_user,last_seen) VALUES (?,?,?,?) ON DUPLICATE KEY UPDATE label = VALUES(label), last_user = VALUES(last_user), last_seen = VALUES(last_seen)",
-        [deviceId, deviceLabel ?? "", userName ?? "", Date.now()]
-      );
-    }
-    res.json({ ok: true });
-  } catch (err) {
-    res.status(500).json({ error: String(err.message) });
-  }
+    console.error("PUT /api/state:", err);
+    if (!res.headersSent) res.status(500).json({ error: String(err.message) });
+  } finally { conn.release(); }
 });
 
-/** سجل الأحداث (للمدير) */
+
+/** 3,D 'D#-/'+ (DDE/J1) */
 app.get("/api/events", async (req, res) => {
   const limit = Math.min(Number(req.query.limit || 300), 1000);
   try {
@@ -505,7 +310,7 @@ app.get("/api/events", async (req, res) => {
   }
 });
 
-/** الأجهزة المسجلة */
+/** 'D#,G2) 'DE3,D) */
 app.get("/api/devices", async (_req, res) => {
   try {
     const [rows] = await pool.query("SELECT * FROM device_registry ORDER BY last_seen DESC");
@@ -515,453 +320,11 @@ app.get("/api/devices", async (_req, res) => {
   }
 });
 
-// واجهات قراءة علائقية (لأدوات التقارير الخارجية)
+// H',G'* B1'!) 9D'&BJ) (D#/H'* 'D*B'1J1 'D.'1,J))
 app.get("/api/patients", async (_req, res) => res.json((await pool.query("SELECT * FROM patients ORDER BY name"))[0]));
 app.get("/api/appointments", async (_req, res) => res.json((await pool.query("SELECT * FROM appointments ORDER BY date DESC, time"))[0]));
 app.get("/api/invoices", async (_req, res) => res.json((await pool.query("SELECT * FROM invoices ORDER BY date DESC"))[0]));
 app.get("/api/doctors", async (_req, res) => res.json((await pool.query("SELECT * FROM doctors"))[0]));
 
-const PORT = process.env.PORT || 4000;
-ensureSchema()
-  .then(() =>
-    app.listen(PORT, () => {
-      console.log(`✅ خادم عيادة الشرفي (مزامنة الدمج) يعمل على http://localhost:${PORT}`);
-      console.log(`   قاعدة البيانات: MySQL — ${DB_NAME} · الجداول مرمّمة تلقائياً`);
-    })
-  )
-  .catch((err) => {
-    console.error("❌ تعذّر تجهيز قاعدة البيانات:", err.message);
-    console.error("   تحقق من بيانات الاتصال في ملف .env ثم أعد التشغيل.");
-    app.listen(PORT, () => console.log(`⚠️ الخادم يعمل بدون قاعدة بيانات على :${PORT}`));
-  });
-
-  // ====== مسارات الجلسات ======
-
- // ============================================================
-// مسارات الجلسات (Sessions)
-// ============================================================
-
-// جلب جميع الجلسات
-app.get('/api/sessions', async (req, res) => {
-  try {
-    const [rows] = await pool.query(
-      'SELECT * FROM sessions WHERE deleted = FALSE ORDER BY date DESC'
-    );
-    res.json({ sessions: rows });
-  } catch (error) {
-    console.error('❌ خطأ في جلب الجلسات:', error);
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// جلب جلسة واحدة
-app.get('/api/sessions/:id', async (req, res) => {
-  try {
-    const [rows] = await pool.query(
-      'SELECT * FROM sessions WHERE id = ? AND deleted = FALSE',
-      [req.params.id]
-    );
-    res.json({ session: rows[0] || null });
-  } catch (error) {
-    console.error('❌ خطأ في جلب الجلسة:', error);
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// حفظ جلسة جديدة أو تحديثها
- 
-app.post('/api/sessions', async (req, res) => {
-  try {
-    const session = req.body;
-    console.log('📝 حفظ جلسة:', session.id);
-    
-    // دالة لتحويل التاريخ إلى صيغة MySQL DATETIME
-    function toMySQLDateTime(isoString) {
-      if (!isoString) return null;
-      const date = new Date(isoString);
-      return date.toISOString().slice(0, 19).replace('T', ' ');
-    }
-    
-    const startedAt = toMySQLDateTime(session.startedAt);
-    const endedAt = session.endedAt ? toMySQLDateTime(session.endedAt) : null;
-    
-    const query = `
-      INSERT INTO sessions (
-        id, patientId, doctorId, apptId, date, 
-        startedAt, endedAt, status, complaint, diagnosis, 
-        procedures, teethTreated, workItems, stages, 
-        meds, medNotes, summary, invoiceId, rxId, fuId, fromFuId, updatedAt
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      ON DUPLICATE KEY UPDATE
-        patientId = VALUES(patientId),
-        doctorId = VALUES(doctorId),
-        apptId = VALUES(apptId),
-        date = VALUES(date),
-        startedAt = VALUES(startedAt),
-        endedAt = VALUES(endedAt),
-        status = VALUES(status),
-        complaint = VALUES(complaint),
-        diagnosis = VALUES(diagnosis),
-        procedures = VALUES(procedures),
-        teethTreated = VALUES(teethTreated),
-        workItems = VALUES(workItems),
-        stages = VALUES(stages),
-        meds = VALUES(meds),
-        medNotes = VALUES(medNotes),
-        summary = VALUES(summary),
-        invoiceId = VALUES(invoiceId),
-        rxId = VALUES(rxId),
-        fuId = VALUES(fuId),
-        fromFuId = VALUES(fromFuId),
-        updatedAt = VALUES(updatedAt)
-    `;
-    
-    const values = [
-      session.id,
-      session.patientId,
-      session.doctorId,
-      session.apptId || null,
-      session.date,
-      startedAt,
-      endedAt,
-      session.status || 'open',
-      session.complaint || '',
-      session.diagnosis || '',
-      JSON.stringify(session.procedures || []),
-      JSON.stringify(session.teethTreated || []),
-      JSON.stringify(session.workItems || []),
-      JSON.stringify(session.stages || []),
-      JSON.stringify(session.meds || []),
-      session.medNotes || '',
-      session.summary || '',
-      session.invoiceId || null,
-      session.rxId || null,
-      session.fuId || null,
-      session.fromFuId || null,
-      session.updatedAt || Date.now()
-    ];
-    
-    await pool.query(query, values);
-    res.json({ ok: true });
-  } catch (error) {
-    console.error('❌ خطأ في حفظ الجلسة:', error);
-    res.status(500).json({ error: error.message });
-  }
-});
-// حفظ جميع الجلسات دفعة واحدة
- // POST /api/sessions/batch - حفظ جميع الجلسات دفعة واحدة
-app.post('/api/sessions/batch', async (req, res) => {
-  try {
-    const { sessions } = req.body;
-    console.log(`📝 حفظ ${sessions.length} جلسة دفعة واحدة`);
-    
-    // دالة لتحويل التاريخ إلى صيغة MySQL DATETIME
-    function toMySQLDateTime(isoString) {
-      if (!isoString) return null;
-      // تحويل "2026-09-01T22:25:36.453Z" إلى "2026-09-01 22:25:36"
-      const date = new Date(isoString);
-      return date.toISOString().slice(0, 19).replace('T', ' ');
-    }
-    
-    for (const session of sessions) {
-      // تحويل التواريخ
-      const startedAt = toMySQLDateTime(session.startedAt);
-      const endedAt = session.endedAt ? toMySQLDateTime(session.endedAt) : null;
-      
-      const query = `
-        INSERT INTO sessions (
-          id, patientId, doctorId, apptId, date, 
-          startedAt, endedAt, status, complaint, diagnosis, 
-          procedures, teethTreated, workItems, stages, 
-          meds, medNotes, summary, invoiceId, rxId, fuId, fromFuId, updatedAt
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ON DUPLICATE KEY UPDATE
-          patientId = VALUES(patientId),
-          doctorId = VALUES(doctorId),
-          apptId = VALUES(apptId),
-          date = VALUES(date),
-          startedAt = VALUES(startedAt),
-          endedAt = VALUES(endedAt),
-          status = VALUES(status),
-          complaint = VALUES(complaint),
-          diagnosis = VALUES(diagnosis),
-          procedures = VALUES(procedures),
-          teethTreated = VALUES(teethTreated),
-          workItems = VALUES(workItems),
-          stages = VALUES(stages),
-          meds = VALUES(meds),
-          medNotes = VALUES(medNotes),
-          summary = VALUES(summary),
-          invoiceId = VALUES(invoiceId),
-          rxId = VALUES(rxId),
-          fuId = VALUES(fuId),
-          fromFuId = VALUES(fromFuId),
-          updatedAt = VALUES(updatedAt)
-      `;
-      
-      const values = [
-        session.id,
-        session.patientId,
-        session.doctorId,
-        session.apptId || null,
-        session.date,
-        startedAt,
-        endedAt,
-        session.status || 'open',
-        session.complaint || '',
-        session.diagnosis || '',
-        JSON.stringify(session.procedures || []),
-        JSON.stringify(session.teethTreated || []),
-        JSON.stringify(session.workItems || []),
-        JSON.stringify(session.stages || []),
-        JSON.stringify(session.meds || []),
-        session.medNotes || '',
-        session.summary || '',
-        session.invoiceId || null,
-        session.rxId || null,
-        session.fuId || null,
-        session.fromFuId || null,
-        session.updatedAt || Date.now()
-      ];
-      
-      await pool.query(query, values);
-    }
-    
-    res.json({ ok: true, count: sessions.length });
-  } catch (error) {
-    console.error('❌ خطأ في حفظ الجلسات دفعة واحدة:', error);
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// حذف جلسة (soft delete)
-app.delete('/api/sessions/:id', async (req, res) => {
-  try {
-    await pool.query(
-      'UPDATE sessions SET deleted = TRUE WHERE id = ?',
-      [req.params.id]
-    );
-    res.json({ ok: true });
-  } catch (error) {
-    console.error('❌ خطأ في حذف الجلسة:', error);
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// تحديث جلسة
-app.put('/api/sessions/:id', async (req, res) => {
-  try {
-    const session = req.body;
-    await pool.query(
-      `UPDATE sessions SET 
-        patientId = ?, doctorId = ?, apptId = ?, date = ?, 
-        startedAt = ?, endedAt = ?, status = ?,
-        complaint = ?, diagnosis = ?, procedures = ?, 
-        teethTreated = ?, workItems = ?, stages = ?, 
-        meds = ?, medNotes = ?, summary = ?,
-        invoiceId = ?, rxId = ?, fuId = ?, fromFuId = ?,
-        updatedAt = ?
-       WHERE id = ? AND deleted = FALSE`,
-      [
-        session.patientId,
-        session.doctorId,
-        session.apptId || null,
-        session.date,
-        session.startedAt,
-        session.endedAt || null,
-        session.status,
-        session.complaint || '',
-        session.diagnosis || '',
-        JSON.stringify(session.procedures || []),
-        JSON.stringify(session.teethTreated || []),
-        JSON.stringify(session.workItems || []),
-        JSON.stringify(session.stages || []),
-        JSON.stringify(session.meds || []),
-        session.medNotes || '',
-        session.summary || '',
-        session.invoiceId || null,
-        session.rxId || null,
-        session.fuId || null,
-        session.fromFuId || null,
-        session.updatedAt || Date.now(),
-        req.params.id
-      ]
-    );
-    res.json({ ok: true });
-  } catch (error) {
-    console.error('❌ خطأ في تحديث الجلسة:', error);
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// server/index.js
-app.get('/api/debug/state', async (req, res) => {
-  try {
-    const [rows] = await pool.query(
-      'SELECT doc, updated_at FROM clinic_state ORDER BY updated_at DESC LIMIT 1'
-    );
-    if (rows.length === 0) {
-      return res.json({ message: 'لا توجد بيانات', data: null });
-    }
-    
-    // استخراج عدد السجلات من JSON
-    const doc = rows[0].doc;
-    res.json({
-      updated_at: rows[0].updated_at,
-      counts: {
-        patients: doc.patients?.length || 0,
-        doctors: doc.doctors?.length || 0,
-        staff: doc.staff?.length || 0,
-        services: doc.services?.length || 0,
-        appointments: doc.appointments?.length || 0,
-        invoices: doc.invoices?.length || 0,
-        expenses: doc.expenses?.length || 0,
-        followUps: doc.followUps?.length || 0,
-        supplies: doc.supplies?.length || 0,
-        supplyMoves: doc.supplyMoves?.length || 0,
-        sessions: doc.sessions?.length || 0,
-      }
-    });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-
- // server/index.js - أضف هذا المسار
-
- // server/index.js - تحديث مسار /api/sync/staff
-app.post('/api/sync/staff', async (req, res) => {
-  try {
-    const { staff, supplyMoves } = req.body;
-    
-    console.log(`📝 حفظ staff: ${staff?.length || 0}`);
-    console.log(`📝 حفظ supplyMoves: ${supplyMoves?.length || 0}`);
-    
-    function toMySQLDateTime(isoString) {
-      if (!isoString) return null;
-      const date = new Date(isoString);
-      return date.toISOString().slice(0, 19).replace('T', ' ');
-    }
-    
-    // ✅ حفظ staff مع notes
-    if (staff && staff.length > 0) {
-      await pool.query('DELETE FROM staff');
-      for (const s of staff) {
-        await pool.query(
-          `INSERT INTO staff (id, name, role, phone, active, notes) 
-           VALUES (?, ?, ?, ?, ?, ?)`,
-          [
-            s.id, 
-            s.name, 
-            s.role || '', 
-            s.phone || '', 
-            s.active ? 1 : 0,
-            s.notes || ''  // ✅ أضف notes
-          ]
-        );
-      }
-      console.log(`✅ تم حفظ ${staff.length} موظف`);
-    }
-    
-    // حفظ supply_moves
-    if (supplyMoves && supplyMoves.length > 0) {
-      await pool.query('DELETE FROM supply_moves');
-      for (const m of supplyMoves) {
-        const formattedDate = toMySQLDateTime(m.date);
-        await pool.query(
-          `INSERT INTO supply_moves (id, itemId, delta, note, date) 
-           VALUES (?, ?, ?, ?, ?)`,
-          [
-            m.id, 
-            m.itemId, 
-            m.delta || 0, 
-            m.note || '', 
-            formattedDate || new Date().toISOString().slice(0, 19).replace('T', ' ')
-          ]
-        );
-      }
-      console.log(`✅ تم حفظ ${supplyMoves.length} حركة مخزون`);
-    }
-    
-    res.json({ ok: true });
-  } catch (error) {
-    console.error('❌ خطأ في حفظ staff:', error);
-    res.status(500).json({ error: error.message });
-  }
-});
-
- 
-
- app.post('/api/cleanup-sessions', async (req, res) => {
-  try {
-    // جلب البيانات
-    const [rows] = await pool.query('SELECT doc FROM clinic_state LIMIT 1');
-    if (rows.length === 0) {
-      return res.json({ ok: true, message: 'لا توجد بيانات' });
-    }
-    
-    const doc = rows[0].doc;
-    
-    // تنظيف الجلسات
-    if (doc.sessions) {
-      doc.sessions = doc.sessions.filter(s => s.status === 'open');
-    }
-    
-    // حفظ (بدون updated_at)
-    await pool.query(
-      `UPDATE clinic_state SET doc = ? WHERE id = 1`,
-      [JSON.stringify(doc)]
-    );
-    
-    res.json({ ok: true, message: 'تم التنظيف' });
-  } catch (error) {
-    console.error('❌ خطأ:', error);
-    res.status(500).json({ error: error.message });
-  }
-});
-// server/index.js
-
-// ====== عرض جميع الجلسات ======
-app.get('/api/sessions/all', async (req, res) => {
-  try {
-    const [rows] = await pool.query(
-      'SELECT doc FROM clinic_state ORDER BY updated_at DESC LIMIT 1'
-    );
-    
-    if (rows.length === 0) {
-      return res.json({ sessions: [] });
-    }
-    
-    const doc = rows[0].doc;
-    res.json({ 
-      sessions: doc.sessions || [],
-      count: (doc.sessions || []).length
-    });
-  } catch (error) {
-    console.error('❌ خطأ:', error);
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// ====== حذف جميع الجلسات ======
-app.delete('/api/sessions/clear', async (req, res) => {
-  try {
-    await pool.query('DELETE FROM sessions');
-    
-    const [rows] = await pool.query('SELECT doc FROM clinic_state LIMIT 1');
-    if (rows.length > 0) {
-      const doc = rows[0].doc;
-      doc.sessions = [];
-      await pool.query(
-        `UPDATE clinic_state SET doc = ? WHERE id = 1`,
-        [JSON.stringify(doc)]
-      );
-    }
-    
-    res.json({ ok: true, message: 'تم حذف جميع الجلسات' });
-  } catch (error) {
-    console.error('❌ خطأ:', error);
-    res.status(500).json({ error: error.message });
-  }
-});
+async function start(){try{await runMigrations(pool);}catch(e){console.error("فشل الترحيلات:",e.message);process.exit(1);} await ensureSchema(); app.listen(API_PORT,()=>console.log(`خادم API يعمل على المنفذ ${API_PORT}`));}
+start().catch(e=>{console.error("تعذر بدء الخادم:",e.message);process.exit(1);})

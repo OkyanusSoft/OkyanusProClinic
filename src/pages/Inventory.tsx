@@ -400,7 +400,7 @@ function EditMoveModal({ move, onClose }: { move: SupplyMove; onClose: () => voi
     dispatch({
       type: "UPDATE_SUPPLY_MOVE",
       id: move.id,
-      note: note.trim() || undefined,
+      note: note.trim(),
       delta: isSupply(move) ? q : -q,
     });
     push("success", "عُدّلت الحركة", `${item?.name ?? ""} — الكمية ${q}`);
@@ -450,7 +450,7 @@ function MoveModal({ onClose }: { onClose: () => void }) {
     if (!q || q <= 0) return setErr("أدخل كمية صحيحة.");
     const item = db.supplies.find((s) => s.id === itemId);
     if (dir === "out" && item && q > item.qty) return setErr(`الكمية المطلوبة أكبر من الرصيد المتاح (${item.qty}).`);
-    dispatch({ type: "MOVE_SUPPLY", itemId, delta: dir === "in" ? q : -q, note: note.trim() || undefined });
+    dispatch({ type: "MOVE_SUPPLY", itemId, delta: dir === "in" ? q : -q, note: note.trim() });
     push("success", dir === "in" ? "سُجّل توريد" : "سُجّل صرف", `${item?.name ?? ""} — ${q} ${item?.unit ?? ""}`);
     onClose();
   };

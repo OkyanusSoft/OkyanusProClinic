@@ -1,5 +1,7 @@
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useRef, useState } from "react";
+﻿import React, { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { arLocale } from "./prefs";
+import { SEED_ACCOUNTS, SEED_COST_CENTERS } from "./data/coa";
+import * as finance from "./utils/finance";
 import {
   fetchMergedState,
   ping,
@@ -56,7 +58,9 @@ export function drainPendingEvents(): ActivityEvent[] {
 const MERGE_COLLECTIONS = [
   "patients", "doctors", "staff", "services", "appointments", "invoices", "expenses",
   "followUps", "supplies", "supplyMoves", "sessions", "implants", "prosthetics",
-  "orthoCases", "xrays", "plans", "users", "prescriptions",
+  "orthoCases", "xrays", "plans", "users", "prescriptions", "perioCharts",
+  "accounts", "costCenters", "vouchers", "fiscalYears", "fiscalPeriods",
+  "insuranceCompanies", "insuranceClaims", "branches", "labOrders", "payments",
 ] as const;
 
 type Rec = { id?: string; updatedAt?: number };
@@ -116,6 +120,7 @@ function stampAction(a: Action) {
   const stamp = <T,>(o: T): T => ({ ...(o as object), updatedAt: now } as T);
   switch (a.type) {
     case "ADD_PATIENT": a.p = stamp(a.p); break;
+    case "UPDATE_PATIENT": a.p = stamp(a.p); break;
     case "ADD_APPT": a.a = stamp(a.a); break;
     case "ADD_INVOICE": a.inv = stamp(a.inv); break;
     case "ADD_SERVICE":
@@ -134,6 +139,25 @@ function stampAction(a: Action) {
     case "ADD_ORTHO":
     case "UPDATE_ORTHO":
     case "ADD_XRAY": a.r = stamp(a.r); break;
+    case "ADD_PERIO": a.c = stamp(a.c); break;
+    case "ADD_ACCOUNT":
+    case "UPDATE_ACCOUNT": a.a = stamp(a.a); break;
+    case "ADD_COST_CENTER": a.c = stamp(a.c); break;
+    case "UPDATE_COST_CENTER": a.c = stamp(a.c); break;
+    case "ADD_VOUCHER":
+    case "UPDATE_VOUCHER": a.v = stamp(a.v); break;
+    case "ADD_FISCAL_YEAR": a.fy = stamp(a.fy); break;
+    case "UPDATE_FISCAL_YEAR": a.fy = stamp(a.fy); break;
+    case "ADD_FISCAL_PERIOD": a.p = stamp(a.p); break;
+    case "UPDATE_FISCAL_PERIOD": a.p = stamp(a.p); break;
+    case "ADD_INSURANCE_COMPANY":
+    case "UPDATE_INSURANCE_COMPANY": a.c = stamp(a.c); break;
+    case "ADD_INSURANCE_CLAIM":
+    case "UPDATE_INSURANCE_CLAIM": a.c = stamp(a.c); break;
+    case "ADD_BRANCH":
+    case "UPDATE_BRANCH": a.b = stamp(a.b); break;
+    case "ADD_LAB_ORDER":
+    case "UPDATE_LAB_ORDER": a.o = stamp(a.o); break;
     default: break;
   }
 }
@@ -147,12 +171,16 @@ function queueActionEvent(a: Action, db: DB) {
   switch (a.type) {
     case "ADD_PATIENT": add("إضافة", "المرضى", `سجّل مريضاً جديداً: ${a.p.name}`); break;
     case "DELETE_PATIENT": add("حذف", "المرضى", `حذف من السجل المريض: ${pname(a.id)}`, "patients", a.id); break;
+    case "UPDATE_PATIENT": add("تعديل", "المرضى", `عدّل ملف المريض: ${a.p.name}`); break;
     case "SET_TOOTH": add("تعديل", "المرضى", `حدّث حالة سن للمريض: ${pname(a.patientId)}`); break;
     case "ADD_APPT": add("إضافة", "المواعيد", `حجز موعداً للمريض: ${pname(a.a.patientId)}`); break;
     case "SET_APPT_STATUS": add("تعديل", "المواعيد", `غيّر حالة موعد إلى: ${APPT_META[a.status]?.label ?? a.status}`); break;
     case "DELETE_APPT": add("حذف", "المواعيد", "حذف موعداً من الجدول", "appointments", a.id); break;
     case "ADD_INVOICE": add("إضافة", "المالية", `أصدر الفاتورة ${a.inv.number} للمريض: ${pname(a.inv.patientId)}`); break;
     case "PAY_INVOICE": add("تعديل", "المالية", "سجّل دفعة تحصيل على فاتورة"); break;
+    case "RECEIVE_PAYMENT": add("إضافة", "المالية", "أصدر سند قبض/دفعة تحصيل على فاتورة"); break;
+    case "VOID_INVOICE": add("إلغاء", "المالية", `ألغى فاتورة بالسبب: ${a.reason?.trim() || "بدون سبب"}`); break;
+    case "AUTO_POST_FINANCIALS": add("ترحيل", "المالية", "نفّذ ترحيلاً تلقائياً للفواتير/المصروفات/التحصيلات"); break;
     case "ADD_SERVICE": add("إضافة", "الخدمات", `أضاف خدمة جديدة: ${a.s.name}`); break;
     case "UPDATE_SERVICE": add("تعديل", "الخدمات", `عدّل خدمة: ${a.s.name}`); break;
     case "DELETE_SERVICE": add("حذف", "الخدمات", "حذف خدمة من قائمة الأسعار", "services", a.id); break;
@@ -186,6 +214,16 @@ function queueActionEvent(a: Action, db: DB) {
     case "ADD_PROSTHETIC": add("إضافة", "المرضى", `سجّل تركيباً للمريض: ${pname(a.r.patientId)}`); break;
     case "ADD_ORTHO": add("إضافة", "المرضى", `فتح حالة تقويم للمريض: ${pname(a.r.patientId)}`); break;
     case "ADD_XRAY": add("إضافة", "المرضى", `أرفق أشعة للمريض: ${pname(a.r.patientId)}`); break;
+    case "ADD_PERIO": add("إضافة", "المرضى", `سجّل مخطط دواعم للمريض: ${pname(a.c.patientId)}`); break;
+    case "DELETE_PERIO": add("حذف", "المرضى", "حذف مخطط دواعم", "perioCharts", a.id); break;
+    case "ADD_ACCOUNT": add("إضافة", "الحسابات", `أضاف حساباً: ${a.a.name}`); break;
+    case "UPDATE_ACCOUNT": add("تعديل", "الحسابات", `عدّل حساباً: ${a.a.name}`); break;
+    case "DELETE_ACCOUNT": add("حذف", "الحسابات", "حذف حساب", "accounts", a.id); break;
+    case "ADD_VOUCHER": add("إضافة", "الحسابات", `أصدر ${VOUCHER_TYPE_LABEL[a.v.type] ?? a.v.type} ${a.v.number}`); break;
+    case "UPDATE_VOUCHER": add("تعديل", "الحسابات", `عدّل مسودة السند ${a.v.number}`); break;
+    case "POST_VOUCHER": add("ترحيل", "الحسابات", "رحّل سنداً مالياً"); break;
+    case "VOID_VOUCHER": add("عكس", "الحسابات", `عكس/ألغى سنداً بالسبب: ${a.reason?.trim() || "بدون سبب"}`); break;
+    case "DELETE_VOUCHER": add("حذف", "الحسابات", "حذف مسودة سند", "vouchers", a.id); break;
     case "UPDATE_SUPPLY_MOVE": add("تعديل", "المخزون", "عدّل حركة مخزنية"); break;
    case "DELETE_SUPPLY_MOVE": add("حذف", "المخزون", "حذف حركة مخزنية", "supplyMoves", a.id); break;
  
@@ -220,6 +258,23 @@ export interface Patient {
   notes: string;
   joined: string;
   teeth: Partial<Record<number, ToothStatus>>;
+  /** طابع زمني للدمج */
+  updatedAt?: number;
+  /** صورة المريض (data URL base64) — اختيارية */
+  photo?: string;
+  /** صور/ملفات مرفقة (أشعة، داخل الفم…) */
+  images?: PatientImage[];
+}
+
+export interface PatientImage {
+  id: string;
+  patientId: string;
+  kind: "profile" | "intraoral" | "xray" | "other";
+  date: string;
+  dataUrl: string;
+  note?: string;
+  tooth?: number;
+  doctorId?: string;
 }
 export interface Doctor {
   id: string;
@@ -276,6 +331,8 @@ export interface InvoiceItem {
   qty: number;
   price: number;
 }
+export type InvoiceDocumentStatus = "draft" | "posted" | "void";
+
 export interface Invoice {
   id: string;
   number: string;
@@ -285,7 +342,15 @@ export interface Invoice {
   paid: number;
   discount?: number;
   method?: string;
-    cashDiscount?: number;   // ★ أضف هذا السطر
+  cashDiscount?: number;
+  documentStatus?: InvoiceDocumentStatus;
+  voucherId?: string;
+  branchId?: string;
+  costCenterId?: string;
+  voidReason?: string;
+  voidedAt?: string;
+  createdAt?: string;
+  updatedAt?: number;
 }
 export interface Activity {
   id: string;
@@ -518,9 +583,97 @@ export interface XrayRec {
   date: string;
   findings: string;
   doctorId: string;
+  /** صورة/ملف شعاعي (data URL base64) */
+  image?: string;
 }
 
+export interface PerioSite {
+  tooth: number;
+  pd: number;        // probing depth (mm)
+  cal?: number;      // clinical attachment level (mm)
+  bop?: boolean;     // bleeding on probing
+  mob?: number;      // mobility 0-3
+  furcation?: number; // 0-3
+}
+
+export interface PerioChart {
+  id: string;
+  patientId: string;
+  date: string;
+  doctorId: string;
+  sites: PerioSite[];
+  notes?: string;
+  updatedAt?: number;
+}
+
+/* ============================== مختبر (Lab Orders) ============================== */
+
+export type LabOrderStatus = "sent" | "inprogress" | "received" | "delivered" | "cancelled";
+
+export interface LabOrder {
+  id: string;
+  patientId: string;
+  doctorId: string;
+  prostheticId?: string;
+  labName: string;
+  workType: string;        // تاج/جسر/طقم/...
+  shade?: string;
+  impressions?: string;
+  sentDate: string;
+  dueDate?: string;
+  receivedDate?: string;
+  status: LabOrderStatus;
+  cost?: number;
+  notes?: string;
+  updatedAt?: number;
+}
+
+/* ============================== الفروع (Multi-branch) ============================== */
+
+export interface Branch {
+  id: string;
+  name: string;
+  code: string;
+  address?: string;
+  phone?: string;
+  active: boolean;
+  isDefault?: boolean;
+  updatedAt?: number;
+}
+
+
 export const IMPLANT_BRANDS = ["Straumann", "Osstem", "Nobel Biocare", "Dentium", "Megagen"];
+/* ============================== التأمين (Insurance) ============================== */
+
+export type ClaimStatus = "submitted" | "approved" | "partial" | "denied" | "paid";
+
+export interface InsuranceCompany {
+  id: string;
+  name: string;
+  code: string;
+  contact?: string;
+  terms?: string;
+  claimDays: number;
+  active: boolean;
+  updatedAt?: number;
+}
+
+export interface InsuranceClaim {
+  id: string;
+  invoiceId: string;
+  patientId: string;
+  companyId: string;
+  submittedAmount: number;
+  approvedAmount: number;
+  status: ClaimStatus;
+  submittedAt: string;
+  decidedAt?: string;
+  paidAt?: string;
+  notes?: string;
+  updatedAt?: number;
+}
+
+
 export const IMPLANT_STATUS = ["مخطط له", "مرحلة الالتئام", "مكتمل"] as const;
 export const PROSTHETIC_KINDS = ["تاج زيركون", "تاج بورسلين", "جسر ثابت", "فينير", "طقم كامل", "طقم جزئي"];
 export const ORTHO_KINDS = ["تقويم معدني", "تقويم شفاف", "تقويم خزفي"];
@@ -536,6 +689,140 @@ export const DRUG_WATCH: { key: string; side: string[]; caution: string }[] = [
   { key: "كلورهيكسيدين", side: ["تصبغ الأسنان", "تغيّر الطعم"], caution: "لا يُستخدم أكثر من أسبوعين متواصلين" },
   { key: "أسبرين", side: ["نزيف", "تهيّج معدة"], caution: "يوقف قبل الجراحة بـ 7 أيام بموافقة الطبيب" },
 ];
+
+/* ============================== الحسابات (GL) ============================== */
+
+export type AccountType = "asset" | "liability" | "equity" | "revenue" | "expense";
+export type VoucherType = "journal" | "payment" | "receipt" | "transfer" | "opening";
+export type VoucherStatus = "draft" | "posted" | "void";
+
+export interface Account {
+  id: string;
+  code: string;
+  name: string;
+  level: number;
+  type: AccountType;
+  parentId: string | null;
+  isPosting: boolean;
+  active: boolean;
+  notes?: string;
+  updatedAt?: number;
+}
+
+export interface CostCenter {
+  id: string;
+  code: string;
+  name: string;
+  type: "clinic" | "department" | "doctor" | "project";
+  active: boolean;
+  updatedAt?: number;
+}
+
+export interface VoucherLine {
+  id: string;
+  accountId: string;
+  debit: number;
+  credit: number;
+  costCenterId?: string;
+  description?: string;
+  refType?: string;
+  refId?: string;
+}
+
+export interface Voucher {
+  id: string;
+  number: string;
+  type: VoucherType;
+  date: string;
+  description: string;
+  status: VoucherStatus;
+  lines: VoucherLine[];
+  createdBy?: string;
+  postedAt?: string;
+  createdAt: string;
+  updatedAt?: number;
+  branchId?: string;
+  costCenterId?: string;
+  cashBoxId?: string;
+  partyType?: "patient" | "supplier" | "insurance" | "lab" | "employee" | "other";
+  partyId?: string;
+  partyName?: string;
+  method?: string;
+  reference?: string;
+  sourceType?: string;
+  sourceId?: string;
+  reason?: string;
+  voidReason?: string;
+  reversalOf?: string;
+  reversedBy?: string;
+}
+
+export type PaymentDirection = "receipt" | "payment";
+export type PaymentStatus = "posted" | "void";
+
+export interface PaymentAllocation {
+  invoiceId: string;
+  amount: number;
+}
+
+export interface PaymentInput {
+  amount: number;
+  date: string;
+  method?: string;
+  cashBoxId?: string;
+  payerName?: string;
+  reference?: string;
+  notes?: string;
+  branchId?: string;
+  costCenterId?: string;
+}
+
+export interface Payment {
+  id: string;
+  number: string;
+  direction: PaymentDirection;
+  date: string;
+  amount: number;
+  method?: string;
+  cashBoxId?: string;
+  patientId?: string;
+  payerName?: string;
+  reference?: string;
+  invoiceId?: string;
+  allocations: PaymentAllocation[];
+  voucherId?: string;
+  status: PaymentStatus;
+  legacy?: boolean;
+  notes?: string;
+  branchId?: string;
+  costCenterId?: string;
+  createdBy?: string;
+  createdAt: string;
+  updatedAt?: number;
+  voidReason?: string;
+  reversalOf?: string;
+  reversedBy?: string;
+}
+
+export interface FiscalYear {
+  id: string;
+  label: string;
+  startDate: string;
+  endDate: string;
+  status: "open" | "closed";
+  updatedAt?: number;
+}
+
+export interface FiscalPeriod {
+  id: string;
+  fiscalYearId: string;
+  periodNo: number;
+  startDate: string;
+  endDate: string;
+  status: "open" | "closed" | "locked";
+  updatedAt?: number;
+}
+
 
 /* ============================== المستخدمون والصلاحيات ============================== */
 
@@ -677,12 +964,23 @@ export interface DB {
   services: Service[];
   appointments: Appointment[];
   invoices: Invoice[];
+  payments: Payment[];
   activity: Activity[];
   sessions: ClinicalSession[];
   implants: Implant[];
   prosthetics: Prosthetic[];
   orthoCases: OrthoCase[];
   xrays: XrayRec[];
+  perioCharts: PerioChart[];
+  accounts: Account[];
+  costCenters: CostCenter[];
+  vouchers: Voucher[];
+  fiscalYears: FiscalYear[];
+  fiscalPeriods: FiscalPeriod[];
+  insuranceCompanies: InsuranceCompany[];
+  insuranceClaims: InsuranceClaim[];
+  branches: Branch[];
+  labOrders: LabOrder[];
   followUps: FollowUp[];
   supplies: SupplyItem[];
   supplyMoves: SupplyMove[];
@@ -704,8 +1002,8 @@ export interface DB {
     tombstones?: Tombstone[]; // ← أضف هذا
 }
 
-export const CLINIC_NAME = "عيادة د. عبدالله الشرفي";
-export const CLINIC_LATIN = "AL-SHARAFI DENTAL CLINIC";
+export const CLINIC_NAME = "عيادة الأسنان";
+export const CLINIC_LATIN = "DENTAL CLINIC";
 
 /* ---------- المخزون والمستهلكات ---------- */
 export interface SupplyItem {
@@ -763,7 +1061,7 @@ export const DEFAULT_CLINIC_SETTINGS: ClinicSettings = {
   clinicLatin: CLINIC_LATIN,
   address: "صنعاء — شارع الزبيري، عمارة النخبة، الدور الثاني",
   phone: "+967 777 220 115 · +967 1 445 880",
-  email: "info@alsharafi-dental.ye",
+  email: "info@alsari-dental.ye",
   workStart: "09:00",
   workEnd: "21:00",
   followUpAlertDays: 3,
@@ -806,6 +1104,31 @@ export const INV_META: Record<InvoiceStatus, { label: string; cls: string }> = {
   paid: { label: "مدفوعة", cls: "bg-mint-soft text-[#1d6b47]" },
   partial: { label: "جزئية", cls: "bg-amber-soft text-[#a06410]" },
   unpaid: { label: "غير مدفوعة", cls: "bg-coral-soft text-coral" },
+};
+
+export const INV_DOC_META: Record<InvoiceDocumentStatus, { label: string; cls: string }> = {
+  draft: { label: "مسودة", cls: "bg-amber-soft text-[#a06410]" },
+  posted: { label: "مرحّلة", cls: "bg-sky-soft text-sky" },
+  void: { label: "ملغاة", cls: "bg-coral-soft text-coral" },
+};
+
+export const VOUCHER_TYPE_LABEL: Record<VoucherType, string> = {
+  journal: "قيد يومي",
+  payment: "سند صرف",
+  receipt: "سند قبض",
+  transfer: "سند تحويل",
+  opening: "سند افتتاح",
+};
+
+export const VOUCHER_STATUS_META: Record<VoucherStatus, { label: string; cls: string }> = {
+  draft: { label: "مسودة", cls: "bg-amber-soft text-[#a06410]" },
+  posted: { label: "مرحّل", cls: "bg-mint-soft text-[#1d6b47]" },
+  void: { label: "ملغى", cls: "bg-coral-soft text-coral" },
+};
+
+export const PAYMENT_STATUS_META: Record<PaymentStatus, { label: string; cls: string }> = {
+  posted: { label: "مرحّلة", cls: "bg-mint-soft text-[#1d6b47]" },
+  void: { label: "ملغاة", cls: "bg-coral-soft text-coral" },
 };
 
 export const EXPENSE_CATS: { name: string; color: string }[] = [
@@ -882,19 +1205,32 @@ export const addMinutes = (time: string, mins: number) => {
   return `${pad(Math.floor(t / 60))}:${pad(t % 60)}`;
 };
 
-export const invoiceTotal = (inv: Invoice) => {
-  const gross = inv.items.reduce((s, i) => s + i.qty * i.price, 0);
-    // 1) الخصم النسبي (إن وُجد)
-  const afterPct = gross * (1 - (inv.discount || 0) / 100);
-  // 2) الخصم النقدي الثابت (إن وُجد)
-  const afterCash = afterPct - (inv.cashDiscount || 0);
-  return Math.max(0, Math.round(gross * (1 - (inv.discount || 0) / 100)));
-};
+export const invoiceGross = (inv: Invoice): number => finance.invoiceGross(inv);
+export const invoiceDiscounts = (inv: Invoice) => finance.invoiceDiscounts(inv);
+export const invoiceTotal = (inv: Invoice): number => finance.invoiceTotal(inv);
+export const invoiceOutstanding = (inv: Invoice): number => finance.invoiceOutstanding(inv);
+export const isActiveInvoice = (inv: Invoice): boolean => finance.isActiveInvoice(inv);
+export const activeInvoices = (invoices: Invoice[]): Invoice[] => invoices.filter(isActiveInvoice);
+export const activePayments = (payments: Payment[]): Payment[] => payments.filter((p) => p.status !== "void");
+export const paymentsForInvoice = (payments: Payment[], invoiceId: string): Payment[] =>
+  finance.invoicePayments(payments, invoiceId) as unknown as Payment[];
+export const invoicePaidFromPayments = (payments: Payment[], invoiceId: string): number =>
+  finance.invoicePaidFromPayments(payments, invoiceId);
+export const resolveFinancialAccounts = (accounts: Account[]) => finance.resolveAccounts(accounts);
+export const voucherTotals = (lines: VoucherLine[]) => finance.lineTotals(lines);
+export const monthEndDate = (year: number, month: number): string => finance.monthEndDate(year, month);
+export const checkPostingDate = (db: DB, date: string) => finance.checkPostingDate(db.fiscalYears, db.fiscalPeriods, date);
+export const isDatePostable = (db: DB, date: string): boolean => checkPostingDate(db, date).ok;
+export const nextVoucherNumber = (vouchers: Voucher[], type: VoucherType, date: string): string =>
+  finance.nextDocumentNumber(vouchers.map((v) => v.number), finance.voucherPrefix(type), date);
+export const nextPaymentNumber = (payments: Payment[], direction: PaymentDirection, date: string): string =>
+  finance.nextDocumentNumber(payments.map((p) => p.number), direction === "receipt" ? "RCV" : "PAY", date);
 export const PAY_METHODS: Record<string, string> = { cash: "نقداً", card: "بطاقة بنكية", transfer: "حوالة / تحويل" };
 export const invoiceStatus = (inv: Invoice): InvoiceStatus => {
   const t = invoiceTotal(inv);
-  if (inv.paid >= t) return "paid";
-  if (inv.paid > 0) return "partial";
+  const paid = Math.max(0, Number(inv.paid) || 0);
+  if (paid >= t - 0.001) return "paid";
+  if (paid > 0.001) return "partial";
   return "unpaid";
 };
 
@@ -909,7 +1245,7 @@ export const invoiceStatus = (inv: Invoice): InvoiceStatus => {
 function bootstrap(): DB {
   const adminUser: User = {
     id: "u-admin",
-    name: "عبدالله الشرفي",
+    name: "مدير النظام",
     username: "abdullah",
     pin: "0000",
     role: "admin",
@@ -932,6 +1268,7 @@ function bootstrap(): DB {
     services: [],
     appointments: [],
     invoices: [],
+    payments: [],
     activity: [],
     expenses: [],
     prescriptions: [],
@@ -940,6 +1277,16 @@ function bootstrap(): DB {
     prosthetics: [],
     orthoCases: [],
     xrays: [],
+    perioCharts: [],
+    accounts: [],
+    costCenters: [],
+    vouchers: [],
+    fiscalYears: [],
+    fiscalPeriods: [],
+    insuranceCompanies: [],
+    insuranceClaims: [],
+    branches: [{ id: "br-main", code: "BR01", name: "الفرع الرئيسي", active: true, isDefault: true, updatedAt: Date.now() }],
+    labOrders: [],
     followUps: [],
     supplies: [],
     supplyMoves: [],
@@ -961,7 +1308,7 @@ function bootstrap(): DB {
 
 function seed(): DB {
   const doctors: Doctor[] = [
-    { id: "d1", name: "د. عبدالله الشرفي", specialty: "طب أسنان عام وترميم", phone: "771100110", color: "#0d8f83", active: true },
+    { id: "d1", name: "الطبيب", specialty: "طب أسنان عام وترميم", phone: "771100110", color: "#0d8f83", active: true },
     { id: "d2", name: "د. أمل الحميري", specialty: "تقويم الأسنان", phone: "771200200", color: "#3a86c4", active: true },
     { id: "d3", name: "د. محمد باصهيب", specialty: "جراحة الفم والوجه", phone: "771300300", color: "#e2952b", active: true },
     { id: "d4", name: "د. سميرة الأهدل", specialty: "طب أسنان الأطفال", phone: "771400400", color: "#b23a48", active: true },
@@ -1167,7 +1514,7 @@ function seed(): DB {
   const U = (id: string, name: string, username: string, pin: string, role: Role, linkId: string | undefined, permissions: string[]): User =>
     ({ id, name, username, pin, role, linkId, active: true, permissions });
   const users: User[] = [
-    U("u-admin", "عبدالله الشرفي", "abdullah", "0000", "admin", undefined, ROLE_META.admin.defaults ),
+    U("u-admin", "مدير النظام", "abdullah", "0000", "admin", undefined, ROLE_META.admin.defaults ),
     U("u-d1", "أحمد النجار", "najar", "1111", "doctor", "d1", ROLE_META.doctor.defaults),
     U("u-d2", "سارة الحكيمي", "hakimi", "2222", "doctor", "d2", ROLE_META.doctor.defaults),
     U("u-d3", "خالد باصهيب", "basuhaib", "3333", "doctor", "d3", ROLE_META.doctor.defaults),
@@ -1275,25 +1622,56 @@ function seed(): DB {
     },
   ];
 
+  /* ===== سنة مالية افتراضية (السنة الحالية) + 12 فترة ===== */
+  const fyId = uid();
+  const fyYear = new Date().getFullYear();
+  const fiscalYears: FiscalYear[] = [{ id: fyId, label: String(fyYear), startDate: `${fyYear}-01-01`, endDate: `${fyYear}-12-31`, status: "open", updatedAt: Date.now() }];
+  const fiscalPeriods: FiscalPeriod[] = [];
+  for (let i = 1; i <= 12; i++) {
+    const m = String(i).padStart(2, "0");
+    fiscalPeriods.push({ id: uid(), fiscalYearId: fyId, periodNo: i, startDate: `${fyYear}-${m}-01`, endDate: `${fyYear}-${m}-28`, status: "open", updatedAt: Date.now() });
+  }
+
   const serviceCats: string[] = ["تشخيص", "وقاية", "علاج", "تجميل", "جراحة", "تعويضات", "تقويم"];
   const itemCats: string[] = ["تخدير", "حشوات", "علاج عصب", "جراحة", "وقاية", "تعقيم", "مختبر", "استهلاكي عام"];
   const expenseCats: string[] = EXPENSE_CATS.map((c) => c.name);
   const followUpReasons: FollowUpReason[] = DEFAULT_FOLLOWUP_REASONS.map((t, i) => ({ id: `fur-${i}`, text: t }));
 
-  return { patients, doctors, staff, currencies, defaultCurrency: "YER", services, appointments, invoices, activity, expenses, prescriptions, sessions, implants, prosthetics, orthoCases, xrays, followUps, supplies, supplyMoves, serviceCats, itemCats, expenseCats, cities: [...YEMEN_CITIES], specialties: [...DEFAULT_SPECIALTIES], staffRoles: [...STAFF_ROLES], followUpReasons, plans, users, settings: DEFAULT_CLINIC_SETTINGS, nextInv: 1043 };
+  return { patients, doctors, staff, currencies, defaultCurrency: "YER", services, appointments, invoices, payments: [], activity, expenses, prescriptions, sessions, implants, prosthetics, orthoCases, xrays, perioCharts: [], branches: [], labOrders: [], accounts: SEED_ACCOUNTS, costCenters: SEED_COST_CENTERS, vouchers: [], fiscalYears, fiscalPeriods, insuranceCompanies: [], insuranceClaims: [], followUps, supplies, supplyMoves, serviceCats, itemCats, expenseCats, cities: [...YEMEN_CITIES], specialties: [...DEFAULT_SPECIALTIES], staffRoles: [...STAFF_ROLES], followUpReasons, plans, users, settings: DEFAULT_CLINIC_SETTINGS, nextInv: 1043 };
 }
+
+/* ============================== Accounting Helpers ============================== */
+
+const findAccount = (db: DB, code: string): Account | undefined => db.accounts.find(a => a.code === code && a.isPosting);
+const findAccountsByClass = (db: DB, type: AccountType): Account[] => db.accounts.filter(a => a.type === type && a.isPosting);
+
+const postVoucher = (db: DB, type: VoucherType, date: string, description: string, lines: Omit<VoucherLine, 'id'>[]): Voucher => {
+  const totalDebit = lines.reduce((s, l) => s + Number(l.debit || 0), 0);
+  const totalCredit = lines.reduce((s, l) => s + Number(l.credit || 0), 0);
+  if (Math.abs(totalDebit - totalCredit) > 0.01) throw new Error(`قيد غير متوازن: مدين=${totalDebit} دائن=${totalCredit}`);
+  
+  const nowIso = new Date().toISOString();
+  return {
+    id: uid(), number: `AUTO-${Date.now()}`, type, date,
+    description, status: "posted", createdBy: "system", postedAt: nowIso, createdAt: nowIso, lines: lines.map(l => ({ ...l, id: uid() }))
+  };
+};
 
 /* ============================== Store ============================== */
 
 export type Action =
   | { type: "ADD_PATIENT"; p: Patient }
+  | { type: "UPDATE_PATIENT"; p: Patient }
   | { type: "DELETE_PATIENT"; id: string }
   | { type: "SET_TOOTH"; patientId: string; tooth: number; status: ToothStatus }
   | { type: "ADD_APPT"; a: Appointment }
   | { type: "SET_APPT_STATUS"; id: string; status: ApptStatus }
   | { type: "DELETE_APPT"; id: string }
-  | { type: "ADD_INVOICE"; inv: Invoice }
+  | { type: "ADD_INVOICE"; inv: Invoice; payment?: PaymentInput }
   | { type: "PAY_INVOICE"; id: string; amount: number }
+  | { type: "RECEIVE_PAYMENT"; invoiceId: string; input: PaymentInput }
+  | { type: "VOID_INVOICE"; id: string; reason?: string }
+  | { type: "AUTO_POST_FINANCIALS"; historicalPayments?: boolean }
   | { type: "ADD_SERVICE"; s: Service }
   | { type: "UPDATE_SERVICE"; s: Service }
   | { type: "DELETE_SERVICE"; id: string }
@@ -1314,7 +1692,7 @@ export type Action =
   | { type: "DELETE_PRESCRIPTION"; id: string }
  | { type: "START_SESSION"; patientId: string; doctorId: string; apptId?: string; fromFuId?: string }
   | { type: "PATCH_SESSION"; id: string; patch: Partial<ClinicalSession> }
-   | { type: "END_SESSION"; id: string; paid: number; fuId?: string; cashDiscount?: number }
+   | { type: "END_SESSION"; id: string; paid: number; fuId?: string; cashDiscount?: number; method?: string; cashBoxId?: string; payerName?: string; reference?: string }
   | { type: "CANCEL_SESSION"; id: string }
   | { type: "IMPORT"; db: DB }
   | { type: "HYDRATE"; db: DB }
@@ -1331,6 +1709,34 @@ export type Action =
   | { type: "UPDATE_ORTHO"; r: OrthoCase }
   | { type: "DELETE_ORTHO"; id: string }
   | { type: "ADD_XRAY"; r: XrayRec }
+  | { type: "ADD_PERIO"; c: PerioChart }
+  | { type: "DELETE_PERIO"; id: string }
+  | { type: "ADD_ACCOUNT"; a: Account }
+  | { type: "UPDATE_ACCOUNT"; a: Account }
+  | { type: "DELETE_ACCOUNT"; id: string }
+  | { type: "ADD_COST_CENTER"; c: CostCenter }
+  | { type: "UPDATE_COST_CENTER"; c: CostCenter }
+  | { type: "DELETE_COST_CENTER"; id: string }
+  | { type: "ADD_VOUCHER"; v: Voucher }
+  | { type: "UPDATE_VOUCHER"; v: Voucher }
+  | { type: "DELETE_VOUCHER"; id: string }
+  | { type: "POST_VOUCHER"; id: string }
+  | { type: "VOID_VOUCHER"; id: string; reason?: string }
+  | { type: "ADD_FISCAL_YEAR"; fy: FiscalYear }
+  | { type: "UPDATE_FISCAL_YEAR"; fy: FiscalYear }
+  | { type: "ADD_FISCAL_PERIOD"; p: FiscalPeriod }
+  | { type: "UPDATE_FISCAL_PERIOD"; p: FiscalPeriod }
+  | { type: "ADD_INSURANCE_COMPANY"; c: InsuranceCompany }
+  | { type: "UPDATE_INSURANCE_COMPANY"; c: InsuranceCompany }
+  | { type: "DELETE_INSURANCE_COMPANY"; id: string }
+  | { type: "ADD_INSURANCE_CLAIM"; c: InsuranceClaim }
+  | { type: "UPDATE_INSURANCE_CLAIM"; c: InsuranceClaim }
+  | { type: "ADD_BRANCH"; b: Branch }
+  | { type: "UPDATE_BRANCH"; b: Branch }
+  | { type: "DELETE_BRANCH"; id: string }
+  | { type: "ADD_LAB_ORDER"; o: LabOrder }
+  | { type: "UPDATE_LAB_ORDER"; o: LabOrder }
+  | { type: "DELETE_LAB_ORDER"; id: string }
   | { type: "DELETE_XRAY"; id: string }
   | { type: "ADD_FOLLOWUP"; f: FollowUp }
   | { type: "UPDATE_FOLLOWUP"; f: FollowUp }
@@ -1367,6 +1773,484 @@ export type Action =
 const nowIso = () => new Date().toISOString();
 const act = (text: string, kind: Activity["kind"]): Activity => ({ id: uid(), text, time: nowIso(), kind });
 
+type FinanceDraft = {
+  invoices: Invoice[];
+  payments: Payment[];
+  vouchers: Voucher[];
+  voucherNumbers: string[];
+  paymentNumbers: string[];
+  activity: Activity[];
+};
+
+type VoucherInput = Omit<Voucher, "id" | "number" | "createdAt"> & Partial<Pick<Voucher, "id" | "number" | "createdAt">>;
+
+function financeDraft(db: DB): FinanceDraft {
+  return {
+    invoices: [...db.invoices],
+    payments: [...db.payments],
+    vouchers: [...db.vouchers],
+    voucherNumbers: db.vouchers.map((v) => v.number),
+    paymentNumbers: db.payments.map((p) => p.number),
+    activity: [...db.activity],
+  };
+}
+
+function pushActivity(draft: FinanceDraft, text: string, kind: Activity["kind"]) {
+  draft.activity = [act(text, kind), ...draft.activity].slice(0, 30);
+}
+
+function validateVoucherLines(db: DB, lines: VoucherLine[], date: string): { ok: boolean; reason?: string } {
+  const validLines = (lines || []).filter((l) => l.accountId);
+  if (validLines.length < 2) return { ok: false, reason: "السند يحتاج بندين محاسبيين على الأقل." };
+  if (validLines.some((l) => (Number(l.debit) || 0) < 0 || (Number(l.credit) || 0) < 0)) return { ok: false, reason: "قيم المدين والدائن يجب أن تكون موجبة." };
+  const totals = finance.lineTotals(validLines);
+  if (!totals.balanced) return { ok: false, reason: `السند غير متوازن: مدين ${fmtMoney(totals.debit)} مقابل دائن ${fmtMoney(totals.credit)}.` };
+  for (const l of validLines) {
+    const acc = db.accounts.find((a) => a.id === l.accountId);
+    if (!acc) return { ok: false, reason: "يوجد بند بدون حساب صالح." };
+    if (!acc.active) return { ok: false, reason: `الحساب ${acc.code} غير نشط.` };
+    if (!acc.isPosting) return { ok: false, reason: `الحساب ${acc.code} ليس حساب ترحيل.` };
+  }
+  return finance.checkPostingDate(db.fiscalYears, db.fiscalPeriods, date);
+}
+
+function validateVoucher(db: DB, v: Voucher): { ok: boolean; reason?: string } {
+  return validateVoucherLines(db, v.lines, v.date);
+}
+
+function makeVoucher(draft: FinanceDraft, input: VoucherInput): Voucher {
+  const id = input.id ?? uid();
+  const number = input.number ?? finance.nextDocumentNumber(draft.voucherNumbers, finance.voucherPrefix(input.type), input.date);
+  if (!draft.voucherNumbers.includes(number)) draft.voucherNumbers.push(number);
+  const createdAt = input.createdAt ?? nowIso();
+  const v: Voucher = {
+    ...input,
+    id,
+    number,
+    createdAt,
+    lines: (input.lines || []).map((l, i) => ({ ...l, id: l.id ?? `${id}-L${i + 1}`, debit: Math.max(0, Number(l.debit) || 0), credit: Math.max(0, Number(l.credit) || 0) })),
+    updatedAt: Date.now(),
+  };
+  if (v.status === "posted" && !v.postedAt) v.postedAt = createdAt;
+  draft.vouchers = [v, ...draft.vouchers];
+  return v;
+}
+
+function replaceInvoice(draft: FinanceDraft, inv: Invoice) {
+  draft.invoices = draft.invoices.map((i) => (i.id === inv.id ? inv : i));
+}
+
+function replacePayment(draft: FinanceDraft, p: Payment) {
+  draft.payments = draft.payments.map((x) => (x.id === p.id ? p : x));
+}
+
+function replaceVoucher(draft: FinanceDraft, v: Voucher) {
+  draft.vouchers = draft.vouchers.map((x) => (x.id === v.id ? v : x));
+}
+
+function findSourceVoucher(vouchers: Voucher[], refType: string, refId?: string): Voucher | undefined {
+  if (!refId) return undefined;
+  return vouchers.find((v) => v.status !== "void" && (v.lines || []).some((l) => l.refType === refType && l.refId === refId));
+}
+
+function createInvoiceVoucher(draft: FinanceDraft, db: DB, inv: Invoice): Voucher | undefined {
+  if (!finance.isActiveInvoice(inv)) return undefined;
+  if (findSourceVoucher(draft.vouchers, "invoice", inv.id)) return undefined;
+  const voucherId = uid();
+  const lines = finance.buildInvoiceVoucherLines({
+    id: voucherId,
+    number: inv.number,
+    date: inv.date,
+    invoice: inv,
+    accounts: db.accounts,
+    costCenterId: inv.costCenterId,
+    lineId: (i) => `${voucherId}-L${i + 1}`,
+  }) as VoucherLine[];
+  if (lines.length < 2) return undefined;
+  const check = validateVoucherLines(db, lines, inv.date);
+  if (!check.ok) return undefined;
+
+  const patient = db.patients.find((p) => p.id === inv.patientId);
+  const v = makeVoucher(draft, {
+    id: voucherId,
+    type: "journal",
+    date: inv.date,
+    description: `إيراد فاتورة ${inv.number} — ${patient?.name ?? "مريض"}`,
+    status: "posted",
+    lines,
+    branchId: inv.branchId,
+    costCenterId: inv.costCenterId,
+    partyType: "patient",
+    partyId: inv.patientId,
+    partyName: patient?.name,
+    method: inv.method,
+    sourceType: "invoice",
+    sourceId: inv.id,
+  });
+  replaceInvoice(draft, { ...inv, voucherId: v.id, documentStatus: inv.documentStatus ?? "posted", updatedAt: Date.now() });
+  return v;
+}
+
+function createReceiptForPayment(draft: FinanceDraft, db: DB, payment: Payment): Voucher | undefined {
+  if (payment.status === "void" || payment.amount <= 0) return undefined;
+  if (findSourceVoucher(draft.vouchers, "payment", payment.id)) return undefined;
+  const lines = finance.buildReceiptVoucherLines({
+    amount: payment.amount,
+    cashBoxId: payment.cashBoxId,
+    accounts: db.accounts,
+    description: `تحصيل ${payment.number} — ${payment.payerName ?? "مريض"}`,
+    refType: "payment",
+    refId: payment.id,
+    costCenterId: payment.costCenterId,
+    lineId: (i) => `${payment.id}-L${i + 1}`,
+  }) as VoucherLine[];
+  if (lines.length < 2) return undefined;
+  const check = validateVoucherLines(db, lines, payment.date);
+  if (!check.ok) return undefined;
+
+  const v = makeVoucher(draft, {
+    type: "receipt",
+    date: payment.date,
+    description: `سند قبض ${payment.number} — ${payment.payerName ?? "مريض"}`,
+    status: "posted",
+    lines,
+    branchId: payment.branchId,
+    costCenterId: payment.costCenterId,
+    cashBoxId: payment.cashBoxId,
+    partyType: "patient",
+    partyId: payment.patientId,
+    partyName: payment.payerName,
+    method: payment.method,
+    reference: payment.reference,
+    sourceType: "payment",
+    sourceId: payment.id,
+  });
+  replacePayment(draft, { ...payment, voucherId: v.id, updatedAt: Date.now() });
+  return v;
+}
+
+function createPaymentAndReceipt(
+  draft: FinanceDraft,
+  db: DB,
+  invoiceId: string,
+  input: PaymentInput
+): { ok: boolean; reason?: string; payment?: Payment; voucher?: Voucher } {
+  const inv = draft.invoices.find((i) => i.id === invoiceId);
+  if (!inv) return { ok: false, reason: "الفاتورة غير موجودة." };
+  if (!finance.isActiveInvoice(inv)) return { ok: false, reason: "لا يمكن التحصيل على فاتورة ملغاة." };
+  const remaining = finance.invoiceOutstanding(inv);
+  const amount = finance.clampNonNegative(Math.min(Number(input.amount) || 0, remaining));
+  if (amount <= 0.001) return { ok: false, reason: remaining <= 0.001 ? "الفاتورة مسددة بالكامل." : "أدخل مبلغاً أكبر من صفر." };
+
+  const date = input.date || inv.date || today(0);
+  const dateCheck = finance.checkPostingDate(db.fiscalYears, db.fiscalPeriods, date);
+  if (!dateCheck.ok) return { ok: false, reason: dateCheck.reason };
+
+  const patient = db.patients.find((p) => p.id === inv.patientId);
+  const paymentId = uid();
+  const tentative: Payment = {
+    id: paymentId,
+    number: "",
+    direction: "receipt",
+    date,
+    amount,
+    method: input.method || inv.method || "cash",
+    cashBoxId: input.cashBoxId,
+    patientId: inv.patientId,
+    payerName: input.payerName?.trim() || patient?.name || "",
+    reference: input.reference?.trim() || undefined,
+    invoiceId: inv.id,
+    allocations: [{ invoiceId: inv.id, amount }],
+    status: "posted",
+    notes: input.notes?.trim() || undefined,
+    branchId: input.branchId || inv.branchId,
+    costCenterId: input.costCenterId || inv.costCenterId,
+    createdAt: nowIso(),
+    updatedAt: Date.now(),
+  };
+
+  const receiptLines = finance.buildReceiptVoucherLines({
+    amount,
+    cashBoxId: tentative.cashBoxId,
+    accounts: db.accounts,
+    description: `تحصيل ${patient?.name ?? "مريض"} — فاتورة ${inv.number}`,
+    refType: "payment",
+    refId: paymentId,
+    costCenterId: tentative.costCenterId,
+    lineId: (i) => `${paymentId}-L${i + 1}`,
+  }) as VoucherLine[];
+  if (receiptLines.length < 2) return { ok: false, reason: "لا يوجد صندوق/بنك أو حساب ذمم مرضى صالح للترحيل." };
+  const receiptCheck = validateVoucherLines(db, receiptLines, date);
+  if (!receiptCheck.ok) return { ok: false, reason: receiptCheck.reason };
+
+  const number = finance.nextDocumentNumber(draft.paymentNumbers, "RCV", date);
+  draft.paymentNumbers.push(number);
+  const payment: Payment = { ...tentative, number };
+  draft.payments = [payment, ...draft.payments];
+  replaceInvoice(draft, {
+    ...inv,
+    paid: finance.round2(Math.min(finance.invoiceTotal(inv), (Number(inv.paid) || 0) + amount)),
+    updatedAt: Date.now(),
+  });
+
+  const voucher = makeVoucher(draft, {
+    type: "receipt",
+    date,
+    description: `سند قبض ${payment.number} — ${payment.payerName || patient?.name || "مريض"}`,
+    status: "posted",
+    lines: receiptLines,
+    branchId: payment.branchId,
+    costCenterId: payment.costCenterId,
+    cashBoxId: payment.cashBoxId,
+    partyType: "patient",
+    partyId: payment.patientId,
+    partyName: payment.payerName,
+    method: payment.method,
+    reference: payment.reference,
+    sourceType: "payment",
+    sourceId: payment.id,
+  });
+  replacePayment(draft, { ...payment, voucherId: voucher.id, updatedAt: Date.now() });
+  pushActivity(draft, `تحصيل ${fmtMoney(amount)} على الفاتورة ${inv.number} — سند ${voucher.number}`, "invoice");
+  return { ok: true, payment, voucher };
+}
+
+function issueInvoiceDocuments(draft: FinanceDraft, db: DB, inv: Invoice, paymentInput?: PaymentInput) {
+  const invoiceVoucher = createInvoiceVoucher(draft, db, inv);
+  const amount = Number(paymentInput?.amount ?? inv.paid) || 0;
+  if (amount <= 0) return { invoiceVoucher };
+  const pay = createPaymentAndReceipt(draft, db, inv.id, {
+    amount,
+    date: paymentInput?.date || inv.date || today(0),
+    method: paymentInput?.method || inv.method || "cash",
+    cashBoxId: paymentInput?.cashBoxId,
+    payerName: paymentInput?.payerName,
+    reference: paymentInput?.reference,
+    notes: paymentInput?.notes,
+    branchId: paymentInput?.branchId || inv.branchId,
+    costCenterId: paymentInput?.costCenterId || inv.costCenterId,
+  });
+  return {
+    invoiceVoucher,
+    payment: pay.ok ? pay.payment : undefined,
+    receiptVoucher: pay.ok ? pay.voucher : undefined,
+    paymentError: pay.ok ? undefined : pay.reason,
+  };
+}
+
+function createReversalVoucher(draft: FinanceDraft, db: DB, source: Voucher, reason?: string): { ok: boolean; reason?: string; voucher?: Voucher } {
+  const date = today(0);
+  const lines = finance.voucherReversalLines(source.lines).map((l) => ({ ...l, id: uid() })) as VoucherLine[];
+  const check = validateVoucherLines(db, lines, date);
+  if (!check.ok) return { ok: false, reason: check.reason };
+  const v = makeVoucher(draft, {
+    type: source.type,
+    date,
+    description: `عكس ${VOUCHER_TYPE_LABEL[source.type] ?? source.type} ${source.number}${reason ? ` — ${reason}` : ""}`,
+    status: "posted",
+    lines,
+    branchId: source.branchId,
+    costCenterId: source.costCenterId,
+    cashBoxId: source.cashBoxId,
+    partyType: source.partyType,
+    partyId: source.partyId,
+    partyName: source.partyName,
+    method: source.method,
+    reference: source.reference,
+    sourceType: `${source.sourceType ?? source.type}_reversal`,
+    sourceId: source.sourceId ?? source.id,
+    reason: reason?.trim() || undefined,
+    reversalOf: source.id,
+  });
+  replaceVoucher(draft, { ...source, reversedBy: v.id, voidReason: reason?.trim() || source.voidReason, updatedAt: Date.now() });
+  return { ok: true, voucher: v };
+}
+
+function voidInvoiceDocument(draft: FinanceDraft, db: DB, id: string, reason?: string): { ok: boolean; reason?: string } {
+  const inv = draft.invoices.find((i) => i.id === id);
+  if (!inv) return { ok: false, reason: "الفاتورة غير موجودة." };
+  if (inv.documentStatus === "void") return { ok: false, reason: "الفاتورة ملغاة مسبقاً." };
+  if ((Number(inv.paid) || 0) > 0.001) return { ok: false, reason: "لا يمكن إلغاء فاتورة عليها تحصيل. اعكس سند القبض أولاً." };
+  if (finance.invoicePayments(draft.payments, inv.id).length > 0) return { ok: false, reason: "لا يمكن إلغاء فاتورة مرتبطة بدفعة نشطة." };
+
+  const source = findSourceVoucher(draft.vouchers, "invoice", inv.id);
+  if (source) {
+    const reversal = createReversalVoucher(draft, db, source, reason);
+    if (!reversal.ok) return { ok: false, reason: reversal.reason };
+  }
+  replaceInvoice(draft, {
+    ...inv,
+    documentStatus: "void",
+    voidReason: reason?.trim() || "إلغاء بدون سبب",
+    voidedAt: nowIso(),
+    updatedAt: Date.now(),
+  });
+  pushActivity(draft, `إلغاء الفاتورة ${inv.number} بالسبب: ${reason?.trim() || "بدون سبب"}`, "invoice");
+  return { ok: true };
+}
+
+function postVoucherById(draft: FinanceDraft, db: DB, id: string): { ok: boolean; reason?: string } {
+  const v = draft.vouchers.find((x) => x.id === id);
+  if (!v) return { ok: false, reason: "السند غير موجود." };
+  if (v.status === "posted") return { ok: false, reason: "السند مرحّل مسبقاً." };
+  if (v.status === "void") return { ok: false, reason: "لا يمكن ترحيل سند ملغى." };
+  const check = validateVoucher(db, v);
+  if (!check.ok) return { ok: false, reason: check.reason };
+  replaceVoucher(draft, { ...v, status: "posted", postedAt: nowIso(), updatedAt: Date.now() });
+  pushActivity(draft, `ترحيل السند ${v.number}`, "invoice");
+  return { ok: true };
+}
+
+function voidVoucherById(draft: FinanceDraft, db: DB, id: string, reason?: string): { ok: boolean; reason?: string } {
+  const v = draft.vouchers.find((x) => x.id === id);
+  if (!v) return { ok: false, reason: "السند غير موجود." };
+  if (v.status !== "posted") return { ok: false, reason: "يمكن إلغاء السندات المرحّلة فقط." };
+  if (v.reversedBy) return { ok: false, reason: "السند معكوس مسبقاً." };
+  const reversal = createReversalVoucher(draft, db, v, reason);
+  if (!reversal.ok) return { ok: false, reason: reversal.reason };
+  replaceVoucher(draft, { ...v, status: "void", voidReason: reason?.trim() || "إلغاء بدون سبب", reversedBy: reversal.voucher?.id, updatedAt: Date.now() });
+  pushActivity(draft, `عكس/إلغاء السند ${v.number} بالسبب: ${reason?.trim() || "بدون سبب"}`, "invoice");
+  return { ok: true };
+}
+
+function autoPostFinancials(draft: FinanceDraft, db: DB, historicalPayments = false) {
+  let invoiceVouchers = 0;
+  let expenseVouchers = 0;
+  let receipts = 0;
+  let skipped = 0;
+
+  for (const inv of [...draft.invoices]) {
+    if (!finance.isActiveInvoice(inv)) continue;
+    const created = createInvoiceVoucher(draft, db, inv);
+    if (created) invoiceVouchers++;
+    else if (!findSourceVoucher(draft.vouchers, "invoice", inv.id)) skipped++;
+
+    if (historicalPayments && (Number(inv.paid) || 0) > 0.001 && finance.invoicePayments(draft.payments, inv.id).length === 0) {
+      const current = draft.invoices.find((x) => x.id === inv.id) ?? inv;
+      const paymentId = uid();
+      const amount = finance.clampNonNegative(Math.min(Number(current.paid) || 0, finance.invoiceTotal(current)));
+      const lines = finance.buildReceiptVoucherLines({
+        amount,
+        accounts: db.accounts,
+        description: `ترحيل تحصيل سابق — فاتورة ${current.number}`,
+        refType: "payment",
+        refId: paymentId,
+        costCenterId: current.costCenterId,
+        lineId: (i) => `${paymentId}-L${i + 1}`,
+      }) as VoucherLine[];
+      if (amount <= 0 || lines.length < 2 || !validateVoucherLines(db, lines, current.date).ok) {
+        skipped++;
+        continue;
+      }
+      const patient = db.patients.find((p) => p.id === current.patientId);
+      const number = finance.nextDocumentNumber(draft.paymentNumbers, "RCV", current.date);
+      draft.paymentNumbers.push(number);
+      const payment: Payment = {
+        id: paymentId,
+        number,
+        direction: "receipt",
+        date: current.date,
+        amount,
+        method: current.method || "cash",
+        patientId: current.patientId,
+        payerName: patient?.name,
+        invoiceId: current.id,
+        allocations: [{ invoiceId: current.id, amount }],
+        status: "posted",
+        legacy: true,
+        notes: "ترحيل تلقائي لتحصيل سابق قبل تفعيل سندات القبض.",
+        branchId: current.branchId,
+        costCenterId: current.costCenterId,
+        createdAt: nowIso(),
+        updatedAt: Date.now(),
+      };
+      draft.payments = [payment, ...draft.payments];
+      const voucher = makeVoucher(draft, {
+        type: "receipt",
+        date: current.date,
+        description: `سند قبض ${number} — ترحيل تحصيل سابق ${current.number}`,
+        status: "posted",
+        lines,
+        branchId: payment.branchId,
+        costCenterId: payment.costCenterId,
+        partyType: "patient",
+        partyId: payment.patientId,
+        partyName: payment.payerName,
+        method: payment.method,
+        sourceType: "payment",
+        sourceId: payment.id,
+      });
+      replacePayment(draft, { ...payment, voucherId: voucher.id, updatedAt: Date.now() });
+      receipts++;
+    }
+  }
+
+  for (const e of db.expenses) {
+    if (findSourceVoucher(draft.vouchers, "expense", e.id)) continue;
+    const lines = finance.buildExpenseVoucherLines({
+      amount: e.amount,
+      accounts: db.accounts,
+      description: `مصروف ${e.title} — ${e.category}`,
+      refType: "expense",
+      refId: e.id,
+      lineId: (i) => `${e.id}-L${i + 1}`,
+    }) as VoucherLine[];
+    if (lines.length < 2 || !validateVoucherLines(db, lines, e.date).ok) {
+      skipped++;
+      continue;
+    }
+    makeVoucher(draft, {
+      type: "payment",
+      date: e.date,
+      description: `سند صرف مصروف: ${e.title}`,
+      status: "posted",
+      lines,
+      partyType: "other",
+      partyName: e.category,
+      method: "cash",
+      sourceType: "expense",
+      sourceId: e.id,
+    });
+    expenseVouchers++;
+  }
+
+  return { invoiceVouchers, expenseVouchers, receipts, skipped };
+}
+
+export function validateReceivePayment(db: DB, invoiceId: string, input: PaymentInput): { ok: boolean; reason?: string; amount: number } {
+  const inv = db.invoices.find((i) => i.id === invoiceId);
+  if (!inv) return { ok: false, reason: "الفاتورة غير موجودة.", amount: 0 };
+  if (!finance.isActiveInvoice(inv)) return { ok: false, reason: "لا يمكن التحصيل على فاتورة ملغاة.", amount: 0 };
+  const remaining = finance.invoiceOutstanding(inv);
+  const amount = finance.clampNonNegative(Math.min(Number(input.amount) || 0, remaining));
+  if (amount <= 0.001) return { ok: false, reason: remaining <= 0.001 ? "الفاتورة مسددة بالكامل." : "أدخل مبلغاً أكبر من صفر.", amount };
+  const date = input.date || inv.date || today(0);
+  const dateCheck = finance.checkPostingDate(db.fiscalYears, db.fiscalPeriods, date);
+  if (!dateCheck.ok) return { ok: false, reason: dateCheck.reason, amount };
+  const lines = finance.buildReceiptVoucherLines({
+    amount,
+    cashBoxId: input.cashBoxId,
+    accounts: db.accounts,
+    description: "تحقق من إمكان الترحيل",
+    costCenterId: input.costCenterId || inv.costCenterId,
+  }) as VoucherLine[];
+  if (lines.length < 2) return { ok: false, reason: "لا يوجد صندوق/بنك أو حساب ذمم مرضى صالح للترحيل.", amount };
+  const lineCheck = validateVoucherLines(db, lines, date);
+  return { ...lineCheck, amount };
+}
+
+export function validateVoidInvoice(db: DB, id: string): { ok: boolean; reason?: string } {
+  const inv = db.invoices.find((i) => i.id === id);
+  if (!inv) return { ok: false, reason: "الفاتورة غير موجودة." };
+  if (inv.documentStatus === "void") return { ok: false, reason: "الفاتورة ملغاة مسبقاً." };
+  if ((Number(inv.paid) || 0) > 0.001) return { ok: false, reason: "لا يمكن إلغاء فاتورة عليها تحصيل. اعكس سند القبض أولاً." };
+  if (finance.invoicePayments(db.payments, inv.id).length > 0) return { ok: false, reason: "لا يمكن إلغاء فاتورة مرتبطة بدفعة نشطة." };
+  const source = findSourceVoucher(db.vouchers, "invoice", inv.id);
+  if (!source) return { ok: true };
+  const lines = finance.voucherReversalLines(source.lines).map((l) => ({ ...l, id: uid() })) as VoucherLine[];
+  return validateVoucherLines(db, lines, today(0));
+}
+
 function reducer(db: DB, action: Action): DB {
   switch (action.type) {
     case "ADD_PATIENT":
@@ -1376,6 +2260,17 @@ function reducer(db: DB, action: Action): DB {
         patients: [action.p, ...db.patients],
         activity: [act(`انضم المريض ${action.p.name} إلى سجل العيادة`, "patient"), ...db.activity].slice(0, 30),
       };
+     case "UPDATE_PATIENT": {
+       if (!action.p.name.trim()) return db;
+       const existing = db.patients.find((x) => x.id === action.p.id);
+       if (!existing) return db;
+       return {
+         ...db,
+         patients: db.patients.map((x) => (x.id === action.p.id ? { ...x, ...action.p, updatedAt: action.p.updatedAt ?? Date.now() } : x)),
+         activity: [act(`عدّل ملف المريض ${action.p.name}`, "patient"), ...db.activity].slice(0, 30),
+       };
+     }
+
     case "DELETE_PATIENT": {
       const p = db.patients.find((x) => x.id === action.id);
       return {
@@ -1424,23 +2319,58 @@ function reducer(db: DB, action: Action): DB {
       return { ...db, appointments: db.appointments.filter((a) => a.id !== action.id) };
     case "ADD_INVOICE": {
       const p = db.patients.find((x) => x.id === action.inv.patientId);
+      const draft = financeDraft(db);
+      const inv: Invoice = {
+        ...action.inv,
+        items: arr<InvoiceItem>(action.inv.items),
+        paid: finance.clampNonNegative(action.inv.paid),
+        documentStatus: action.inv.documentStatus ?? "posted",
+        createdAt: action.inv.createdAt ?? nowIso(),
+        updatedAt: Date.now(),
+      };
+      draft.invoices = [inv, ...draft.invoices];
+      pushActivity(draft, `إنشاء فاتورة ${inv.number} للمريض ${p?.name ?? ""}`, "invoice");
+      issueInvoiceDocuments(draft, db, inv, action.payment);
       return {
         ...db,
-        invoices: [action.inv, ...db.invoices],
+        invoices: draft.invoices,
+        payments: draft.payments,
+        vouchers: draft.vouchers,
+        activity: draft.activity,
         nextInv: db.nextInv + 1,
-        activity: [act(`إنشاء فاتورة ${action.inv.number} للمريض ${p?.name ?? ""}`, "invoice"), ...db.activity].slice(0, 30),
       };
     }
-    
+
     case "PAY_INVOICE": {
-      const inv = db.invoices.find((i) => i.id === action.id);
-      return {
-        ...db,
-        invoices: db.invoices.map((i) =>
-          i.id === action.id ? { ...i, paid: Math.min(invoiceTotal(i), i.paid + action.amount) } : i
-        ),
-        activity: [act(`تحصيل ${fmtMoney(action.amount)} على الفاتورة ${inv?.number ?? ""}`, "invoice"), ...db.activity].slice(0, 30),
-      };
+      const draft = financeDraft(db);
+      const result = createPaymentAndReceipt(draft, db, action.id, { amount: action.amount, date: today(0), method: "cash" });
+      if (!result.ok) return db;
+      return { ...db, invoices: draft.invoices, payments: draft.payments, vouchers: draft.vouchers, activity: draft.activity };
+    }
+
+    case "RECEIVE_PAYMENT": {
+      const draft = financeDraft(db);
+      const result = createPaymentAndReceipt(draft, db, action.invoiceId, action.input);
+      if (!result.ok) return db;
+      return { ...db, invoices: draft.invoices, payments: draft.payments, vouchers: draft.vouchers, activity: draft.activity };
+    }
+
+    case "VOID_INVOICE": {
+      const draft = financeDraft(db);
+      const result = voidInvoiceDocument(draft, db, action.id, action.reason);
+      if (!result.ok) return db;
+      return { ...db, invoices: draft.invoices, payments: draft.payments, vouchers: draft.vouchers, activity: draft.activity };
+    }
+
+    case "AUTO_POST_FINANCIALS": {
+      const draft = financeDraft(db);
+      const result = autoPostFinancials(draft, db, action.historicalPayments);
+      pushActivity(
+        draft,
+        `ترحيل تلقائي: ${result.invoiceVouchers} قيد فاتورة · ${result.receipts} سند قبض · ${result.expenseVouchers} سند مصروف · ${result.skipped} متجاوز`,
+        "invoice"
+      );
+      return { ...db, invoices: draft.invoices, payments: draft.payments, vouchers: draft.vouchers, activity: draft.activity };
     }
     case "ADD_SERVICE":
       return { ...db, services: [...db.services, action.s] };
@@ -1492,8 +2422,12 @@ function reducer(db: DB, action: Action): DB {
       return { ...db, expenses: db.expenses.filter((e) => e.id !== action.id) };
     
     case "DELETE_INVOICE": {
-  return { ...db, invoices: db.invoices.filter((i) => i.id !== action.id) };
-}
+      const inv = db.invoices.find((i) => i.id === action.id);
+      if (!inv) return db;
+      const hasPayments = finance.invoicePayments(db.payments, inv.id).length > 0;
+      if ((Number(inv.paid) || 0) > 0.001 || hasPayments || inv.documentStatus !== "draft") return db;
+      return { ...db, invoices: db.invoices.filter((i) => i.id !== action.id) };
+    }
       case "UPDATE_EXPENSE":
       return { ...db, expenses: db.expenses.map((e) => (e.id === action.e.id ? action.e : e)) };
     case "ADD_PRESCRIPTION": {
@@ -1596,7 +2530,7 @@ function reducer(db: DB, action: Action): DB {
     case "END_SESSION": {
       const s = db.sessions.find((x) => x.id === action.id);
       if (!s || s.status === "done") return db;
-      let invoices = db.invoices;
+      const draft = financeDraft(db);
       let nextInv = db.nextInv;
       let invoiceId: string | undefined;
       let invNumber: string | undefined;
@@ -1621,14 +2555,26 @@ function reducer(db: DB, action: Action): DB {
       patientId: s.patientId,
       date: today(0),
       items,
-      paid: Math.min(Math.max(0, action.paid), finalTotal),
-      cashDiscount: cash > 0 ? cash : undefined,   // ★ الجديد
+      paid: finance.clampNonNegative(Math.min(Math.max(0, action.paid), finalTotal)),
+      cashDiscount: cash > 0 ? cash : undefined,
+      method: action.method || "cash",
+      documentStatus: "posted",
+      createdAt: nowIso(),
+      updatedAt: Date.now(),
     };
-    
-    invoices = [inv, ...invoices];
+
+    draft.invoices = [inv, ...draft.invoices];
     invoiceId = inv.id;
     invNumber = inv.number;
     nextInv += 1;
+    issueInvoiceDocuments(draft, db, inv, {
+      amount: inv.paid,
+      date: inv.date,
+      method: action.method || "cash",
+      cashBoxId: action.cashBoxId,
+      payerName: action.payerName,
+      reference: action.reference,
+    });
       }
       let prescriptions = db.prescriptions;
       let rxId: string | undefined;
@@ -1667,23 +2613,24 @@ function reducer(db: DB, action: Action): DB {
      const returnFollowUps = s.fromFuId
   ? db.followUps.map((f) => (f.id === s.fromFuId ? { ...f, status: "done" as FollowUpStatus } : f))
   : db.followUps;
+      pushActivity(
+        draft,
+        `خروج المريض ${pName} — ${s.procedures.length} إجراء${invNumber ? ` بفاتورة ${invNumber}` : ""}${rxId ? " وروشتة إلكترونية" : ""}`,
+        "appt"
+      );
       return {
         ...db,
         patients,
         appointments,
-        invoices,
+        invoices: draft.invoices,
+        payments: draft.payments,
+        vouchers: draft.vouchers,
         prescriptions,
         sessions,
         nextInv,
       
-         followUps: returnFollowUps, // ← أضف هذا السطر
-        activity: [
-          act(
-            `خروج المريض ${pName} — ${s.procedures.length} إجراء${invNumber ? ` بفاتورة ${invNumber}` : ""}${rxId ? " وروشتة إلكترونية" : ""}`,
-            "appt"
-          ),
-          ...db.activity,
-        ].slice(0, 30),
+        followUps: returnFollowUps,
+        activity: draft.activity,
       };
     }
     /*case "CANCEL_SESSION": {
@@ -1780,6 +2727,110 @@ function reducer(db: DB, action: Action): DB {
       return { ...db, xrays: [action.r, ...db.xrays] };
     case "DELETE_XRAY":
       return { ...db, xrays: db.xrays.filter((x) => x.id !== action.id) };
+    case "ADD_PERIO":
+      return { ...db, perioCharts: [action.c, ...db.perioCharts] };
+    case "DELETE_PERIO":
+      return { ...db, perioCharts: db.perioCharts.filter((x) => x.id !== action.id) };
+    case "ADD_ACCOUNT":
+      return { ...db, accounts: [action.a, ...db.accounts] };
+    case "UPDATE_ACCOUNT":
+      return { ...db, accounts: db.accounts.map((x) => (x.id === action.a.id ? action.a : x)) };
+    case "DELETE_ACCOUNT":
+      return { ...db, accounts: db.accounts.filter((x) => x.id !== action.id) };
+    case "ADD_COST_CENTER":
+      return { ...db, costCenters: [action.c, ...db.costCenters] };
+    case "UPDATE_COST_CENTER":
+      return { ...db, costCenters: db.costCenters.map((x) => (x.id === action.c.id ? action.c : x)) };
+    case "DELETE_COST_CENTER":
+      return { ...db, costCenters: db.costCenters.filter((x) => x.id !== action.id) };
+    case "ADD_VOUCHER": {
+      const draft = financeDraft(db);
+      const input: Voucher = {
+        ...action.v,
+        lines: arr<VoucherLine>(action.v.lines).map((l) => ({
+          ...l,
+          id: l.id || uid(),
+          debit: Math.max(0, Number(l.debit) || 0),
+          credit: Math.max(0, Number(l.credit) || 0),
+        })),
+        status: action.v.status ?? "draft",
+        createdAt: action.v.createdAt ?? nowIso(),
+        updatedAt: Date.now(),
+      };
+      if (input.status === "posted") {
+        const check = validateVoucher(db, input);
+        if (!check.ok) return db;
+      }
+      makeVoucher(draft, input);
+      return { ...db, vouchers: draft.vouchers };
+    }
+    case "UPDATE_VOUCHER": {
+      const existing = db.vouchers.find((x) => x.id === action.v.id);
+      if (!existing || existing.status !== "draft") return db;
+      const next: Voucher = {
+        ...action.v,
+        lines: arr<VoucherLine>(action.v.lines).map((l) => ({
+          ...l,
+          id: l.id || uid(),
+          debit: Math.max(0, Number(l.debit) || 0),
+          credit: Math.max(0, Number(l.credit) || 0),
+        })),
+        updatedAt: Date.now(),
+      };
+      if (next.status === "posted") {
+        const check = validateVoucher(db, next);
+        if (!check.ok) return db;
+        if (!next.postedAt) next.postedAt = nowIso();
+      }
+      return { ...db, vouchers: db.vouchers.map((x) => (x.id === next.id ? next : x)) };
+    }
+    case "DELETE_VOUCHER": {
+      const existing = db.vouchers.find((x) => x.id === action.id);
+      if (!existing || existing.status !== "draft") return db;
+      return { ...db, vouchers: db.vouchers.filter((x) => x.id !== action.id) };
+    }
+    case "POST_VOUCHER": {
+      const draft = financeDraft(db);
+      const result = postVoucherById(draft, db, action.id);
+      if (!result.ok) return db;
+      return { ...db, vouchers: draft.vouchers, activity: draft.activity };
+    }
+    case "VOID_VOUCHER": {
+      const draft = financeDraft(db);
+      const result = voidVoucherById(draft, db, action.id, action.reason);
+      if (!result.ok) return db;
+      return { ...db, vouchers: draft.vouchers, activity: draft.activity };
+    }
+    case "ADD_FISCAL_YEAR":
+      return { ...db, fiscalYears: [action.fy, ...db.fiscalYears] };
+    case "UPDATE_FISCAL_YEAR":
+      return { ...db, fiscalYears: db.fiscalYears.map((x) => (x.id === action.fy.id ? action.fy : x)) };
+    case "ADD_FISCAL_PERIOD":
+      return { ...db, fiscalPeriods: [action.p, ...db.fiscalPeriods] };
+    case "UPDATE_FISCAL_PERIOD":
+      return { ...db, fiscalPeriods: db.fiscalPeriods.map((x) => (x.id === action.p.id ? action.p : x)) };
+    case "ADD_INSURANCE_COMPANY":
+      return { ...db, insuranceCompanies: [action.c, ...db.insuranceCompanies] };
+    case "UPDATE_INSURANCE_COMPANY":
+      return { ...db, insuranceCompanies: db.insuranceCompanies.map((x) => (x.id === action.c.id ? action.c : x)) };
+    case "DELETE_INSURANCE_COMPANY":
+      return { ...db, insuranceCompanies: db.insuranceCompanies.filter((x) => x.id !== action.id) };
+    case "ADD_INSURANCE_CLAIM":
+      return { ...db, insuranceClaims: [action.c, ...db.insuranceClaims] };
+    case "UPDATE_INSURANCE_CLAIM":
+      return { ...db, insuranceClaims: db.insuranceClaims.map((x) => (x.id === action.c.id ? action.c : x)) };
+    case "ADD_BRANCH":
+      return { ...db, branches: [action.b, ...db.branches] };
+    case "UPDATE_BRANCH":
+      return { ...db, branches: db.branches.map((x) => (x.id === action.b.id ? action.b : x)) };
+    case "DELETE_BRANCH":
+      return { ...db, branches: db.branches.filter((x) => x.id !== action.id) };
+    case "ADD_LAB_ORDER":
+      return { ...db, labOrders: [action.o, ...db.labOrders] };
+    case "UPDATE_LAB_ORDER":
+      return { ...db, labOrders: db.labOrders.map((x) => (x.id === action.o.id ? action.o : x)) };
+    case "DELETE_LAB_ORDER":
+      return { ...db, labOrders: db.labOrders.filter((x) => x.id !== action.id) };
 
     /* ---------- العودات والمتابعة ---------- */
     case "ADD_FOLLOWUP":
@@ -1977,6 +3028,38 @@ const arr = <T,>(v: unknown): T[] => (Array.isArray(v) ? (v as T[]) : []);
 export function normalizeDB(raw: Partial<DB> | null | undefined): DB {
   const base = bootstrap();
   const db = (raw ?? {}) as Partial<DB>;
+  const _fyExisting = arr<FiscalYear>(db.fiscalYears);
+  const _fyId = _fyExisting.length ? _fyExisting[0].id : uid();
+  const _fyYear = _fyExisting.length ? Number(_fyExisting[0].label) : new Date().getFullYear();
+  const _fiscalYears = _fyExisting.length ? _fyExisting : [{ id: _fyId, label: String(_fyYear), startDate: `${_fyYear}-01-01`, endDate: `${_fyYear}-12-31`, status: "open" as const, updatedAt: Date.now() }];
+  const _fiscalPeriods = (() => {
+    const rawPeriods = arr<FiscalPeriod>(db.fiscalPeriods);
+    const periods: FiscalPeriod[] = rawPeriods.length
+      ? rawPeriods
+      : Array.from({ length: 12 }, (_, idx) => {
+          const i = idx + 1;
+          const m = String(i).padStart(2, "0");
+          return {
+            id: uid(),
+            fiscalYearId: _fyId,
+            periodNo: i,
+            startDate: `${_fyYear}-${m}-01`,
+            endDate: finance.monthEndDate(_fyYear, i),
+            status: "open" as const,
+            updatedAt: Date.now(),
+          };
+        });
+
+    return periods.map((p) => {
+      const year = Number(p.startDate.slice(0, 4));
+      const month = Number(p.startDate.slice(5, 7));
+      if (!year || !month || p.startDate.slice(8, 10) !== "01") return p;
+      const correctEnd = finance.monthEndDate(year, month);
+      return p.endDate === correctEnd ? p : { ...p, endDate: correctEnd, updatedAt: Date.now() };
+    });
+  })();
+
+
   return {
     patients: arr<Patient>(db.patients),
     doctors: (arr<Doctor>(db.doctors).length ? arr<Doctor>(db.doctors) : base.doctors).map((d) => ({
@@ -1988,7 +3071,22 @@ export function normalizeDB(raw: Partial<DB> | null | undefined): DB {
     defaultCurrency: db.defaultCurrency ?? base.defaultCurrency,
     services: arr<Service>(db.services),
     appointments: arr<Appointment>(db.appointments),
-    invoices: arr<Invoice>(db.invoices),
+    invoices: arr<Invoice>(db.invoices).map((inv) => ({
+      ...inv,
+      items: arr<InvoiceItem>(inv.items),
+      paid: Math.max(0, Number(inv.paid) || 0),
+      discount: Math.max(0, Number(inv.discount) || 0),
+      cashDiscount: Math.max(0, Number(inv.cashDiscount) || 0),
+      documentStatus: inv.documentStatus ?? "posted",
+    })),
+    payments: arr<Payment>(db.payments).map((p) => ({
+      ...p,
+      direction: p.direction ?? "receipt",
+      amount: Math.max(0, Number(p.amount) || 0),
+      allocations: arr<PaymentAllocation>(p.allocations),
+      status: p.status ?? "posted",
+      createdAt: p.createdAt ?? new Date(0).toISOString(),
+    })),
     activity: arr<Activity>(db.activity),
     expenses: arr<Expense>(db.expenses),
     prescriptions: arr<Prescription>(db.prescriptions),
@@ -2023,6 +3121,26 @@ export function normalizeDB(raw: Partial<DB> | null | undefined): DB {
     prosthetics: arr<Prosthetic>(db.prosthetics),
     orthoCases: arr<OrthoCase>(db.orthoCases),
     xrays: arr<XrayRec>(db.xrays),
+    perioCharts: arr<PerioChart>(db.perioCharts),
+    accounts: arr<Account>(db.accounts).length ? arr<Account>(db.accounts) : SEED_ACCOUNTS,
+    costCenters: arr<CostCenter>(db.costCenters).length ? arr<CostCenter>(db.costCenters) : SEED_COST_CENTERS,
+    vouchers: arr<Voucher>(db.vouchers).map((v) => ({
+      ...v,
+      type: v.type ?? "journal",
+      status: v.status ?? "posted",
+      lines: arr<VoucherLine>(v.lines).map((l) => ({
+        ...l,
+        debit: Math.max(0, Number(l.debit) || 0),
+        credit: Math.max(0, Number(l.credit) || 0),
+      })),
+      createdAt: v.createdAt ?? new Date(0).toISOString(),
+    })),
+    fiscalYears: _fiscalYears,
+    fiscalPeriods: _fiscalPeriods,
+    insuranceCompanies: arr<InsuranceCompany>(db.insuranceCompanies),
+    insuranceClaims: arr<InsuranceClaim>(db.insuranceClaims),
+    branches: arr<Branch>(db.branches).length ? arr<Branch>(db.branches) : [{ id: "br-main", code: "BR01", name: "الفرع الرئيسي", active: true, isDefault: true, updatedAt: Date.now() }],
+    labOrders: arr<LabOrder>(db.labOrders),
     followUps: arr<FollowUp>(db.followUps),
     supplies: arr<SupplyItem>(db.supplies),
     supplyMoves: arr<SupplyMove>(db.supplyMoves),
@@ -2046,10 +3164,10 @@ export function normalizeDB(raw: Partial<DB> | null | undefined): DB {
       const users = arr<User>(db.users).length ? arr<User>(db.users) : base.users;
       const admins = users.filter((u) => u.role === "admin");
       const doctorName = (name: string) => name.replace(/^د\.?\s*/, "").replace(/^دكتور\s*/, "").replace(/\s+/g, " ").trim().toLowerCase();
-      const validDoctor = (id?: string) => id && db.doctors.some((d) => d.id === id && d.active !== false);
+      const validDoctor = (id?: string) => id && (db.doctors ?? []).some((d) => d.id === id && d.active !== false);
       const repairDoctorLink = (u: User) => {
         if (u.role !== "doctor" || validDoctor(u.linkId)) return u;
-        const match = db.doctors.find((d) => doctorName(d.name) === doctorName(u.name) && d.active !== false);
+        const match = (db.doctors ?? []).find((d) => doctorName(d.name) === doctorName(u.name) && d.active !== false);
         return match ? { ...u, linkId: match.id } : u;
       };
       if (admins.length > 0) return users.map((u) => ({ ...(u.role === "admin" ? { ...u, permissions: ROLE_META.admin.defaults } : repairDoctorLink(u)) }));
@@ -2132,6 +3250,7 @@ export const DELETE_ENTITY_MAP: Record<string, string> = {
   DELETE_APPT: "appointments",
   DELETE_SESSION: "sessions",
   DELETE_INVOICE: "invoices",
+  DELETE_VOUCHER: "vouchers",
   DELETE_EXPENSE: "expenses",
   DELETE_FOLLOWUP: "followUps",
   DELETE_PRESCRIPTION: "prescriptions",
@@ -2295,6 +3414,12 @@ const dispatch = useCallback((action: Action) => {
         if (ok) dirtyRef.current = true;
       }
       bootedRef.current = true;
+       // دفع أولي لضمان تعبئة الجداول الجديدة في MySQL
+       saveState({ ...dbRef.current, savedAt: Date.now() }).catch(() => {});
+        // دفع مؤجل لضمان تعبئة الجداول الجديدة (بعد MERGE)
+        setTimeout(() => { saveState({ ...dbRef.current, savedAt: Date.now() }).catch(() => {}); }, 1500);
+
+
     })();
     return () => {
       cancelled = true;
@@ -2526,6 +3651,9 @@ interface AuthCtx {
   login: (username: string, pin: string) => { ok: boolean; error?: string };
   loginById: (id: string, pin: string) => { ok: boolean; error?: string };
   logout: () => void;
+  locked: boolean;
+  lock: () => void;
+  unlock: (pin: string) => { ok: boolean; error?: string };
   can: (perm: string) => boolean;
   patientScope: Set<string> | null; // null = يرى كل المرضى
   apptScope: string | null; // null = كل المواعيد، وإلا معرّف الطبيب الذي تُقيَّد به الرؤية
@@ -2543,8 +3671,44 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return null;
     }
   });
+  const [locked, setLocked] = useState(false);
+  const idleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const IDLE_MS = 15 * 60 * 1000; // 15 دقيقة
+
+  const lock = useCallback(() => {
+    if (userId) setLocked(true);
+  }, [userId]);
+
+  const resetIdle = useCallback(() => {
+    if (idleTimer.current) clearTimeout(idleTimer.current);
+    if (!userId || locked) return;
+    idleTimer.current = setTimeout(() => setLocked(true), IDLE_MS);
+  }, [userId, locked]);
+
+  useEffect(() => {
+    if (!userId) { setLocked(false); return; }
+    const events = ["mousemove", "keydown", "click", "scroll", "touchstart"];
+    const handler = () => resetIdle();
+    events.forEach((e) => window.addEventListener(e, handler, { passive: true }));
+    resetIdle();
+    return () => {
+      events.forEach((e) => window.removeEventListener(e, handler));
+      if (idleTimer.current) clearTimeout(idleTimer.current);
+    };
+  }, [userId, resetIdle]);
 
   const user = useMemo(() => db.users.find((u) => u.id === userId && u.active) ?? null, [db.users, userId]);
+
+  const unlock = useCallback(
+    (pin: string): { ok: boolean; error?: string } => {
+      if (!user) return { ok: false, error: "لا يوجد مستخدم." };
+      if (user.pin !== pin) return { ok: false, error: "رمز الدخول غير صحيح." };
+      setLocked(false);
+      resetIdle();
+      return { ok: true };
+    },
+    [user, resetIdle]
+  );
 
   const doLogin = useCallback(
     (u: User, pin: string): { ok: boolean; error?: string } => {
@@ -2601,6 +3765,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (!u) return { ok: false, error: "المستخدم غير موجود." };
         return doLogin(u, pin);
       },
+       locked,
+       lock,
+       unlock,
+
       logout: () => {
         setUserId(null);
         try {

@@ -305,4 +305,23 @@ export async function syncStaffAndMoves(data: {
   return { ok: false, error: body?.error ?? `فشل الحفظ (HTTP ${status})` };
 }
 
+/** قائمة النسخ الاحتياطية (server) */
+export async function listBackups(): Promise<{ name: string; size: number; mtime: number }[] | null> {
+  try {
+    const data = await req<{ name: string; size: number; mtime: number }[]>("/api/backups");
+    return Array.isArray(data) ? data : null;
+  } catch { return null; }
+}
+export async function createBackup(): Promise<{ ok: boolean; name?: string; error?: string }> {
+  const { status, body } = await reqWithBody<{ ok?: boolean; name?: string; error?: string }>("/api/backups", { method: "POST" });
+  if (status === 0) return { ok: false, error: "تعذّر الوصول إلى الخادم" };
+  if (status >= 200 && status < 300) return { ok: true, name: body?.name };
+  return { ok: false, error: body?.error ?? `فشل (HTTP ${status})` };
+}
+export async function restoreBackup(name: string): Promise<{ ok: boolean; error?: string }> {
+  const { status, body } = await reqWithBody<{ ok?: boolean; error?: string }>(`/api/backups/${encodeURIComponent(name)}/restore`, { method: "POST" });
+  if (status === 0) return { ok: false, error: "تعذّر الوصول إلى الخادم" };
+  if (status >= 200 && status < 300) return { ok: true };
+  return { ok: false, error: body?.error ?? `فشل (HTTP ${status})` };
+}
 /** حفظ الحالة مع بصمات الحذف */

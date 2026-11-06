@@ -39,8 +39,12 @@ import {
   fmtDate,
   fmtDateFull,
   fmtMoney,
+  invoiceDiscounts,
+  invoiceOutstanding,
   invoiceTotal,
   PAY_METHODS,
+  PAYMENT_STATUS_META,
+  paymentsForInvoice,
   today,
   TOOTH_META,
   useAuth,
@@ -53,6 +57,8 @@ import {
   type Patient,
   type Prescription,
   type ToothStatus,
+  type Voucher,
+  type SupplyMove,
 } from "../store";
 import { IconCalendar, IconIdCard, IconPrinter, IconStetho, IconTooth, IconX, Logo } from "../icons";
 import { Modal } from "./ui";
@@ -159,10 +165,13 @@ export function InvoicePrint({ inv }: { inv: Invoice }) {
   const clinic = clinicOf(db);
   const money = useMoney();
   const p = patientById(inv.patientId);
-  const total = invoiceTotal(inv);
-  const rem = Math.max(0, total - inv.paid);
-  // ✅ أضف هذا السطر بعده مباشرة
-const gross = inv.items.reduce((s, i) => s + i.qty * i.price, 0);
+  const amounts = invoiceDiscounts(inv);
+  const total = amounts.total;
+  const paid = Math.min(Number(inv.paid) || 0, total);
+  const rem = invoiceOutstanding(inv);
+  
+  const payments = paymentsForInvoice(db.payments, inv.id);
+  const gross = amounts.gross;
   return (
     <div className="text-ink">
       <div className="flex items-center justify-between py-4">
@@ -196,7 +205,7 @@ const gross = inv.items.reduce((s, i) => s + i.qty * i.price, 0);
             return (
               <tr key={i}>
                 <td className="border border-line px-3 py-2 stat-num text-xs text-soft">{i + 1}</td>
-                <td className="border border-line px-3 py-2 font-semibold">{s?.name ?? "خدمة"}</td>
+                <td className="border border-line px-3 py-2 font-semibold">{it.name ?? s?.name ?? "خدمة"}</td>
                 <td className="border border-line px-3 py-2 text-xs text-soft text-center">{s?.category ?? "—"}</td>
                 <td className="border border-line px-3 py-2 text-center stat-num">{it.qty}</td>
                 <td className="border border-line px-3 py-2 text-center stat-num">{money(it.price)}</td>
@@ -1059,6 +1068,164 @@ export function SessionPrint({ session }: { session: ClinicalSession }) {
           )}
         </div>
       </div>
+    </div>
+  );
+}
+/* ============================ طباعة سند قيد/صرف/قبض ============================ */
+export function VoucherPrint({ voucher }: { voucher: Voucher }) {
+  const { db } = useStore();
+  const money = useMoney();
+  const acc = (id: string) => db.accounts.find((a) => a.id === id);
+  const totalD = voucher.lines.reduce((s, l) => s + (l.debit || 0), 0);
+  const totalC = voucher.lines.reduce((s, l) => s + (l.credit || 0), 0);
+  const typeLabel: Record<string, string> = { journal: "قيد يومي", payment: "سند صرف", receipt: "سند قبض", transfer: "سند تحويل", opening: "سند افتتاح" };
+  return (
+    <div className="text-ink">
+      <div className="flex items-center justify-between py-4">
+        <div>
+          <p className="font-display font-bold text-xl">سند مالي ({typeLabel[voucher.type] ?? voucher.type})</p>
+          <p className="text-xs text-soft mt-1">
+            رقم: <b className="stat-num" dir="ltr">{voucher.number}</b> آ· التاريخ: {fmtDate(voucher.date)}
+          </p>
+        </div>
+        <span className={`inline-flex items-center rounded-full px-3 py-1.5 text-xs font-bold ${voucher.status === "posted" ? "bg-mint-soft text-[#1d6b47]" : voucher.status === "void" ? "bg-coral-soft text-coral" : "bg-amber-soft text-[#a06410]"}`}>
+          {voucher.status === "posted" ? "مرحّل" : voucher.status === "void" ? "ملغى" : "مسودة"}
+        </span>
+      </div>
+      {voucher.description && <p className="text-sm font-semibold text-ink mb-3 bg-mist/50 border border-line rounded-lg px-3.5 py-2.5">{voucher.description}</p>}
+      <table className="w-full text-sm border-collapse">
+        <thead>
+          <tr className="bg-mist text-[11px]">
+            <th className="border border-line px-3 py-2 text-start">الحساب</th>
+            <th className="border border-line px-3 py-2 text-start">الوصف</th>
+            <th className="border border-line px-3 py-2">مركز التكلفة</th>
+            <th className="border border-line px-3 py-2">مدين</th>
+            <th className="border border-line px-3 py-2">دائن</th>
+          </tr>
+        </thead>
+        <tbody>
+          {voucher.lines.map((l) => {
+            const a = acc(l.accountId);
+            const cc = db.costCenters.find((c) => c.id === l.costCenterId);
+            return (
+              <tr key={l.id}>
+                <td className="border border-line px-3 py-2 font-semibold">{a ? `${a.code} — ${a.name}` : l.accountId}</td>
+                <td className="border border-line px-3 py-2 text-xs text-soft">{l.description || "—"}</td>
+                <td className="border border-line px-3 py-2 text-xs text-center text-soft">{cc?.name ?? "—"}</td>
+                <td className="border border-line px-3 py-2 text-center stat-num">{l.debit ? money(l.debit) : "—"}</td>
+                <td className="border border-line px-3 py-2 text-center stat-num">{l.credit ? money(l.credit) : "—"}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+        <tfoot>
+          <tr className="bg-mist/70 font-bold">
+            <td className="border border-line px-3 py-2" colSpan={3}>المجموع</td>
+            <td className="border border-line px-3 py-2 text-center stat-num">{money(totalD)}</td>
+            <td className="border border-line px-3 py-2 text-center stat-num">{money(totalC)}</td>
+          </tr>
+        </tfoot>
+      </table>
+      {Math.abs(totalD - totalC) > 0.001 && <p className="text-xs text-coral font-bold mt-2">تنبيه: السند غير متوازن (مدين {money(totalD)} غير دائن {money(totalC)})</p>}
+      <p className="text-[10px] text-soft mt-5 leading-relaxed">أُصدر هذا السند إلكترونياً من نظام {db.settings?.clinicName ?? ""} — {fmtDate(new Date().toISOString().slice(0, 10))}</p>
+    </div>
+  );
+}
+
+/* ============================ طباعة حركة مخزون ============================ */
+export function StockMovementPrint({ move }: { move: SupplyMove }) {
+  const { db } = useStore();
+  const money = useMoney();
+  const item = db.supplies.find((s) => s.id === move.itemId);
+  return (
+    <div className="text-ink">
+      <div className="flex items-center justify-between py-4">
+        <div>
+          <p className="font-display font-bold text-xl">سند حركة مخزون</p>
+          <p className="text-xs text-soft mt-1">
+            رقم: <b className="stat-num" dir="ltr">MV-{move.id.slice(0, 6).toUpperCase()}</b> آ· التاريخ: {fmtDate(move.date.slice(0, 10))}
+          </p>
+        </div>
+        <span className={`inline-flex items-center rounded-full px-3 py-1.5 text-xs font-bold ${move.delta >= 0 ? "bg-mint-soft text-[#1d6b47]" : "bg-coral-soft text-coral"}`}>
+          {move.delta >= 0 ? "إدخال/توريد" : "صرف"}
+        </span>
+      </div>
+      <div className="rounded-xl border-2 border-pine/25 bg-mist/60 p-5 flex flex-wrap items-center justify-between gap-4 my-2">
+        <div className="min-w-0">
+          <p className="text-[11px] font-bold text-soft">الصنف</p>
+          <p className="font-display font-bold text-lg mt-1">{item?.name ?? move.itemId}</p>
+          <p className="text-xs text-soft mt-1">الفئة: {item?.category ?? "—"} · الوحدة: {item?.unit ?? "—"}</p>
+        </div>
+        <div className="text-end">
+          <p className="text-[11px] font-bold text-soft">الكمية</p>
+          <p className={`stat-num font-bold text-3xl mt-1 ${move.delta >= 0 ? "text-mint" : "text-coral"}`}>{move.delta >= 0 ? "+" : ""}{move.delta}</p>
+        </div>
+      </div>
+      <div className="grid grid-cols-2 gap-3 mt-3 text-sm">
+        <div className="border border-line rounded-lg px-3 py-2"><p className="text-[9px] font-bold text-soft">الرصيد الحالي</p><p className="stat-num font-bold mt-0.5">{item?.qty ?? "—"}</p></div>
+        <div className="border border-line rounded-lg px-3 py-2"><p className="text-[9px] font-bold text-soft">الحد الأدنى</p><p className="stat-num font-bold mt-0.5">{item?.minQty ?? "—"}</p></div>
+      </div>
+      {move.note && <div className="mt-4"><p className="text-[11px] font-bold text-soft mb-1.5">البيان</p><p className="text-[12px] text-ink leading-relaxed bg-mist/40 border border-line rounded-lg px-3.5 py-2.5">{move.note}</p></div>}
+      {item?.expiry && <p className="text-xs text-soft mt-3">تاريخ الصلاحية: {fmtDate(item.expiry)}</p>}
+    </div>
+  );
+}
+
+/* ============================ طباعة فاتورة مشتريات ============================ */
+export interface PurchasePrintData {
+  supplier: string;
+  date: string;
+  item: string;
+  category?: string;
+  unit?: string;
+  qty: number;
+  price: number;
+  credit: boolean;
+}
+export function PurchaseInvoicePrint({ data }: { data: PurchasePrintData }) {
+  const { db } = useStore();
+  const money = useMoney();
+  const total = data.qty * data.price;
+  return (
+    <div className="text-ink">
+      <div className="flex items-center justify-between py-4">
+        <div>
+          <p className="font-display font-bold text-xl">فاتورة مشتريات</p>
+          <p className="text-xs text-soft mt-1">التاريخ: {fmtDate(data.date)} آ· المورد: {data.supplier || "—"}</p>
+        </div>
+        <span className={`inline-flex items-center rounded-full px-3 py-1.5 text-xs font-bold ${data.credit ? "bg-amber-soft text-[#a06410]" : "bg-mint-soft text-[#1d6b47]"}`}>
+          {data.credit ? "آجل (ذمم داينة)" : "نقداً"}
+        </span>
+      </div>
+      <table className="w-full text-sm border-collapse">
+        <thead>
+          <tr className="bg-mist text-[11px]">
+            <th className="border border-line px-3 py-2 text-start">الصنف</th>
+            <th className="border border-line px-3 py-2">الفئة</th>
+            <th className="border border-line px-3 py-2">الوحدة</th>
+            <th className="border border-line px-3 py-2">الكمية</th>
+            <th className="border border-line px-3 py-2">سعر الوحدة</th>
+            <th className="border border-line px-3 py-2">الإجمالي</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td className="border border-line px-3 py-2 font-semibold">{data.item}</td>
+            <td className="border border-line px-3 py-2 text-center text-xs text-soft">{data.category ?? "—"}</td>
+            <td className="border border-line px-3 py-2 text-center text-xs text-soft">{data.unit ?? "—"}</td>
+            <td className="border border-line px-3 py-2 text-center stat-num">{data.qty}</td>
+            <td className="border border-line px-3 py-2 text-center stat-num">{money(data.price)}</td>
+            <td className="border border-line px-3 py-2 text-center stat-num font-bold">{money(total)}</td>
+          </tr>
+        </tbody>
+        <tfoot>
+          <tr className="bg-mist/70 font-bold">
+            <td className="border border-line px-3 py-2" colSpan={5}>الإجمالي</td>
+            <td className="border border-line px-3 py-2 text-center stat-num">{money(total)}</td>
+          </tr>
+        </tfoot>
+      </table>
+      <p className="text-[10px] text-soft mt-5 leading-relaxed">يُضاف هذا المشترى إلى المخزون ويُرحّل في السجل المالي مع المورد وفق الشراء.</p>
     </div>
   );
 }

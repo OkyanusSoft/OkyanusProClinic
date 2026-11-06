@@ -1,5 +1,5 @@
 -- ============================================================
---  عيادة د. عبدالله الشرفي — مخطط قاعدة البيانات المركزية MySQL
+--     نظام إدارة عيادة الأسنان  — مخطط قاعدة البيانات المركزية MySQL
 --  التشغيل:  mysql -u root -p < schema.sql
 -- ============================================================
 CREATE DATABASE IF NOT EXISTS sharafi_dental
@@ -209,3 +209,117 @@ CREATE TABLE IF NOT EXISTS expense_cats (
 -- الجلسات والإجراءات والروشتات والزراعة والتركيبات والتقويم والأشعة
 -- تُحفَظ كاملة داخل clinic_state.doc لضمان تطابق الواجهة،
 -- بينما الجداول العلائقية أعلاه قابلة للاستعلام المباشر من أي أداة تقارير.
+
+
+-- ============================ الحسابات (GL) ============================
+CREATE TABLE IF NOT EXISTS accounts (
+  id VARCHAR(32) PRIMARY KEY,
+  code VARCHAR(16) NOT NULL UNIQUE,
+  name VARCHAR(160) NOT NULL,
+  level INT DEFAULT 5,
+  type ENUM('asset','liability','equity','revenue','expense') NOT NULL,
+  parent_id VARCHAR(32),
+  is_posting TINYINT(1) DEFAULT 0,
+  active TINYINT(1) DEFAULT 1,
+  notes TEXT,
+  updated_at BIGINT,
+  INDEX idx_acc_parent (parent_id),
+  INDEX idx_acc_type (type)
+);
+
+CREATE TABLE IF NOT EXISTS cost_centers (
+  id VARCHAR(32) PRIMARY KEY,
+  code VARCHAR(16),
+  name VARCHAR(160) NOT NULL,
+  type ENUM('clinic','department','doctor','project') DEFAULT 'department',
+  active TINYINT(1) DEFAULT 1,
+  updated_at BIGINT
+);
+
+CREATE TABLE IF NOT EXISTS vouchers (
+  id VARCHAR(32) PRIMARY KEY,
+  number VARCHAR(40),
+  type ENUM('journal','payment','receipt','transfer','opening') DEFAULT 'journal',
+  date DATE,
+  description TEXT,
+  status ENUM('draft','posted','void') DEFAULT 'draft',
+  created_by VARCHAR(32),
+  posted_at DATETIME,
+  created_at DATETIME,
+  updated_at BIGINT,
+  INDEX idx_v_date (date),
+  INDEX idx_v_status (status)
+);
+
+CREATE TABLE IF NOT EXISTS voucher_lines (
+  id VARCHAR(32) PRIMARY KEY,
+  voucher_id VARCHAR(32) NOT NULL,
+  account_id VARCHAR(32) NOT NULL,
+  debit DECIMAL(14,2) DEFAULT 0,
+  credit DECIMAL(14,2) DEFAULT 0,
+  cost_center_id VARCHAR(32),
+  description VARCHAR(255),
+  ref_type VARCHAR(40),
+  ref_id VARCHAR(32),
+  INDEX idx_vl_voucher (voucher_id),
+  INDEX idx_vl_account (account_id)
+);
+
+CREATE TABLE IF NOT EXISTS fiscal_years (
+  id VARCHAR(32) PRIMARY KEY,
+  label VARCHAR(16),
+  start_date DATE,
+  end_date DATE,
+  status ENUM('open','closed') DEFAULT 'open',
+  updated_at BIGINT
+);
+
+CREATE TABLE IF NOT EXISTS fiscal_periods (
+  id VARCHAR(32) PRIMARY KEY,
+  fiscal_year_id VARCHAR(32),
+  period_no INT,
+  start_date DATE,
+  end_date DATE,
+  status ENUM('open','closed','locked') DEFAULT 'open',
+  updated_at BIGINT,
+  INDEX idx_fp_year (fiscal_year_id)
+);
+
+CREATE TABLE IF NOT EXISTS insurance_companies (
+  id VARCHAR(32) PRIMARY KEY,
+  name VARCHAR(160) NOT NULL,
+  code VARCHAR(16),
+  contact VARCHAR(255),
+  terms TEXT,
+  claim_days INT DEFAULT 30,
+  active TINYINT(1) DEFAULT 1,
+  updated_at BIGINT
+);
+
+CREATE TABLE IF NOT EXISTS insurance_claims (
+  id VARCHAR(32) PRIMARY KEY,
+  invoice_id VARCHAR(32),
+  patient_id VARCHAR(32),
+  company_id VARCHAR(32),
+  submitted_amount DECIMAL(14,2) DEFAULT 0,
+  approved_amount DECIMAL(14,2) DEFAULT 0,
+  status ENUM('submitted','approved','partial','denied','paid') DEFAULT 'submitted',
+  submitted_at DATETIME,
+  decided_at DATETIME,
+  paid_at DATETIME,
+  notes TEXT,
+  updated_at BIGINT,
+  INDEX idx_claim_company (company_id),
+  INDEX idx_claim_patient (patient_id)
+);
+
+CREATE TABLE IF NOT EXISTS perio_charts (
+  id VARCHAR(32) PRIMARY KEY,
+  patient_id VARCHAR(32),
+  date DATE,
+  doctor_id VARCHAR(32),
+  sites JSON,
+  notes TEXT,
+  updated_at BIGINT,
+  INDEX idx_perio_patient (patient_id)
+);

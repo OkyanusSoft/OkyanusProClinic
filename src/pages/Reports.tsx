@@ -1,4 +1,5 @@
-import React, { useMemo, useState,useEffect  } from "react";
+import React, { useMemo, useRef, useState, useEffect } from "react";
+import { exportNodeToPdf } from "../utils/exportPdf";
 import {
   clinicOf,
   expCatColor,
@@ -69,6 +70,7 @@ export default function ReportsPage() {
 
       // ====== تعريف tab مع قيمة افتراضية ======
   const [tab, setTab] = useState<Tab>("overview");
+  const reportRef = useRef<HTMLDivElement>(null);
 
 
 
@@ -301,7 +303,7 @@ if (TABS.length === 0) {
   );
 
   return (
-    <div className="report-wide space-y-5">
+    <div className="report-wide space-y-5" ref={reportRef}>
       <div className="anim-rise flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="font-display font-bold text-3xl text-ink">مركز التقارير</h1>
@@ -321,6 +323,16 @@ if (TABS.length === 0) {
             <IconPrinter className="w-4 h-4" />
             طباعة التقرير
           </button>
+           <button
+             className="btn-soft"
+             onClick={async () => {
+               if (reportRef.current) await exportNodeToPdf(reportRef.current, `تقرير-${tab}-${new Date().toISOString().slice(0, 10)}`);
+             }}
+           >
+             <IconReceipt className="w-4 h-4" />
+             تصدير PDF
+           </button>
+
         </div>
       </div>
 
