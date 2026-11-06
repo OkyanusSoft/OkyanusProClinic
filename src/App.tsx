@@ -7,11 +7,13 @@ import {
   IconBook,
   IconBox,
   IconCalendar,
+  IconChevronDown,
   IconCoins,
   IconGlobe,
   IconGrid,
   IconLogout,
   IconPhone,
+  IconPencil,
   IconMenu,
   IconPulse,
   IconReceipt,
@@ -51,6 +53,38 @@ import ExpenseCatsPage from "./pages/ExpenseCats";
 import PreferencesPage from "./pages/Preferences";
 import ActivityMonitor from "./pages/ActivityMonitor";
 import Login from "./pages/Login";
+import ChartOfAccountsPage from "./pages/ChartOfAccounts";
+import VouchersPage from "./pages/Vouchers";
+import ReceiptVoucherPage from "./pages/ReceiptVoucher";
+import PaymentVoucherPage from "./pages/PaymentVoucher";
+import JournalVoucherPage from "./pages/JournalVoucher";
+import TransferVoucherPage from "./pages/TransferVoucher";
+import OpeningVoucherPage from "./pages/OpeningVoucher";
+import TrialBalancePage from "./pages/TrialBalance";
+import AccountStatementPage from "./pages/AccountStatement";
+import FiscalYearsPage from "./pages/FiscalYears";
+import ProfitLossPage from "./pages/ProfitLoss";
+import BalanceSheetPage from "./pages/BalanceSheet";
+import InsurancePage from "./pages/Insurance";
+import ComingSoonPage from "./pages/ComingSoon";
+import CostCentersPage from "./pages/CostCenters";
+import CashBoxesPage from "./pages/CashBoxes";
+import GeneralLedgerPage from "./pages/GeneralLedger";
+import CashFlowPage from "./pages/CashFlow";
+import CostCenterReportPage from "./pages/CostCenterReport";
+import ConsentFormsPage from "./pages/ConsentForms";
+import BookingPage from "./pages/Booking";
+import BranchesPage from "./pages/Branches";
+import LabOrdersPage from "./pages/LabOrders";
+import PatientStatementPage from "./pages/PatientStatement";
+import InsuranceStatementPage from "./pages/InsuranceStatement";
+import UnitsPage from "./pages/Units";
+import WarehousesPage from "./pages/Warehouses";
+import SuppliersPage from "./pages/Suppliers";
+import PurchasesPage from "./pages/Purchases";
+import StockMovementsPage from "./pages/StockMovements";
+import PurchaseReturnPage from "./pages/PurchaseReturn";
+import PurchaseReportsPage from "./pages/PurchaseReports";
 
 type Tab =
   | "dashboard"
@@ -59,9 +93,15 @@ type Tab =
   | "inventory" | "itemCats" | "itemsData"
   | "reports"
   | "settings" | "users" | "monitor" | "preferences"
-  | "guide";
+  | "guide"
+  | "chartOfAccounts" | "vouchers" | "openingVoucher" | "journalRequest" | "journalVoucher" | "paymentVoucher" | "receiptVoucher" | "transferVoucher" | "trialBalance" | "accountStatement" | "fiscalYears"
+  | "profitLoss" | "balanceSheet" | "insurance" | "cashFlow" | "costCenterReport" | "consentForms"
+  | "cashBoxes" | "costCenters" | "generalLedger"
+  | "units" | "warehouses" | "inventoryOpening" | "inventoryTransfer" | "inventoryAdjustment" | "inventoryCount"
+  | "suppliers" | "purchaseInvoice" | "purchaseReturn" | "purchaseReports" | "branches" | "labOrders"
+  | "patientStatement" | "insuranceStatement";
 
-type NavItem = { key: Tab; label: string; icon: (c: string) => React.ReactNode };
+type NavItem = { key: Tab; label: string; icon: (c: string) => React.ReactNode; section?: string };
 
 /* القائمة المجمّعة — كل قسم يجمع شاشاته تحت عنوان واحد */
 const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
@@ -73,25 +113,78 @@ const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
       { key: "patients", label: "المرضى", icon: (c) => <IconUsers className={c} /> },
       { key: "team", label: "الفريق الطبي", icon: (c) => <IconStetho className={c} /> },
       { key: "serviceCats", label: "فئات الخدمات", icon: (c) => <IconSpark className={c} /> },
+      { key: "insuranceStatement", label: "كشف التأمين", icon: (c) => <IconShield className={c} /> },
+      { key: "patientStatement", label: "كشف حساب المريض", icon: (c) => <IconUsers className={c} /> },
+
       { key: "services", label: "بيانات الخدمات", icon: (c) => <IconTooth className={c} /> },
+      { key: "consentForms", label: "نماذج الموافقة", icon: (c) => <IconPencil className={c} /> },
+      { key: "insurance", label: "شركات التأمين", icon: (c) => <IconShield className={c} /> },
+      { key: "labOrders", label: "مختبر ", icon: (c) => <IconSpark className={c} /> },
+
+
     ],
   },
   {
-    label: "المالية",
+    label: "المالية (الفواتير والمصروفات)",
     items: [
       { key: "invoices", label: "الفواتير", icon: (c) => <IconReceipt className={c} /> },
       { key: "expenses", label: "المصروفات", icon: (c) => <IconWallet className={c} /> },
       { key: "priceList", label: "قائمة الأسعار", icon: (c) => <IconGrid className={c} /> },
-      { key: "currencies", label: "العملات", icon: (c) => <IconCoins className={c} /> },
       { key: "expenseCats", label: "فئات المصروفات", icon: (c) => <IconWallet className={c} /> },
+    ],
+  },
+  {
+    label: "الحسابات العامة",
+    items: [
+      { key: "fiscalYears", label: "الفترات المالية", icon: (c) => <IconCalendar className={c} />, section: "البيانات الأساسية" },
+      { key: "currencies", label: "إدارة العملات", icon: (c) => <IconCoins className={c} />, section: "البيانات الأساسية" },
+      { key: "cashBoxes", label: "بيانات الصناديق", icon: (c) => <IconWallet className={c} />, section: "البيانات الأساسية" },
+      { key: "costCenters", label: "دليل مراكز التكلفة", icon: (c) => <IconGrid className={c} />, section: "البيانات الأساسية" },
+      { key: "chartOfAccounts", label: "دليل الحسابات", icon: (c) => <IconCoins className={c} />, section: "البيانات الأساسية" },
+      { key: "openingVoucher", label: "سند قيد افتتاحي", icon: (c) => <IconReceipt className={c} />, section: "الحركات" },
+      { key: "journalRequest", label: "طلب سند قيد يومية", icon: (c) => <IconReceipt className={c} />, section: "الحركات" },
+      { key: "journalVoucher", label: "سند قيد يومية", icon: (c) => <IconReceipt className={c} />, section: "الحركات" },
+      { key: "paymentVoucher", label: "سند صرف", icon: (c) => <IconWallet className={c} />, section: "الحركات" },
+      { key: "receiptVoucher", label: "سند قبض", icon: (c) => <IconCoins className={c} />, section: "الحركات" },
+      { key: "transferVoucher", label: "سند تحويل", icon: (c) => <IconCoins className={c} />, section: "الحركات" },
+      { key: "fiscalYears", label: "الإقفال السنوي", icon: (c) => <IconShield className={c} />, section: "الحركات" },
+      { key: "accountStatement", label: "تقرير كشف حساب", icon: (c) => <IconBook className={c} />, section: "التقارير" },
+      { key: "trialBalance", label: "تقرير ميزان المراجعة", icon: (c) => <IconTrendUp className={c} />, section: "التقارير" },
+      { key: "generalLedger", label: "تقرير ميزان العمومية", icon: (c) => <IconBook className={c} />, section: "التقارير" },
+      { key: "profitLoss", label: "تقرير الأرباح والخسائر", icon: (c) => <IconTrendUp className={c} />, section: "التقارير" },
+      { key: "balanceSheet", label: "الميزانية", icon: (c) => <IconCoins className={c} />, section: "التقارير" },
+
+      { key: "cashFlow", label: "التدفق النقدي", icon: (c) => <IconCoins className={c} />, section: "التقارير" },
+      { key: "costCenterReport", label: "تقرير مراكز التكلفة", icon: (c) => <IconGrid className={c} />, section: "التقارير" },
     ],
   },
   {
     label: "المخازن",
     items: [
-      { key: "inventory", label: "المخزون والمستهلكات", icon: (c) => <IconBox className={c} /> },
-      { key: "itemCats", label: "فئات الأصناف", icon: (c) => <IconSpark className={c} /> },
-      { key: "itemsData", label: "بيانات الأصناف", icon: (c) => <IconBox className={c} /> },
+      { key: "units", label: "الوحدات", icon: (c) => <IconGrid className={c} />, section: "البيانات الأساسية" },
+      { key: "warehouses", label: "دليل المخازن", icon: (c) => <IconBox className={c} />, section: "البيانات الأساسية" },
+      { key: "itemCats", label: "دليل الفئات", icon: (c) => <IconSpark className={c} />, section: "البيانات الأساسية" },
+      { key: "itemsData", label: "دليل الأصناف", icon: (c) => <IconBox className={c} />, section: "البيانات الأساسية" },
+      { key: "inventoryOpening", label: "سند قيد افتتاحي مخزني", icon: (c) => <IconReceipt className={c} />, section: "الحركات" },
+      { key: "inventory", label: "سند توريد مخزني", icon: (c) => <IconBox className={c} />, section: "الحركات" },
+      { key: "inventory", label: "سند صرف مخزني", icon: (c) => <IconBox className={c} />, section: "الحركات" },
+      { key: "inventoryTransfer", label: "سند تحويل مخزني", icon: (c) => <IconBox className={c} />, section: "الحركات" },
+      { key: "inventoryAdjustment", label: "سند تسوية مخزنية", icon: (c) => <IconBox className={c} />, section: "الحركات" },
+      { key: "inventoryCount", label: "جرد مخزني", icon: (c) => <IconBox className={c} />, section: "الحركات" },
+      { key: "inventory", label: "أرصدة المخازن", icon: (c) => <IconBox className={c} />, section: "التقارير" },
+      { key: "itemsData", label: "حركة الأصناف", icon: (c) => <IconBox className={c} />, section: "التقارير" },
+      { key: "itemsData", label: "بطاقة صنف", icon: (c) => <IconBox className={c} />, section: "التقارير" },
+      { key: "inventory", label: "مراقبة المخزون", icon: (c) => <IconBox className={c} />, section: "التقارير" },
+      { key: "inventoryCount", label: "جرد المخزون", icon: (c) => <IconBox className={c} />, section: "التقارير" },
+    ],
+  },
+  {
+    label: "المشتريات والموردن",
+    items: [
+      { key: "suppliers", label: "إدارة الموردين", icon: (c) => <IconUsers className={c} /> },
+      { key: "purchaseInvoice", label: "فاتورة مشتريات", icon: (c) => <IconReceipt className={c} /> },
+      { key: "purchaseReturn", label: "فاتورة مرتجع", icon: (c) => <IconReceipt className={c} /> },
+      { key: "purchaseReports", label: "تقارير المشتريات", icon: (c) => <IconTrendUp className={c} /> },
     ],
   },
   {
@@ -105,6 +198,7 @@ const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
       { key: "users", label: "المستخدمون والصلاحيات", icon: (c) => <IconShield className={c} /> },
       { key: "monitor", label: "مراقبة النشاط", icon: (c) => <IconPulse className={c} /> },
       { key: "preferences", label: "التفضيلات", icon: (c) => <IconSliders className={c} /> },
+      { key: "branches", label: "الفروع", icon: (c) => <IconBox className={c} /> },
     ],
   },
 ];
@@ -138,12 +232,49 @@ const TITLES: Record<Tab, string> = {
   monitor: "مراقبة النشاط",
   preferences: "التفضيلات",
   guide: "دليل المستخدم",
+  chartOfAccounts: "دليل الحسابات",
+  vouchers: "السندات",
+  openingVoucher: "سند قيد افتتاحي",
+  journalRequest: "طلب سند قيد يومية",
+  journalVoucher: "سند قيد يومية",
+  paymentVoucher: "سند صرف",
+  receiptVoucher: "سند قبض",
+  transferVoucher: "سند تحويل",
+  trialBalance: "ميزان المراجعة",
+  accountStatement: "كشف حساب",
+  fiscalYears: "الفترات المالية",
+  profitLoss: "الأرباح والخسائر",
+  balanceSheet: "الميزانية",
+  insurance: "التأمين",
+  cashFlow: "التدفق النقدي",
+  costCenterReport: "تقرير مراكز التكلفة",
+  consentForms: "نماذج الموافقة",
+  labOrders: "مختبر ",
+  patientStatement: "كشف حساب المريض",
+  insuranceStatement: "كشف التأمين",
+  cashBoxes: "بيانات الصناديق",
+  costCenters: "دليل مراكز التكلفة",
+  generalLedger: "تقرير ميزان العمومية",
+  units: "الوحدات",
+  warehouses: "دليل المخازن",
+  inventoryOpening: "سند قيد افتتاحي مخزني",
+  inventoryTransfer: "سند تحويل مخزني",
+  inventoryAdjustment: "سند تسوية مخزنية",
+  inventoryCount: "جرد مخزني",
+  suppliers: "إدارة الموردين",
+  purchaseInvoice: "فاتورة مشتريات",
+  purchaseReturn: "فاتورة مرتجع",
+  purchaseReports: "تقارير المشتريات",
+  branches: "الفروع",
 };
 
 function Shell() {
   const { db, dispatch, patientById, serviceById, conn } = useStore();
-  const { user, can, apptScope } = useAuth();
+  const { user, can, apptScope, locked, unlock } = useAuth();
   const { push } = useToast();
+  const [lockPin, setLockPin] = useState("");
+  const [lockErr, setLockErr] = useState("");
+
 
   /* دفع أحداث النشاط إلى الخادم المركزي كل 5 ثوانٍ (سجل مراقبة الموظفين) */
   useEffect(() => {
@@ -330,6 +461,41 @@ function Shell() {
           {tab === "monitor" && <ActivityMonitor />}
           {tab === "preferences" && <PreferencesPage />}
           {tab === "guide" && <GuidePage focus={guideFocus} />}
+           {tab === "chartOfAccounts" && <ChartOfAccountsPage />}
+           {tab === "vouchers" && <VouchersPage />}
+           {tab === "openingVoucher" && <OpeningVoucherPage />}
+           {tab === "journalRequest" && <JournalVoucherPage />}
+           {tab === "journalVoucher" && <JournalVoucherPage />}
+           {tab === "paymentVoucher" && <PaymentVoucherPage />}
+           {tab === "receiptVoucher" && <ReceiptVoucherPage />}
+           {tab === "transferVoucher" && <TransferVoucherPage />}
+           {tab === "trialBalance" && <TrialBalancePage />}
+           {tab === "accountStatement" && <AccountStatementPage />}
+           {tab === "fiscalYears" && <FiscalYearsPage />}
+           {tab === "profitLoss" && <ProfitLossPage />}
+           {tab === "balanceSheet" && <BalanceSheetPage />}
+           {tab === "insurance" && <InsurancePage />}
+           {tab === "consentForms" && <ConsentFormsPage />}
+           {tab === "branches" && <BranchesPage />}
+           {tab === "labOrders" && <LabOrdersPage />}
+           {tab === "patientStatement" && <PatientStatementPage />}
+           {tab === "insuranceStatement" && <InsuranceStatementPage />}
+           {tab === "cashFlow" && <CashFlowPage />}
+           {tab === "costCenterReport" && <CostCenterReportPage />}
+           {tab === "cashBoxes" && <CashBoxesPage />}
+           {tab === "costCenters" && <CostCentersPage />}
+           {tab === "generalLedger" && <GeneralLedgerPage />}
+           {tab === "units" && <UnitsPage />}
+           {tab === "warehouses" && <WarehousesPage />}
+           {tab === "suppliers" && <SuppliersPage />}
+           {tab === "inventoryOpening" && <StockMovementsPage />}
+           {tab === "inventoryTransfer" && <StockMovementsPage />}
+           {tab === "inventoryAdjustment" && <StockMovementsPage />}
+           {tab === "inventoryCount" && <StockMovementsPage />}
+           {tab === "purchaseInvoice" && <PurchasesPage />}
+            {tab === "purchaseReturn" && <PurchaseReturnPage />}
+            {tab === "purchaseReports" && <PurchaseReportsPage />}
+
           </div>
         </main>
 
@@ -353,7 +519,7 @@ function Shell() {
                   <span dir="ltr">781 183 050</span>
                 </span>
               </div>
-              <p className="text-[10px] text-soft/60">نظام {clinicOf(db).clinicName} · الإصدار 4.0</p>
+              <p className="text-[10px] text-soft/60">نظام {clinicOf(db).clinicName} · الإصدار 5.0</p>
             </div>
         </footer>
       </div>
@@ -367,6 +533,45 @@ function Shell() {
         defaultTime={book.time}
         defaultDate={book.date}
       />
+      {locked && (
+        <div className="fixed inset-0 z-[100] bg-pine/70 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="card w-full max-w-sm p-6 text-center space-y-4">
+            <div className="mx-auto w-14 h-14 rounded-full bg-jade-soft text-jade-deep flex items-center justify-center">
+              <IconShield className="w-7 h-7" />
+            </div>
+            <h2 className="font-display font-bold text-xl text-ink">النظام مقفل</h2>
+            <p className="text-xs text-soft">أدخل رمز الدخول لإلغاء القفل (15 دقيقة خمول).</p>
+            <input
+              type="password"
+              inputMode="numeric"
+              maxLength={4}
+              value={lockPin}
+              onChange={(e) => { setLockPin(e.target.value); setLockErr(""); }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  const res = unlock(lockPin);
+                  if (res.ok) { setLockPin(""); setLockErr(""); }
+                  else { setLockErr(res.error ?? "فشل"); setLockPin(""); }
+                }
+              }}
+              className="input text-center tracking-widest text-lg"
+              autoFocus
+            />
+            {lockErr && <p className="text-xs font-bold text-coral">{lockErr}</p>}
+            <button
+              className="btn-primary w-full"
+              onClick={() => {
+                const res = unlock(lockPin);
+                if (res.ok) { setLockPin(""); setLockErr(""); }
+                else { setLockErr(res.error ?? "فشل"); setLockPin(""); }
+              }}
+            >
+              إلغاء القفل
+            </button>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
@@ -395,6 +600,16 @@ function SidebarContent({
   const { db } = useStore();
   const clinic = clinicOf(db);
   const doc = db.doctors[0];
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+
+  const toggleGroup = (label: string) => {
+    setExpandedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(label)) next.delete(label);
+      else next.add(label);
+      return next;
+    });
+  };
   return (
     <aside className={`${className} bg-pine sidebar-texture text-white relative`}>
       <span className="sidebar-edge" aria-hidden="true" />
@@ -429,27 +644,45 @@ function SidebarContent({
           </div>
         )}
 
-        {/* الأقسام المجمّعة */}
-        {groups.map((g) => (
-          <div key={g.label}>
-            <div className="flex items-center gap-2 px-1 mb-2 mt-3">
-              <span className="w-1.5 h-4 rounded-full bg-frost/80" />
-              <p className="text-[12px] font-black text-white/90 tracking-wide">{g.label}</p>
-              <span className="flex-1 h-px bg-gradient-to-l from-white/25 to-transparent" />
+        {/* الأقسام المجمّعة — قابلة للطي (أكورديون) */}
+        {groups.map((g) => {
+          const isExpanded = expandedGroups.has(g.label);
+          return (
+            <div key={g.label}>
+              <button
+                onClick={() => toggleGroup(g.label)}
+                className="flex items-center gap-2 px-1 mb-2 mt-3 text-left w-full"
+              >
+                <span className="w-1.5 h-4 rounded-full bg-frost/80" />
+                <p className="text-[12px] font-black text-white/90 tracking-wide">{g.label}</p>
+                <span className="flex-1 h-px bg-gradient-to-l from-white/25 to-transparent" />
+                <IconChevronDown className={`w-4 h-4 rotate-${isExpanded ? 180 : 0}`} />
+              </button>
+              {isExpanded && (
+                <div className="space-y-1 ml-2 mt-1">
+                  {g.items.map((n, i) => {
+                    const prev = i > 0 ? g.items[i - 1].section : null;
+                    const showSection = n.section && n.section !== prev;
+                    return (
+                      <React.Fragment key={`${n.key}-${n.label}-${i}`}>
+                        {showSection && (
+                          <p className="text-[9px] font-black text-white/40 tracking-wider mt-2 mb-1 px-1">{n.section}</p>
+                        )}
+                        <button className={`navlink ${tab === n.key ? "active" : ""}`} onClick={() => onNav(n.key)}>
+                          {n.icon("w-5 h-5")}
+                          <span className="flex-1 text-start">{n.label}</span>
+                          {badges[n.key] ? (
+                            <span className="chip !py-1 !px-2 bg-white/12 text-frost !text-[10px]">{badges[n.key]}</span>
+                          ) : null}
+                        </button>
+                      </React.Fragment>
+                    );
+                  })}
+                </div>
+              )}
             </div>
-            <div className="space-y-1">
-              {g.items.map((n) => (
-                <button key={n.key} className={`navlink ${tab === n.key ? "active" : ""}`} onClick={() => onNav(n.key)}>
-                  {n.icon("w-5 h-5")}
-                  <span className="flex-1 text-start">{n.label}</span>
-                  {badges[n.key] ? (
-                    <span className="chip !py-1 !px-2 bg-white/12 text-frost !text-[10px]">{badges[n.key]}</span>
-                  ) : null}
-                </button>
-              ))}
-            </div>
-          </div>
-        ))}
+          );
+        })}
 
         {/* دليل المستخدم — عنصر مستقل أسفل القائمة */}
         {showGuide && (
@@ -767,6 +1000,15 @@ function UserChip() {
 /* ============================ الجذر ============================ */
 
 export default function App() {
+  if (window.location.pathname === "/book" || window.location.hash === "#book") {
+    return (
+      <StoreProvider>
+        <ToastProvider>
+          <BookingPage />
+        </ToastProvider>
+      </StoreProvider>
+    );
+  }
   return (
     <StoreProvider>
       <AuthProvider>

@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <title>تحديث النظام…</title>
+  <style>body{font-family:system-ui,Segoe UI,Arial;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;background:#f6fbfa;color:#103} .c{background:#fff;border:1px solid #d7ece8;border-radius:14px;padding:28px;max-width:520px;text-align:center}</style>
+</head>
+<body>
+  <div class="c">
+    <h2>جارٍ تحديث النظام ومسح الذاكرة المؤقتة…</h2>
+    <p id="m">يرجى الانتظار لحظة.</p>
+  </div>
+  <script>
+    (async function () {
+      const msg = (t) => (document.getElementById('m').textContent = t);
+      try {
+        if ('serviceWorker' in navigator) {
+          const regs = await navigator.serviceWorker.getRegistrations();
+          await Promise.all(regs.map((r) => r.unregister()));
+        }
+        if ('caches' in window) {
+          const keys = await caches.keys();
+          await Promise.all(keys.map((k) => caches.delete(k)));
+        }
+        msg('تم التحديث. سيتم إعادة فتح النظام…');
+      } catch (e) {
+        msg('تمت المحاولة. سيتم إعادة الفتح…');
+      }
+      setTimeout(function () { location.replace('/?v=' + Date.now()); }, 700);
+    })();
+  </script>
+</body>
+</html>

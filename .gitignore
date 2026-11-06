@@ -20,8 +20,12 @@ build/
 
 # Local configuration
 hosts
-
+.env
 *.bat
 step.txt
-server/delete-all-sessions.js
+tsc_check.txt
+db_clinic.sql
+*.code-workspace
 _backups/
+dist/
+server/delete-all-sessions.js

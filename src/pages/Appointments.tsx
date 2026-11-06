@@ -340,6 +340,17 @@ function ScheduleView({
                               <p className="text-[11px] text-soft mt-0.5 truncate">
                                 {s?.name} · <span className="stat-num">{a.time}–{addMinutes(a.time, s?.duration ?? 30)}</span>
                               </p>
+                             {p?.phone && (
+                               <a
+                                 href={`https://wa.me/${p.phone.replace(/\D/g, "")}?text=${encodeURIComponent(`تذكير: لديك موعد في ${clinicOf(db).clinicName} يوم ${a.date} الساعة ${a.time} — ${s?.name ?? ""}. نراك قريباً.`)}`}
+                                 target="_blank"
+                                 rel="noreferrer"
+                                 className="mt-2 inline-flex items-center gap-1.5 text-[10px] font-bold text-[#1d6b47] bg-mint-soft hover:bg-mint hover:text-white rounded-lg px-2.5 py-1.5 transition-colors"
+                               >
+                                 WhatsApp تذكير
+                               </a>
+                             )}
+
                             </div>
                             <Drop
                               align="end"
@@ -961,7 +972,8 @@ function PreviousAppointmentsSection({
   appointments: import("../store").Appointment[];
   onOpenPatient: (id: string) => void;
 }) {
-  const { patientById, serviceById, doctorById } = useStore();
+  const { patientById, serviceById, doctorById, dispatch } = useStore();
+  const { push } = useToast();
   const previous = useMemo(
     () => [...appointments].sort((a, b) => (b.date + b.time).localeCompare(a.date + a.time)),
     [appointments]
@@ -1007,6 +1019,12 @@ function PreviousAppointmentsSection({
                   <span className="w-1.5 h-1.5 rounded-full" style={{ background: meta.dot }} />
                   {meta.label}
                 </Badge>
+                <TwoStepDelete
+                  onConfirm={() => {
+                    dispatch({ type: "DELETE_APPT", id: appointment.id });
+                    push("warn", "حُذف الحجز السابق", `${patient?.name ?? "المريض"} — ${fmtDate(appointment.date)}`);
+                  }}
+                />
               </li>
             );
           })}

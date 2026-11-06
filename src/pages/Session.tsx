@@ -108,7 +108,7 @@ const allergyHit = (medName: string, allergy: string) =>
 
 export default function SessionPage() {
   const { db, dispatch, patientById, serviceById, doctorById } = useStore();
-  const { apptScope, patientScope, isAdmin } = useAuth();
+  const { apptScope, patientScope, doctorScopeId, isAdmin } = useAuth();
   const { push } = useToast();
   const [doctorId, setDoctorId] = useState(db.doctors[0]?.id ?? "d1");
   const [adHoc, setAdHoc] = useState(false);
@@ -136,8 +136,10 @@ const [forceUpdate, setForceUpdate] = useState(0);
     [db.appointments, open, apptScope]
   );
   const doneToday = useMemo(
-    () => db.sessions.filter((s) => s.status === "done" && s.date === today(0)).sort((a, b) => (b.endedAt ?? "").localeCompare(a.endedAt ?? "")),
-    [db.sessions]
+    () => db.sessions
+      .filter((s) => s.status === "done" && s.date === today(0) && (!doctorScopeId || s.doctorId === doctorScopeId))
+      .sort((a, b) => (b.endedAt ?? "").localeCompare(a.endedAt ?? "")),
+    [db.sessions, doctorScopeId]
   );
 
  const start = (patientId: string, apptId?: string, fromFuId?: string) =>  {
@@ -549,6 +551,18 @@ useEffect(() => {
     return;
   }
   
+  // ✅ حماية الفواتير: لا تحذف الجلسة إذا كانت مرتبطة بفاتورة نشطة
+  const linkedInvoice = db.invoices.find(inv => 
+    inv.patientId === session.patientId && 
+    inv.documentStatus !== "void" &&
+    inv.date === today(0)
+  );
+  if (linkedInvoice && linkedInvoice.documentStatus !== "void") {
+    push("error", "لا يمكن إلغاء الجلسة", "الجلسة مرتبطة بفاتورة نشطة. قم بإلغاء الفاتورة أولاً أو عكسها محاسبياً.");
+    setArmCancel(false);
+    return;
+  }
+
   // إلغاء الجلسة (ستحذف من localStorage و MySQL)
   dispatch({ type: "CANCEL_SESSION", id: session.id });
    // ✅ حذف الجلسة من MySQL مباشرة
@@ -2039,7 +2053,7 @@ function ImplantModal({ patientId, tooth, onClose }: { patientId: string; tooth?
   const { push } = useToast();
   const [t, setT] = useState(String(tooth ?? ""));
   const [brand, setBrand] = useState(IMPLANT_BRANDS[0]);
-  const [status, setStatus] = useState<Implant["status"]>("مخطط له");
+  const [status, setStatus] = useState<Implant["status"]>("مكتمل");
   const [date, setDate] = useState(today(0));
   const [notes, setNotes] = useState("");
   const [err, setErr] = useState("");
@@ -2381,7 +2395,11 @@ function XraysTab({ patientId }: { patientId: string }) {
         <div className="grid sm:grid-cols-2 gap-4">
           {list.map((r, i) => (
             <div key={r.id} className="card card-hover p-4 flex gap-4 anim-rise" style={{ animationDelay: `${i * 60}ms` }}>
-              <XrayThumb kind={r.kind} />
+              {r.image ? (
+                <img src={r.image} alt={r.kind} className="w-16 h-16 rounded-lg object-cover border border-line shrink-0" />
+              ) : (
+                <XrayThumb kind={r.kind} />
+              )}
               <div className="flex-1 min-w-0">
                 <div className="flex items-center justify-between gap-2">
                   <p className="font-bold text-sm text-ink truncate">{r.kind}</p>
@@ -2406,11 +2424,12 @@ function XrayModal({ patientId, onClose }: { patientId: string; onClose: () => v
   const [kind, setKind] = useState(XRAY_KINDS[0]);
   const [date, setDate] = useState(today(0));
   const [findings, setFindings] = useState("");
+  const [image, setImage] = useState<string | undefined>(undefined);
   const [err, setErr] = useState("");
 
   const save = () => {
     if (findings.trim().length < 5) return setErr("اكتب التقرير الشعاعي (النتائج).");
-    const r: XrayRec = { id: uid(), patientId, kind, date, findings: findings.trim(), doctorId: db.doctors[0]?.id ?? "d1" };
+    const r: XrayRec = { id: uid(), patientId, kind, date, findings: findings.trim(), doctorId: db.doctors[0]?.id ?? "d1", image };
     dispatch({ type: "ADD_XRAY", r });
     push("success", "سُجّلت الأشعة", `${patientById(patientId)?.name} — ${kind}`);
     onClose();
@@ -2431,6 +2450,28 @@ function XrayModal({ patientId, onClose }: { patientId: string; onClose: () => v
         <div className="col-span-2">
           <Field label="التقرير الشعاعي *">
             <TArea value={findings} onChange={(e) => setFindings(e.target.value)} placeholder="النتائج والملاحظات التشخيصية…" />
+          </Field>
+        </div>
+        <div className="col-span-2">
+          <Field label="صورة/ملف شعاعي (اختياري)">
+            {image ? (
+              <div className="flex items-center gap-3">
+                <img src={image} alt="أشعة" className="w-24 h-24 rounded-lg object-cover border border-line" />
+                <button type="button" className="text-xs text-coral hover:underline" onClick={() => setImage(undefined)}>حذف</button>
+              </div>
+            ) : (
+              <label className="btn-ghost !py-2 !px-3 cursor-pointer text-xs inline-block">
+                <input type="file" accept="image/*" className="hidden" onChange={(e) => {
+                  const f = e.target.files?.[0]; if (!f) return;
+                  if (f.size > 5 * 1024 * 1024) { setErr("حجم الصورة يجب أن لا يتجاوز 5MB"); return; }
+                  const reader = new FileReader();
+                  reader.onload = () => setImage(String(reader.result));
+                  reader.readAsDataURL(f);
+                  e.target.value = "";
+                }} />
+                رفع صورة
+              </label>
+            )}
           </Field>
         </div>
       </div>

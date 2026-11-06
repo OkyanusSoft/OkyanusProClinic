@@ -1,0 +1,11 @@
+{
+  "name": "نظام إدارة عيادات الأسنان",
+  "short_name": "عيادة الأسنان",
+  "description": "نظام إدارة عيادات الأسنان — مواعيد، جلسات، فواتير، محاسبة، تأمين",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0b2f2b",
+  "theme_color": "#0d8f83",
+  "orientation": "portrait",
+  "icons": []
+}

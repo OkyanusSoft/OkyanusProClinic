@@ -1,14 +1,15 @@
 {
-  "name": "sharafi-dental-server",
+  "name": "dental-clinic-server",
   "version": "2.6.0",
-  "description": "خادم قاعدة البيانات المركزية (MySQL) لنظام عيادة د. عبدالله الشرفي",
+  "description": "خادم قاعدة البيانات المركزية (MySQL) لنظام إدارة عيادات الأسنان",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
     "dev": "node --watch index.js",
-        "migrate": "node migrate.js"
+    "migrate": "node migrate.js"
   },
   "dependencies": {
+    "bcrypt": "^6.0.0",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
